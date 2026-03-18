@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   InMemoryMarketplaceStore,
   buildPriceRange,
+  buildMarketplaceRoutes,
   buildServiceDetail,
   buildOpenApiDocument,
   buildPayoutSplit,
@@ -13,6 +14,7 @@ import {
   marketplaceRoutes,
   normalizeFastWalletAddress,
   normalizePaymentHeaders,
+  resolveMarketplaceNetworkConfig,
   verifyWalletChallenge
 } from "./index.js";
 
@@ -111,6 +113,16 @@ describe("shared marketplace helpers", () => {
     expect(document.paths["/catalog/services"]).toBeDefined();
   });
 
+  it("builds testnet routes when the deployment targets testnet", () => {
+    const routes = buildMarketplaceRoutes(
+      resolveMarketplaceNetworkConfig({
+        deploymentNetwork: "testnet"
+      })
+    );
+
+    expect(routes[0]?.network).toBe("fast-testnet");
+  });
+
   it("freezes payout split amounts from the quoted price", () => {
     const split = buildPayoutSplit({
       route: marketplaceRoutes[0],
@@ -137,11 +149,13 @@ describe("shared marketplace helpers", () => {
       webBaseUrl: "https://fast.8o.vc"
     });
 
-    expect(buildPriceRange(marketplaceRoutes)).toBe("$0.05 USDC - $0.15 USDC");
+    expect(buildPriceRange(marketplaceRoutes)).toBe("$0.05 fastUSDC - $0.15 fastUSDC");
     expect(detail.skillUrl).toBe("https://fast.8o.vc/skill.md");
     expect(detail.summary.endpointCount).toBe(2);
+    expect(detail.summary.settlementToken).toBe("fastUSDC");
     expect(detail.useThisServicePrompt).toContain('I want to use the "Mock Research Signals" service');
     expect(detail.useThisServicePrompt).toContain("https://fastapi.8o.vc/api/mock/quick-insight");
+    expect(detail.useThisServicePrompt).toContain("($0.05 fastUSDC)");
   });
 
   it("computes service analytics and suggestion queue state in the in-memory store", async () => {

@@ -22,10 +22,12 @@ walletProgram
   .command("init")
   .option("--keyfile <path>")
   .option("--config <path>")
+  .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
   .action(async (options) => {
     const result = await initializeWallet({
       keyfilePath: options.keyfile,
-      configPath: options.config
+      configPath: options.config,
+      network: options.network
     });
     deps.print(JSON.stringify(result, null, 2));
   });
@@ -34,10 +36,12 @@ walletProgram
   .command("load")
   .option("--keyfile <path>")
   .option("--config <path>")
+  .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
   .action(async (options) => {
     const result = await walletAddress({
       keyfilePath: options.keyfile,
-      configPath: options.config
+      configPath: options.config,
+      network: options.network
     });
     deps.print(JSON.stringify(result, null, 2));
   });
@@ -46,10 +50,12 @@ walletProgram
   .command("address")
   .option("--keyfile <path>")
   .option("--config <path>")
+  .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
   .action(async (options) => {
     const result = await walletAddress({
       keyfilePath: options.keyfile,
-      configPath: options.config
+      configPath: options.config,
+      network: options.network
     });
     deps.print(JSON.stringify(result, null, 2));
   });
@@ -58,11 +64,13 @@ walletProgram
   .command("balance")
   .option("--keyfile <path>")
   .option("--config <path>")
-  .option("--token <symbol>", "Token symbol", "fastUSDC")
+  .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
+  .option("--token <symbol>", "Token symbol override")
   .action(async (options) => {
     const result = await walletBalance({
       keyfilePath: options.keyfile,
       configPath: options.config,
+      network: options.network,
       token: options.token
     });
     deps.print(JSON.stringify(result, null, 2));
@@ -94,6 +102,7 @@ program
   .argument("<operation>")
   .requiredOption("--body <json>")
   .option("--api-url <url>", "Marketplace API URL", "http://localhost:3000")
+  .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
   .option("--keyfile <path>")
   .option("--config <path>")
   .option("--approve-expensive", "Auto-approve expensive routes", false)
@@ -107,6 +116,7 @@ program
         body: JSON.parse(options.body),
         keyfilePath: options.keyfile,
         configPath: options.config,
+        network: options.network,
         autoApproveExpensive: Boolean(options.approveExpensive),
         verbose: Boolean(options.verbose)
       },
@@ -121,6 +131,7 @@ jobProgram
   .command("get")
   .argument("<jobToken>")
   .option("--api-url <url>", "Marketplace API URL", "http://localhost:3000")
+  .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
   .option("--keyfile <path>")
   .option("--config <path>")
   .action(async (jobToken, options) => {
@@ -129,7 +140,8 @@ jobProgram
         apiUrl: options.apiUrl,
         jobToken,
         keyfilePath: options.keyfile,
-        configPath: options.config
+        configPath: options.config,
+        network: options.network
       },
       deps
     );

@@ -1,3 +1,4 @@
+import { getDefaultMarketplaceNetworkConfig } from "./network.js";
 import type { MarketplaceRoute, PersistedPayoutSplit } from "./types.js";
 
 const BPS_SCALE = 10_000n;
@@ -7,6 +8,7 @@ export function buildPayoutSplit(input: {
   marketplaceWallet: string;
   quotedPrice: string;
 }): PersistedPayoutSplit {
+  const network = getDefaultMarketplaceNetworkConfig();
   const providerBps = BigInt(input.route.payout.providerBps);
   if (providerBps < 0n || providerBps > BPS_SCALE) {
     throw new Error(`Invalid provider payout bps: ${input.route.payout.providerBps}`);
@@ -17,7 +19,7 @@ export function buildPayoutSplit(input: {
   const marketplaceAmount = totalAmount - providerAmount;
 
   return {
-    currency: "fastUSDC",
+    currency: network.tokenSymbol,
     marketplaceWallet: input.marketplaceWallet,
     marketplaceBps: Number(BPS_SCALE - providerBps),
     marketplaceAmount: marketplaceAmount.toString(),

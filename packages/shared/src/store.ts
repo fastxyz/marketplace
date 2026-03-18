@@ -9,6 +9,7 @@ import type {
   JobRecord,
   MarketplaceStore,
   ProviderAttemptRecord,
+  ResourceType,
   RefundRecord,
   SaveAsyncAcceptanceInput,
   SaveSyncIdempotencyInput,
@@ -180,7 +181,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
   }
 
   async createAccessGrant(input: {
-    resourceType: "job";
+    resourceType: ResourceType;
     resourceId: string;
     wallet: string;
     paymentId: string;
@@ -206,7 +207,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     return clone(record);
   }
 
-  async getAccessGrant(resourceType: "job", resourceId: string, wallet: string): Promise<AccessGrantRecord | null> {
+  async getAccessGrant(resourceType: ResourceType, resourceId: string, wallet: string): Promise<AccessGrantRecord | null> {
     return clone(this.accessGrants.get(`${resourceType}:${resourceId}:${wallet}`) ?? null);
   }
 
@@ -651,7 +652,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
   }
 
   async createAccessGrant(input: {
-    resourceType: "job";
+    resourceType: ResourceType;
     resourceId: string;
     wallet: string;
     paymentId: string;
@@ -674,7 +675,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     return mapAccessGrantRow(result.rows[0]);
   }
 
-  async getAccessGrant(resourceType: "job", resourceId: string, wallet: string): Promise<AccessGrantRecord | null> {
+  async getAccessGrant(resourceType: ResourceType, resourceId: string, wallet: string): Promise<AccessGrantRecord | null> {
     const result = await this.pool.query(
       `
       SELECT * FROM access_grants

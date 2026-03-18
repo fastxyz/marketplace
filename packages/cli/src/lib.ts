@@ -12,11 +12,14 @@ import {
   createOpaqueToken,
   decimalToRawString,
   normalizeFastWalletAddress,
-  rawToDecimalString
+  rawToDecimalString,
+  resolveMarketplaceNetworkConfig,
+  type MarketplaceDeploymentNetwork
 } from "@marketplace/shared";
 
 export interface CliConfig {
   defaultKeyfile?: string;
+  defaultNetwork?: MarketplaceDeploymentNetwork;
   spendControls?: {
     maxPerCallRaw?: string;
     dailyCapRaw?: string;
@@ -60,7 +63,6 @@ export interface CliDependencies {
 
 const DEFAULT_CONFIG_PATH = "~/.fast-marketplace/config.json";
 const DEFAULT_KEYFILE_PATH = "~/.fast/keys/default.json";
-const DEFAULT_RPC_URL = "https://api.fast.xyz/proxy";
 
 export function defaultCliDependencies(): CliDependencies {
   return {
@@ -120,15 +122,20 @@ export async function writeCliConfig(config: CliConfig, configPath = DEFAULT_CON
 export async function initializeWallet(input: {
   keyfilePath?: string;
   configPath?: string;
+  network?: MarketplaceDeploymentNetwork;
   rpcUrl?: string;
 }): Promise<{ keyfilePath: string; address: string }> {
   const keyfilePath = expandHome(input.keyfilePath ?? DEFAULT_KEYFILE_PATH);
-  const provider = createProvider(input.rpcUrl);
+  const provider = createProvider({
+    deploymentNetwork: input.network,
+    rpcUrl: input.rpcUrl
+  });
   const wallet = await FastWallet.generate(provider);
   await wallet.saveToKeyfile(keyfilePath);
 
   const config = await readCliConfig(input.configPath);
   config.defaultKeyfile = keyfilePath;
+  config.defaultNetwork = input.network ?? config.defaultNetwork ?? "mainnet";
   await writeCliConfig(config, input.configPath);
 
   return {
@@ -160,10 +167,12 @@ export async function setSpendControls(input: {
 export async function loadWallet(input: {
   keyfilePath?: string;
   configPath?: string;
+  network?: MarketplaceDeploymentNetwork;
   rpcUrl?: string;
 }): Promise<LoadedWallet> {
   const config = await readCliConfig(input.configPath);
   const keyfilePath = expandHome(input.keyfilePath ?? config.defaultKeyfile ?? DEFAULT_KEYFILE_PATH);
+  const network = resolveCliNetwork(input.network, config.defaultNetwork, input.rpcUrl);
   const keyfile = JSON.parse(await readFile(keyfilePath, "utf8")) as {
     privateKey: string;
     publicKey?: string;
@@ -177,7 +186,10 @@ export async function loadWallet(input: {
 
   const publicKey = keyfile.publicKey ?? Buffer.from(await getPublicKeyAsync(Buffer.from(privateKey, "hex"))).toString("hex");
   const address = keyfile.address ?? encodeFastAddress(Buffer.from(publicKey, "hex"));
-  const provider = createProvider(input.rpcUrl);
+  const provider = createProvider({
+    deploymentNetwork: network.deploymentNetwork,
+    rpcUrl: network.rpcUrl
+  });
   const wallet = await FastWallet.fromPrivateKey(privateKey, provider);
 
   return {
@@ -188,7 +200,7 @@ export async function loadWallet(input: {
       privateKey,
       publicKey,
       address: normalizeFastWalletAddress(address),
-      rpcUrl: input.rpcUrl ?? DEFAULT_RPC_URL
+      rpcUrl: network.rpcUrl
     }
   };
 }
@@ -196,6 +208,7 @@ export async function loadWallet(input: {
 export async function walletAddress(input: {
   keyfilePath?: string;
   configPath?: string;
+  network?: MarketplaceDeploymentNetwork;
   rpcUrl?: string;
 }) {
   const loaded = await loadWallet(input);
@@ -209,10 +222,13 @@ export async function walletBalance(input: {
   token?: string;
   keyfilePath?: string;
   configPath?: string;
+  network?: MarketplaceDeploymentNetwork;
   rpcUrl?: string;
 }) {
+  const config = await readCliConfig(input.configPath);
   const loaded = await loadWallet(input);
-  return loaded.wallet.balance(input.token ?? "fastUSDC");
+  const network = resolveCliNetwork(input.network, config.defaultNetwork, input.rpcUrl);
+  return loaded.wallet.balance(input.token ?? network.tokenSymbol);
 }
 
 export async function invokePaidRoute(
@@ -223,6 +239,7 @@ export async function invokePaidRoute(
     body: unknown;
     keyfilePath?: string;
     configPath?: string;
+    network?: MarketplaceDeploymentNetwork;
     rpcUrl?: string;
     autoApproveExpensive?: boolean;
     verbose?: boolean;
@@ -231,6 +248,7 @@ export async function invokePaidRoute(
 ) {
   const loaded = await loadWallet(input);
   const config = await readCliConfig(input.configPath);
+  const network = resolveCliNetwork(input.network, config.defaultNetwork, input.rpcUrl);
   const endpoint = `${input.apiUrl.replace(/\/$/, "")}/api/${input.provider}/${input.operation}`;
   const routeKey = `${input.provider}.${input.operation}`;
   const paymentId = createOpaqueToken("payment");
@@ -266,6 +284,7 @@ export async function invokePaidRoute(
   await enforceSpendControls({
     routeKey,
     amountRaw,
+    tokenSymbol: network.tokenSymbol,
     config,
     deps,
     autoApproveExpensive: input.autoApproveExpensive ?? false
@@ -304,6 +323,7 @@ export async function fetchJobResult(
     jobToken: string;
     keyfilePath?: string;
     configPath?: string;
+    network?: MarketplaceDeploymentNetwork;
     rpcUrl?: string;
   },
   deps: CliDependencies = defaultCliDependencies()
@@ -360,6 +380,7 @@ export async function fetchJobResult(
 async function enforceSpendControls(input: {
   routeKey: string;
   amountRaw: string;
+  tokenSymbol: string;
   config: CliConfig;
   deps: CliDependencies;
   autoApproveExpensive: boolean;
@@ -392,7 +413,7 @@ async function enforceSpendControls(input: {
   if (controls.manualApprovalAboveRaw && BigInt(input.amountRaw) > BigInt(controls.manualApprovalAboveRaw)) {
     if (!input.autoApproveExpensive) {
       const approved = await input.deps.confirm(
-        `Approve expensive call for ${rawToDecimalString(input.amountRaw, 6)} fastUSDC on ${input.routeKey}?`
+        `Approve expensive call for ${rawToDecimalString(input.amountRaw, 6)} ${input.tokenSymbol} on ${input.routeKey}?`
       );
       if (!approved) {
         throw new Error("Manual approval rejected.");
@@ -434,13 +455,31 @@ function currentSpendLedger(config: CliConfig, now: Date) {
   return config.spendLedger;
 }
 
-function createProvider(rpcUrl?: string) {
+function resolveCliNetwork(
+  deploymentNetwork?: MarketplaceDeploymentNetwork,
+  fallbackNetwork?: MarketplaceDeploymentNetwork,
+  rpcUrl?: string
+) {
+  return resolveMarketplaceNetworkConfig({
+    deploymentNetwork: deploymentNetwork ?? fallbackNetwork ?? "mainnet",
+    rpcUrl
+  });
+}
+
+function createProvider(input: {
+  deploymentNetwork?: MarketplaceDeploymentNetwork;
+  rpcUrl?: string;
+}) {
+  const network = resolveMarketplaceNetworkConfig({
+    deploymentNetwork: input.deploymentNetwork,
+    rpcUrl: input.rpcUrl
+  });
   return new FastProvider({
-    network: "mainnet",
+    network: network.deploymentNetwork,
     networks: {
-      mainnet: {
-        rpc: rpcUrl ?? DEFAULT_RPC_URL,
-        explorer: "https://explorer.fast.xyz"
+      [network.deploymentNetwork]: {
+        rpc: network.rpcUrl,
+        explorer: network.explorerUrl
       }
     }
   });

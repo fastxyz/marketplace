@@ -203,6 +203,31 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
     return res.json(createChallenge({ wallet: normalizedWallet, resourceType: "job", resourceId }));
   });
 
+  app.post("/auth/wallet/challenge", async (req, res) => {
+    const wallet = typeof req.body?.wallet === "string" ? req.body.wallet : "";
+
+    if (!wallet) {
+      return res.status(400).json({ error: "wallet is required" });
+    }
+
+    let normalizedWallet: string;
+    try {
+      normalizedWallet = normalizeFastWalletAddress(wallet);
+    } catch (error) {
+      return res.status(400).json({
+        error: error instanceof Error ? error.message : "Invalid wallet address."
+      });
+    }
+
+    return res.json(
+      createChallenge({
+        wallet: normalizedWallet,
+        resourceType: "site",
+        resourceId: webBaseUrl
+      })
+    );
+  });
+
   app.post("/auth/session", async (req, res) => {
     const wallet = typeof req.body?.wallet === "string" ? req.body.wallet : "";
     const signature = typeof req.body?.signature === "string" ? req.body.signature : "";
@@ -254,6 +279,57 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
         resourceId,
         secret: options.sessionSecret
       }),
+      tokenType: "Bearer"
+    });
+  });
+
+  app.post("/auth/wallet/session", async (req, res) => {
+    const wallet = typeof req.body?.wallet === "string" ? req.body.wallet : "";
+    const signature = typeof req.body?.signature === "string" ? req.body.signature : "";
+    const nonce = typeof req.body?.nonce === "string" ? req.body.nonce : "";
+    const expiresAt = typeof req.body?.expiresAt === "string" ? req.body.expiresAt : "";
+
+    if (!wallet || !signature || !nonce || !expiresAt) {
+      return res.status(400).json({
+        error: "wallet, signature, nonce, and expiresAt are required"
+      });
+    }
+
+    let normalizedWallet: string;
+    try {
+      normalizedWallet = normalizeFastWalletAddress(wallet);
+    } catch (error) {
+      return res.status(400).json({
+        error: error instanceof Error ? error.message : "Invalid wallet address."
+      });
+    }
+
+    const verified = await verifyWalletChallenge({
+      wallet: normalizedWallet,
+      signature,
+      challenge: {
+        wallet: normalizedWallet,
+        resourceType: "site",
+        resourceId: webBaseUrl,
+        nonce,
+        expiresAt
+      }
+    });
+
+    if (!verified) {
+      return res.status(401).json({ error: "Invalid wallet challenge signature." });
+    }
+
+    return res.json({
+      accessToken: createSessionToken({
+        wallet: normalizedWallet,
+        resourceType: "site",
+        resourceId: webBaseUrl,
+        secret: options.sessionSecret
+      }),
+      wallet: normalizedWallet,
+      resourceType: "site",
+      resourceId: webBaseUrl,
       tokenType: "Bearer"
     });
   });
@@ -331,6 +407,16 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
         .json({
           ...buildPaymentRequiredResponse(route, options.payTo),
           error: verifyResult.invalidReason ?? "Payment verification failed."
+        });
+    }
+
+    if (verifyResult.network && verifyResult.network !== route.network) {
+      return res
+        .status(402)
+        .set(buildPaymentRequiredHeaders(route, options.payTo))
+        .json({
+          ...buildPaymentRequiredResponse(route, options.payTo),
+          error: `Payment network mismatch. Expected ${route.network}, received ${verifyResult.network}.`
         });
     }
 

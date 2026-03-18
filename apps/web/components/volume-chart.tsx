@@ -9,9 +9,11 @@ export interface VolumePoint {
 
 export function VolumeChart({
   points,
+  tokenSymbol = "fastUSDC",
   className
 }: {
   points: VolumePoint[];
+  tokenSymbol?: string;
   className?: string;
 }) {
   const values = points.map((point) => Number(point.amount));
@@ -37,7 +39,7 @@ export function VolumeChart({
                   value === 0 && "opacity-25"
                 )}
                 style={{ height: `${height}%` }}
-                title={`${point.date}: ${point.amount} USDC`}
+                title={`${point.date}: ${point.amount} ${tokenSymbol}`}
               />
             </div>
           );

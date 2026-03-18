@@ -1,6 +1,11 @@
 import { Pool } from "pg";
 
-import { DEFAULT_JOB_POLL_INTERVAL_MS, PostgresMarketplaceStore } from "@marketplace/shared";
+import {
+  DEFAULT_JOB_POLL_INTERVAL_MS,
+  PostgresMarketplaceStore,
+  normalizeMarketplaceDeploymentNetwork,
+  resolveMarketplaceNetworkConfig
+} from "@marketplace/shared";
 
 import { createFastRefundService, runMarketplaceWorkerCycle } from "./worker.js";
 
@@ -12,9 +17,14 @@ if (!databaseUrl) {
 const pool = new Pool({ connectionString: databaseUrl });
 const store = new PostgresMarketplaceStore(pool);
 await store.ensureSchema();
+const network = resolveMarketplaceNetworkConfig({
+  deploymentNetwork: normalizeMarketplaceDeploymentNetwork(process.env.MARKETPLACE_FAST_NETWORK),
+  rpcUrl: process.env.FAST_RPC_URL
+});
 
 const refundService = createFastRefundService({
-  rpcUrl: process.env.FAST_RPC_URL ?? "https://api.fast.xyz/proxy",
+  deploymentNetwork: network.deploymentNetwork,
+  rpcUrl: network.rpcUrl,
   privateKey: process.env.MARKETPLACE_TREASURY_PRIVATE_KEY,
   keyfilePath: process.env.MARKETPLACE_TREASURY_KEYFILE
 });

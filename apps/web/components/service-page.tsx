@@ -64,7 +64,7 @@ export function ServicePage({ service }: { service: ServiceDetail }) {
             <CardTitle className="text-2xl">Paid call flow over time</CardTitle>
           </CardHeader>
           <CardContent>
-            <VolumeChart points={service.summary.volume30d} />
+            <VolumeChart points={service.summary.volume30d} tokenSymbol={service.summary.settlementToken} />
           </CardContent>
         </Card>
       </section>
@@ -137,7 +137,9 @@ export function ServicePage({ service }: { service: ServiceDetail }) {
                         <div className="text-base font-semibold text-foreground">{endpoint.title}</div>
                         <div className="text-sm text-muted-foreground">{endpoint.description}</div>
                       </div>
-                      <div className="text-sm font-medium text-foreground">{endpoint.price} USDC</div>
+                      <div className="text-sm font-medium text-foreground">
+                        {endpoint.price} {endpoint.tokenSymbol}
+                      </div>
                     </div>
                   </AccordionTrigger>
                   <AccordionContent>

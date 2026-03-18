@@ -11,9 +11,41 @@ import {
 } from "./constants.js";
 import { listServiceDefinitions } from "./services.js";
 import { marketplaceRoutes } from "./routes.js";
+import { getDefaultMarketplaceNetworkConfig } from "./network.js";
 
 export function buildOpenApiDocument(baseUrl = "http://localhost:3000") {
+  const network = getDefaultMarketplaceNetworkConfig();
   const paths: Record<string, unknown> = {
+    "/auth/wallet/challenge": {
+      post: {
+        summary: "Create a wallet-signin challenge for the marketplace website.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["wallet"],
+                properties: {
+                  wallet: { type: "string" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Wallet challenge created." }
+        }
+      }
+    },
+    "/auth/wallet/session": {
+      post: {
+        summary: "Exchange a signed wallet challenge for a short-lived website session token.",
+        responses: {
+          "200": { description: "Wallet session created." }
+        }
+      }
+    },
     "/auth/challenge": {
       post: {
         summary: "Create a wallet challenge for a previously paid resource.",
@@ -183,7 +215,8 @@ export function buildOpenApiDocument(baseUrl = "http://localhost:3000") {
     openapi: "3.1.0",
     info: {
       title: MARKETPLACE_NAME,
-      version: MARKETPLACE_VERSION
+      version: MARKETPLACE_VERSION,
+      description: `Deployment network: ${network.displayName}`
     },
     servers: [{ url: baseUrl }],
     paths
@@ -191,12 +224,15 @@ export function buildOpenApiDocument(baseUrl = "http://localhost:3000") {
 }
 
 export function buildLlmsTxt(baseUrl = "http://localhost:3000"): string {
+  const network = getDefaultMarketplaceNetworkConfig();
   const lines = [
     `# ${MARKETPLACE_NAME}`,
     "",
     "Fast-only x402 paid API marketplace.",
     "",
     `Base URL: ${baseUrl}`,
+    `Fast network: ${network.displayName}`,
+    `Settlement token: ${network.tokenSymbol}`,
     `Marketplace catalog: ${baseUrl}/catalog/services`,
     "Payment protocol: x402 over HTTP",
     `Payment headers: ${PAYMENT_REQUIRED_HEADER}, ${PAYMENT_SIGNATURE_HEADER}, ${PAYMENT_RESPONSE_HEADER}`,
@@ -247,10 +283,17 @@ export function buildLlmsTxt(baseUrl = "http://localhost:3000"): string {
 }
 
 export function buildMarketplaceCatalog(baseUrl = "http://localhost:3000") {
+  const network = getDefaultMarketplaceNetworkConfig();
   return {
     name: MARKETPLACE_NAME,
     version: MARKETPLACE_VERSION,
     baseUrl,
+    network: {
+      deployment: network.deploymentNetwork,
+      payment: network.paymentNetwork,
+      token: network.tokenSymbol,
+      rpcUrl: network.rpcUrl
+    },
     payment: {
       protocol: "x402",
       headers: {
@@ -263,7 +306,9 @@ export function buildMarketplaceCatalog(baseUrl = "http://localhost:3000") {
     auth: {
       type: "wallet-challenge",
       challengeEndpoint: "/auth/challenge",
-      sessionEndpoint: "/auth/session"
+      sessionEndpoint: "/auth/session",
+      walletChallengeEndpoint: "/auth/wallet/challenge",
+      walletSessionEndpoint: "/auth/wallet/session"
     },
     services: listServiceDefinitions().map((service) => ({
       slug: service.slug,

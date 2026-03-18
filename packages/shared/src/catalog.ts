@@ -2,6 +2,7 @@ import { quotedPriceRaw } from "./payment.js";
 import { findMarketplaceRouteById } from "./routes.js";
 import { findMarketplaceServiceBySlug } from "./services.js";
 import { rawToDecimalString } from "./amounts.js";
+import { getDefaultMarketplaceNetworkConfig } from "./network.js";
 import type {
   MarketplaceRoute,
   ServiceAnalytics,
@@ -19,8 +20,8 @@ function roundToSingleDecimal(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-function formatPriceLabelFromRaw(rawAmount: string): string {
-  return `$${rawToDecimalString(rawAmount, 6)} USDC`;
+function formatPriceLabelFromRaw(rawAmount: string, tokenSymbol = getDefaultMarketplaceNetworkConfig().tokenSymbol): string {
+  return `$${rawToDecimalString(rawAmount, 6)} ${tokenSymbol}`;
 }
 
 export function formatRevenueLabel(rawAmount: string): string {
@@ -28,6 +29,7 @@ export function formatRevenueLabel(rawAmount: string): string {
 }
 
 export function buildPriceRange(routes: MarketplaceRoute[]): string {
+  const tokenSymbol = getDefaultMarketplaceNetworkConfig().tokenSymbol;
   const sorted = routes
     .map((route) => quotedPriceRaw(route))
     .sort((left, right) => {
@@ -45,8 +47,8 @@ export function buildPriceRange(routes: MarketplaceRoute[]): string {
       return 0;
     });
 
-  const minimum = formatPriceLabelFromRaw(sorted[0] ?? "0");
-  const maximum = formatPriceLabelFromRaw(sorted[sorted.length - 1] ?? "0");
+  const minimum = formatPriceLabelFromRaw(sorted[0] ?? "0", tokenSymbol);
+  const maximum = formatPriceLabelFromRaw(sorted[sorted.length - 1] ?? "0", tokenSymbol);
 
   return minimum === maximum ? minimum : `${minimum} - ${maximum}`;
 }
@@ -64,12 +66,14 @@ export function getRoutesForService(service: ServiceDefinition): MarketplaceRout
 
 export function buildServiceEndpoint(route: MarketplaceRoute, apiBaseUrl: string): ServiceCatalogEndpoint {
   const path = `/api/${route.provider}/${route.operation}`;
+  const tokenSymbol = getDefaultMarketplaceNetworkConfig().tokenSymbol;
 
   return {
     routeId: route.routeId,
     title: route.title,
     description: route.description,
     price: route.price,
+    tokenSymbol,
     mode: route.mode,
     method: "POST",
     path,
@@ -98,7 +102,7 @@ export function buildUseThisServicePrompt(input: {
   for (const endpoint of input.endpoints) {
     lines.push(
       "",
-      `### ${endpoint.title} (${endpoint.price} USDC)`,
+      `### ${endpoint.title} (${endpoint.price} ${endpoint.tokenSymbol})`,
       `curl -X ${endpoint.method} "${endpoint.proxyUrl}" \\`,
       '  -H "Content-Type: application/json" \\',
       `  -d '${JSON.stringify(endpoint.requestExample, null, 2)}'`
@@ -132,6 +136,7 @@ export function buildServiceSummary(input: {
     tagline: input.service.tagline,
     categories: input.service.categories,
     priceRange: buildPriceRange(routes),
+    settlementToken: getDefaultMarketplaceNetworkConfig().tokenSymbol,
     endpointCount: routes.length,
     totalCalls: input.analytics.totalCalls,
     revenue: formatRevenueLabel(input.analytics.revenueRaw),

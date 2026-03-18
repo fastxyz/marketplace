@@ -3,8 +3,10 @@ import {
   createDefaultProviderRegistry,
   findMarketplaceRouteById,
   rawToDecimalString,
+  resolveMarketplaceNetworkConfig,
   type JobRecord,
   type MarketplaceStore,
+  type MarketplaceDeploymentNetwork,
   type ProviderRegistry,
   type RefundService
 } from "@marketplace/shared";
@@ -105,16 +107,21 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
 }
 
 export function createFastRefundService(input: {
+  deploymentNetwork?: MarketplaceDeploymentNetwork;
   rpcUrl?: string;
   privateKey?: string;
   keyfilePath?: string;
 }): RefundService {
+  const network = resolveMarketplaceNetworkConfig({
+    deploymentNetwork: input.deploymentNetwork,
+    rpcUrl: input.rpcUrl
+  });
   const provider = new FastProvider({
-    network: "mainnet",
+    network: network.deploymentNetwork,
     networks: {
-      mainnet: {
-        rpc: input.rpcUrl ?? "https://api.fast.xyz/proxy",
-        explorer: "https://explorer.fast.xyz"
+      [network.deploymentNetwork]: {
+        rpc: network.rpcUrl,
+        explorer: network.explorerUrl
       }
     }
   });
@@ -144,7 +151,7 @@ export function createFastRefundService(input: {
       const result = await treasuryWallet.send({
         to: wallet,
         amount: rawToDecimalString(amount, 6),
-        token: "fastUSDC"
+        token: network.tokenSymbol
       });
 
       return {

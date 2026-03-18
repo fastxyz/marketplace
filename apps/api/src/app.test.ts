@@ -212,4 +212,63 @@ describe("marketplace api", () => {
     expect(job?.payoutSplit.providerAmount).toBe("0");
     expect(job?.payoutSplit.providerAccountId).toBe("mock");
   });
+
+  it("creates a website wallet session from a signed challenge", async () => {
+    const { app, buyer } = await createTestApp();
+
+    const challenge = await request(app)
+      .post("/auth/wallet/challenge")
+      .send({
+        wallet: buyer.address
+      });
+
+    expect(challenge.status).toBe(200);
+    expect(challenge.body.resourceType).toBe("site");
+    expect(challenge.body.resourceId).toBe("https://fast.8o.vc");
+
+    const signed = await buyer.wallet.sign({ message: challenge.body.message });
+    const session = await request(app)
+      .post("/auth/wallet/session")
+      .send({
+        wallet: buyer.address,
+        nonce: challenge.body.nonce,
+        expiresAt: challenge.body.expiresAt,
+        signature: signed.signature
+      });
+
+    expect(session.status).toBe(200);
+    expect(session.body.wallet).toBe(buyer.address);
+    expect(session.body.resourceType).toBe("site");
+    expect(session.body.resourceId).toBe("https://fast.8o.vc");
+    expect(session.body.accessToken).toBeDefined();
+  });
+
+  it("rejects a payment proof if the facilitator verifies the wrong Fast network", async () => {
+    const buyer = await createTestWallet();
+    const app = createMarketplaceApi({
+      store: new InMemoryMarketplaceStore(),
+      payTo: buyer.address,
+      sessionSecret: "test-session-secret",
+      adminToken: "test-admin-token",
+      facilitatorClient: {
+        async verify() {
+          return {
+            isValid: true,
+            payer: buyer.payerHex,
+            network: "fast-testnet"
+          };
+        }
+      },
+      webBaseUrl: "https://fast.8o.vc"
+    });
+
+    const response = await request(app)
+      .post("/api/mock/quick-insight")
+      .set("X-PAYMENT", Buffer.from(JSON.stringify({ paid: true })).toString("base64"))
+      .set("PAYMENT-IDENTIFIER", "payment_wrong_network_1")
+      .send({ query: "alpha" });
+
+    expect(response.status).toBe(402);
+    expect(response.body.error).toContain("Expected fast-mainnet");
+  });
 });

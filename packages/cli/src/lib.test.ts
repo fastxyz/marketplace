@@ -8,6 +8,7 @@ import {
   fetchJobResult,
   initializeWallet,
   invokePaidRoute,
+  readCliConfig,
   setSpendControls,
   walletAddress
 } from "./lib.js";
@@ -28,10 +29,12 @@ describe("marketplace cli", () => {
     const keyfilePath = join(tempDir, "wallet.json");
     const configPath = join(tempDir, "config.json");
 
-    const initialized = await initializeWallet({ keyfilePath, configPath });
+    const initialized = await initializeWallet({ keyfilePath, configPath, network: "testnet" });
     const loaded = await walletAddress({ keyfilePath, configPath });
+    const config = await readCliConfig(configPath);
 
     expect(loaded.address).toBe(initialized.address);
+    expect(config.defaultNetwork).toBe("testnet");
   });
 
   it("blocks invocation when local spend controls would be exceeded", async () => {

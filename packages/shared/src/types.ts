@@ -1,7 +1,9 @@
 import type { ZodTypeAny } from "zod";
 
+import type { MarketplacePaymentNetwork, MarketplaceTokenSymbol } from "./network.js";
+
 export type RouteMode = "sync" | "async";
-export type ResourceType = "job";
+export type ResourceType = "job" | "site";
 export type JobStatus = "pending" | "completed" | "failed";
 export type RefundStatus = "not_required" | "pending" | "sent" | "failed";
 export type SuggestionType = "endpoint" | "source";
@@ -14,7 +16,7 @@ export interface RoutePayoutConfig {
 }
 
 export interface PersistedPayoutSplit {
-  currency: "fastUSDC";
+  currency: MarketplaceTokenSymbol;
   marketplaceWallet: string;
   marketplaceBps: number;
   marketplaceAmount: string;
@@ -33,7 +35,7 @@ export interface MarketplaceRoute<
   operation: string;
   version: string;
   mode: RouteMode;
-  network: "fast-mainnet";
+  network: MarketplacePaymentNetwork;
   price: string;
   title: string;
   description: string;
@@ -77,6 +79,7 @@ export interface ServiceSummary {
   tagline: string;
   categories: string[];
   priceRange: string;
+  settlementToken: MarketplaceTokenSymbol;
   endpointCount: number;
   totalCalls: number;
   revenue: string;
@@ -92,6 +95,7 @@ export interface ServiceCatalogEndpoint {
   title: string;
   description: string;
   price: string;
+  tokenSymbol: MarketplaceTokenSymbol;
   mode: RouteMode;
   method: "POST";
   path: string;

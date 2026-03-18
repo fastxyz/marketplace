@@ -27,6 +27,7 @@ export MARKETPLACE_TREASURY_ADDRESS=fast1...
 export MARKETPLACE_FACILITATOR_URL=http://localhost:4020
 export MARKETPLACE_SESSION_SECRET=change-me
 export MARKETPLACE_ADMIN_TOKEN=change-me-too
+export MARKETPLACE_FAST_NETWORK=mainnet
 export MARKETPLACE_WEB_BASE_URL=http://localhost:3001
 ```
 
@@ -50,6 +51,8 @@ Optional frontend variables:
 ```bash
 export MARKETPLACE_API_BASE_URL=http://localhost:3000
 ```
+
+`MARKETPLACE_FAST_NETWORK` supports `mainnet` or `testnet`. The deployment token is `fastUSDC` on mainnet and `testUSDC` on testnet.
 
 3. Run the facilitator:
 
@@ -137,6 +140,7 @@ MARKETPLACE_TREASURY_ADDRESS=fast1...
 MARKETPLACE_FACILITATOR_URL=https://fastfacilitator.example.com
 MARKETPLACE_SESSION_SECRET=change-me
 MARKETPLACE_ADMIN_TOKEN=change-me-too
+MARKETPLACE_FAST_NETWORK=mainnet
 MARKETPLACE_BASE_URL=https://fastapi.example.com
 MARKETPLACE_WEB_BASE_URL=https://fast.example.com
 PORT=3000
@@ -147,6 +151,7 @@ Required worker environment:
 ```bash
 DATABASE_URL=postgres://...
 MARKETPLACE_TREASURY_PRIVATE_KEY=<fast-ed25519-private-key-hex>
+MARKETPLACE_FAST_NETWORK=mainnet
 FAST_RPC_URL=https://api.fast.xyz/proxy
 WORKER_POLL_INTERVAL_MS=5000
 ```
@@ -163,8 +168,24 @@ Required web environment:
 ```bash
 MARKETPLACE_API_BASE_URL=https://fastapi.example.com
 MARKETPLACE_ADMIN_TOKEN=change-me-too
+MARKETPLACE_FAST_NETWORK=mainnet
 PORT=3000
 ```
+
+If you want both networks, deploy two stacks from the same repo:
+
+- mainnet: `MARKETPLACE_FAST_NETWORK=mainnet`
+- testnet: `MARKETPLACE_FAST_NETWORK=testnet`
+
+Keep the web, API, and worker on the same network value inside each stack. The facilitator can stay shared if it supports both Fast networks.
+
+## Website Wallet Login
+
+The web app supports wallet login with the Fast browser extension through `@fastxyz/fast-connector`.
+
+- login happens in the site header via a signed wallet challenge
+- this creates a short-lived website session token
+- paid API execution is still CLI-first; browser payment execution is not implemented yet
 
 ## Scripts
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { getDefaultMarketplaceNetworkConfig, type MarketplaceNetworkConfig } from "./network.js";
 import type { MarketplaceRoute } from "./types.js";
 
 export const quickInsightInputSchema = z.object({
@@ -28,67 +29,71 @@ export const asyncReportOutputSchema = z.object({
   completedAt: z.string()
 });
 
-export const marketplaceRoutes: MarketplaceRoute[] = [
-  {
-    routeId: "mock.quick-insight.v1",
-    provider: "mock",
-    operation: "quick-insight",
-    version: "v1",
-    mode: "sync",
-    network: "fast-mainnet",
-    price: "$0.05",
-    title: "Quick Insight",
-    description: "Return a paid single-shot mock insight response.",
-    requestExample: {
-      query: "fast-native data marketplaces"
-    },
-    responseExample: {
+export function buildMarketplaceRoutes(config: MarketplaceNetworkConfig = getDefaultMarketplaceNetworkConfig()): MarketplaceRoute[] {
+  return [
+    {
+      routeId: "mock.quick-insight.v1",
       provider: "mock",
       operation: "quick-insight",
-      query: "fast-native data marketplaces",
-      summary: "Mock alpha signal for fast-native data marketplaces.",
-      generatedAt: "2026-03-18T00:00:00.000Z"
+      version: "v1",
+      mode: "sync",
+      network: config.paymentNetwork,
+      price: "$0.05",
+      title: "Quick Insight",
+      description: "Return a paid single-shot mock insight response.",
+      requestExample: {
+        query: "fast-native data marketplaces"
+      },
+      responseExample: {
+        provider: "mock",
+        operation: "quick-insight",
+        query: "fast-native data marketplaces",
+        summary: "Mock alpha signal for fast-native data marketplaces.",
+        generatedAt: "2026-03-18T00:00:00.000Z"
+      },
+      usageNotes: "Use this for low-latency paid lookups that should resolve in a single round trip.",
+      payout: {
+        providerAccountId: "mock",
+        providerWallet: null,
+        providerBps: 0
+      },
+      inputSchema: quickInsightInputSchema,
+      outputSchema: quickInsightOutputSchema
     },
-    usageNotes: "Use this for low-latency paid lookups that should resolve in a single round trip.",
-    payout: {
-      providerAccountId: "mock",
-      providerWallet: null,
-      providerBps: 0
-    },
-    inputSchema: quickInsightInputSchema,
-    outputSchema: quickInsightOutputSchema
-  },
-  {
-    routeId: "mock.async-report.v1",
-    provider: "mock",
-    operation: "async-report",
-    version: "v1",
-    mode: "async",
-    network: "fast-mainnet",
-    price: "$0.15",
-    title: "Async Report",
-    description: "Create a paid async mock report job and return a job token.",
-    requestExample: {
-      topic: "consumer AI distribution shifts",
-      delayMs: 5000
-    },
-    responseExample: {
+    {
+      routeId: "mock.async-report.v1",
       provider: "mock",
       operation: "async-report",
-      topic: "consumer AI distribution shifts",
-      report: "Mock report body for consumer AI distribution shifts.",
-      completedAt: "2026-03-18T00:00:05.000Z"
-    },
-    usageNotes: "Use this when the upstream data source has variable latency and the result should be polled asynchronously.",
-    payout: {
-      providerAccountId: "mock",
-      providerWallet: null,
-      providerBps: 0
-    },
-    inputSchema: asyncReportInputSchema,
-    outputSchema: asyncReportOutputSchema
-  }
-];
+      version: "v1",
+      mode: "async",
+      network: config.paymentNetwork,
+      price: "$0.15",
+      title: "Async Report",
+      description: "Create a paid async mock report job and return a job token.",
+      requestExample: {
+        topic: "consumer AI distribution shifts",
+        delayMs: 5000
+      },
+      responseExample: {
+        provider: "mock",
+        operation: "async-report",
+        topic: "consumer AI distribution shifts",
+        report: "Mock report body for consumer AI distribution shifts.",
+        completedAt: "2026-03-18T00:00:05.000Z"
+      },
+      usageNotes: "Use this when the upstream data source has variable latency and the result should be polled asynchronously.",
+      payout: {
+        providerAccountId: "mock",
+        providerWallet: null,
+        providerBps: 0
+      },
+      inputSchema: asyncReportInputSchema,
+      outputSchema: asyncReportOutputSchema
+    }
+  ];
+}
+
+export const marketplaceRoutes: MarketplaceRoute[] = buildMarketplaceRoutes();
 
 export function findMarketplaceRoute(provider: string, operation: string): MarketplaceRoute | undefined {
   return marketplaceRoutes.find(
