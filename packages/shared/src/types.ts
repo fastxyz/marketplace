@@ -8,7 +8,7 @@ export type RefundStatus = "not_required" | "pending" | "sent" | "failed";
 export type SuggestionType = "endpoint" | "source";
 export type SuggestionStatus = "submitted" | "reviewing" | "accepted" | "rejected" | "shipped";
 export type UpstreamAuthMode = "none" | "bearer" | "header";
-export type RouteExecutorKind = "mock" | "http";
+export type RouteExecutorKind = "mock" | "http" | "tavily";
 export type ProviderServiceStatus =
   | "draft"
   | "pending_review"

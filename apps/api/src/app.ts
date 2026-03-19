@@ -65,6 +65,7 @@ export interface MarketplaceApiOptions {
   baseUrl?: string;
   webBaseUrl?: string;
   secretsKey?: string;
+  tavilyApiKey?: string;
 }
 
 const suggestionCreateSchema = z
@@ -168,6 +169,7 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
   const allowedWebOrigin = safeOrigin(webBaseUrl);
   const networkConfig = getDefaultMarketplaceNetworkConfig();
   const secretsKey = options.secretsKey ?? "development-marketplace-secrets-key";
+  const tavilyEnabled = Boolean(options.tavilyApiKey);
 
   app.use(express.json({ limit: "1mb" }));
   app.use((req, res, next) => {
@@ -204,7 +206,7 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
   });
 
   app.get("/openapi.json", async (_req, res) => {
-    const catalog = await loadPublishedCatalog(options.store);
+    const catalog = filterVisibleCatalog(await loadPublishedCatalog(options.store), tavilyEnabled);
     res.json(
       buildOpenApiDocument({
         baseUrl,
@@ -215,7 +217,7 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
   });
 
   app.get("/llms.txt", async (_req, res) => {
-    const catalog = await loadPublishedCatalog(options.store);
+    const catalog = filterVisibleCatalog(await loadPublishedCatalog(options.store), tavilyEnabled);
     res.type("text/plain").send(
       buildLlmsTxt({
         baseUrl,
@@ -226,7 +228,7 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
   });
 
   app.get("/.well-known/marketplace.json", async (_req, res) => {
-    const catalog = await loadPublishedCatalog(options.store);
+    const catalog = filterVisibleCatalog(await loadPublishedCatalog(options.store), tavilyEnabled);
     res.json(
       buildMarketplaceCatalog({
         baseUrl,
@@ -237,14 +239,13 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
   });
 
   app.get("/catalog/services", async (_req, res) => {
-    const published = await options.store.listPublishedServices();
-    const routes = await options.store.listPublishedRoutes();
+    const catalog = filterVisibleCatalog(await loadPublishedCatalog(options.store), tavilyEnabled);
 
     const services = await Promise.all(
-      published.map(async (service) =>
+      catalog.services.map(async (service) =>
         buildServiceSummary({
           service,
-          endpoints: routes.filter((route) => route.serviceVersionId === service.versionId),
+          endpoints: catalog.routes.filter((route) => route.serviceVersionId === service.versionId),
           analytics: await options.store.getServiceAnalytics(service.routeIds)
         })
       )
@@ -255,14 +256,15 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
 
   app.get("/catalog/services/:slug", async (req, res) => {
     const published = await options.store.getPublishedServiceBySlug(req.params.slug);
-    if (!published) {
+    const visible = published ? filterVisibleServiceDetail(published, tavilyEnabled) : null;
+    if (!visible) {
       return res.status(404).json({ error: "Service not found." });
     }
 
     const detail = buildServiceDetail({
-      service: published.service,
-      endpoints: published.endpoints,
-      analytics: await options.store.getServiceAnalytics(published.service.routeIds),
+      service: visible.service,
+      endpoints: visible.endpoints,
+      analytics: await options.store.getServiceAnalytics(visible.service.routeIds),
       apiBaseUrl: baseUrl,
       webBaseUrl
     });
@@ -281,7 +283,7 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
 
     if (parsed.data.serviceSlug) {
       const published = await options.store.getPublishedServiceBySlug(parsed.data.serviceSlug);
-      if (!published) {
+      if (!published || !filterVisibleServiceDetail(published, tavilyEnabled)) {
         return res.status(400).json({ error: "Unknown serviceSlug." });
       }
     }
@@ -998,6 +1000,10 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
       return res.status(404).json({ error: "Route not found." });
     }
 
+    if (!isRouteVisible(route, tavilyEnabled)) {
+      return res.status(404).json({ error: "Route not found." });
+    }
+
     try {
       validateJsonSchema({
         schema: route.requestSchemaJson,
@@ -1075,10 +1081,16 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
       quotedPrice
     });
 
-    const executeResult =
-      route.executorKind === "mock"
-        ? await executeMockRoute(route, req.body ?? {}, buyerWallet, paymentHeaders.paymentId, providers)
-        : await executeHttpRoute(route, req.body ?? {}, options.store, secretsKey);
+    const executeResult = await executeRoute({
+      route,
+      input: req.body ?? {},
+      buyerWallet,
+      paymentId: paymentHeaders.paymentId,
+      providers,
+      store: options.store,
+      secretsKey,
+      tavilyApiKey: options.tavilyApiKey
+    });
 
     if (executeResult.kind === "sync") {
       if (executeResult.statusCode < 200 || executeResult.statusCode >= 400) {
@@ -1208,6 +1220,52 @@ async function loadPublishedCatalog(store: MarketplaceStore): Promise<{
   return { services, routes };
 }
 
+function isRouteVisible(route: Pick<MarketplaceRoute, "executorKind">, tavilyEnabled: boolean): boolean {
+  if (route.executorKind === "tavily") {
+    return tavilyEnabled;
+  }
+
+  return true;
+}
+
+function filterVisibleCatalog(input: {
+  services: PublishedServiceVersionRecord[];
+  routes: PublishedEndpointVersionRecord[];
+}, tavilyEnabled: boolean): {
+  services: PublishedServiceVersionRecord[];
+  routes: PublishedEndpointVersionRecord[];
+} {
+  const routes = input.routes.filter((route) => isRouteVisible(route, tavilyEnabled));
+  const routeIds = new Set(routes.map((route) => route.routeId));
+  const services = input.services
+    .map((service) => ({
+      ...service,
+      routeIds: service.routeIds.filter((routeId) => routeIds.has(routeId))
+    }))
+    .filter((service) => service.routeIds.length > 0);
+
+  return { services, routes };
+}
+
+function filterVisibleServiceDetail(
+  input: { service: PublishedServiceVersionRecord; endpoints: PublishedEndpointVersionRecord[] },
+  tavilyEnabled: boolean
+): { service: PublishedServiceVersionRecord; endpoints: PublishedEndpointVersionRecord[] } | null {
+  const endpoints = input.endpoints.filter((endpoint) => isRouteVisible(endpoint, tavilyEnabled));
+  if (endpoints.length === 0) {
+    return null;
+  }
+
+  const routeIds = new Set(endpoints.map((endpoint) => endpoint.routeId));
+  return {
+    service: {
+      ...input.service,
+      routeIds: input.service.routeIds.filter((routeId) => routeIds.has(routeId))
+    },
+    endpoints
+  };
+}
+
 async function executeMockRoute(
   route: MarketplaceRoute,
   input: unknown,
@@ -1226,6 +1284,34 @@ async function executeMockRoute(
     buyerWallet,
     paymentId
   });
+}
+
+async function executeRoute(input: {
+  route: MarketplaceRoute;
+  input: unknown;
+  buyerWallet: string;
+  paymentId: string;
+  providers: ProviderRegistry;
+  store: MarketplaceStore;
+  secretsKey: string;
+  tavilyApiKey?: string;
+}) {
+  switch (input.route.executorKind) {
+    case "mock":
+      return executeMockRoute(
+        input.route,
+        input.input,
+        input.buyerWallet,
+        input.paymentId,
+        input.providers
+      );
+    case "http":
+      return executeHttpRoute(input.route, input.input, input.store, input.secretsKey);
+    case "tavily":
+      return executeTavilyRoute(input.route, input.input, input.tavilyApiKey);
+    default:
+      throw new Error(`Unsupported route executor: ${String(input.route.executorKind)}`);
+  }
 }
 
 async function executeHttpRoute(
@@ -1279,6 +1365,57 @@ async function executeHttpRoute(
       statusCode: 502,
       body: {
         error: error instanceof Error ? error.message : "Upstream request failed."
+      },
+      headers: {
+        "content-type": "application/json"
+      }
+    };
+  }
+
+  return {
+    kind: "sync" as const,
+    statusCode: response.status,
+    body: await safeResponseBody(response),
+    headers: {
+      "content-type": response.headers.get("content-type") ?? "application/json"
+    }
+  };
+}
+
+async function executeTavilyRoute(route: MarketplaceRoute, input: unknown, tavilyApiKey?: string) {
+  if (route.mode !== "sync") {
+    throw new Error("Tavily executor only supports sync routes in v1.");
+  }
+
+  if (!tavilyApiKey) {
+    return {
+      kind: "sync" as const,
+      statusCode: 503,
+      body: {
+        error: "Tavily API key is not configured."
+      },
+      headers: {
+        "content-type": "application/json"
+      }
+    };
+  }
+
+  let response: globalThis.Response;
+  try {
+    response = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${tavilyApiKey}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(input)
+    });
+  } catch (error) {
+    return {
+      kind: "sync" as const,
+      statusCode: 502,
+      body: {
+        error: error instanceof Error ? error.message : "Tavily request failed."
       },
       headers: {
         "content-type": "application/json"

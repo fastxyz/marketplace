@@ -8,6 +8,7 @@ describe("marketplace worker", () => {
   it("refunds a permanently failed async job", async () => {
     const store = new InMemoryMarketplaceStore();
     const registry = createDefaultProviderRegistry();
+    const asyncRoute = marketplaceRoutes.find((route) => route.routeId === "mock.async-report.v1");
 
     const buyerWallet = "fast1x0g58phuf0pf32e9uvp3mv6hak4z37ytpqyfzjzhfsehua9kmegqwzv0td";
 
@@ -15,7 +16,7 @@ describe("marketplace worker", () => {
       paymentId: "worker_payment_1",
       normalizedRequestHash: "hash",
       buyerWallet,
-      route: marketplaceRoutes[1]!,
+      route: asyncRoute!,
       quotedPrice: "150000",
       payoutSplit: {
         currency: "fastUSDC",

@@ -53,7 +53,7 @@ async function createSiteSession(app: Express, wallet: Awaited<ReturnType<typeof
   return session.body.accessToken as string;
 }
 
-async function createTestApp() {
+async function createTestApp(input: { tavilyApiKey?: string | null } = {}) {
   const buyer = await createTestWallet();
   const store = new InMemoryMarketplaceStore();
   const app = createMarketplaceApi({
@@ -75,7 +75,8 @@ async function createTestApp() {
         return { txHash: "0xrefund" };
       }
     },
-    webBaseUrl: "https://fast.8o.vc"
+    webBaseUrl: "https://fast.8o.vc",
+    tavilyApiKey: input.tavilyApiKey === undefined ? "tvly-test-key" : (input.tavilyApiKey ?? undefined)
   });
 
   return {
@@ -95,14 +96,162 @@ describe("marketplace api", () => {
 
     const listResponse = await request(app).get("/catalog/services");
     expect(listResponse.status).toBe(200);
-    expect(listResponse.body.services).toHaveLength(1);
-    expect(listResponse.body.services[0].slug).toBe("mock-research-signals");
+    expect(listResponse.body.services.some((service: { slug: string }) => service.slug === "mock-research-signals")).toBe(
+      true
+    );
+    expect(listResponse.body.services.some((service: { slug: string }) => service.slug === "tavily-search")).toBe(true);
 
     const detailResponse = await request(app).get("/catalog/services/mock-research-signals");
     expect(detailResponse.status).toBe(200);
     expect(detailResponse.body.summary.endpointCount).toBe(2);
     expect(detailResponse.body.skillUrl).toBe("https://fast.8o.vc/skill.md");
     expect(detailResponse.body.useThisServicePrompt).toContain("https://fast.8o.vc/skill.md");
+  });
+
+  it("executes the seeded Tavily marketplace route", async () => {
+    const { app, store } = await createTestApp();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          query: "fast payments",
+          answer: "Fast payments are designed for agent-native settlement.",
+          results: [
+            {
+              title: "Fast payments overview",
+              url: "https://fast.8o.vc/blog/payments",
+              content: "Overview of Fast-native payment rails.",
+              score: 0.88
+            }
+          ],
+          response_time: 0.92,
+          usage: {
+            credits: 1
+          },
+          request_id: "tavily-request-1"
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const response = await request(app)
+      .post("/api/tavily/search")
+      .set("X-PAYMENT", Buffer.from(JSON.stringify({ paid: true })).toString("base64"))
+      .set("PAYMENT-IDENTIFIER", "payment_tavily_sync_1")
+      .send({
+        query: "fast payments",
+        topic: "general",
+        search_depth: "basic",
+        max_results: 3,
+        include_answer: "basic",
+        country: "united states",
+        auto_parameters: false,
+        exact_match: true,
+        include_usage: true,
+        safe_search: false
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.query).toBe("fast payments");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.tavily.com/search",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          authorization: "Bearer tvly-test-key",
+          "content-type": "application/json"
+        }),
+        body: JSON.stringify({
+          query: "fast payments",
+          topic: "general",
+          search_depth: "basic",
+          max_results: 3,
+          include_answer: "basic",
+          country: "united states",
+          auto_parameters: false,
+          exact_match: true,
+          include_usage: true,
+          safe_search: false
+        })
+      })
+    );
+
+    const record = await store.getIdempotencyByPaymentId("payment_tavily_sync_1");
+    expect(record?.routeId).toBe("tavily.search.v1");
+    expect(record?.payoutSplit.providerAccountId).toBe("provider_marketplace");
+    expect(record?.payoutSplit.marketplaceAmount).toBe("50000");
+    expect(record?.payoutSplit.providerAmount).toBe("0");
+  });
+
+  it("hides the Tavily catalog entry and route when Tavily credentials are not configured", async () => {
+    const { app } = await createTestApp({ tavilyApiKey: null });
+
+    const listResponse = await request(app).get("/catalog/services");
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.services.some((service: { slug: string }) => service.slug === "tavily-search")).toBe(false);
+
+    const detailResponse = await request(app).get("/catalog/services/tavily-search");
+    expect(detailResponse.status).toBe(404);
+
+    const openApi = await request(app).get("/openapi.json");
+    expect(openApi.status).toBe(200);
+    expect(openApi.body.paths["/api/tavily/search"]).toBeUndefined();
+
+    const routeResponse = await request(app)
+      .post("/api/tavily/search")
+      .set("X-PAYMENT", Buffer.from(JSON.stringify({ paid: true })).toString("base64"))
+      .set("PAYMENT-IDENTIFIER", "payment_tavily_hidden_1")
+      .send({
+        query: "fast payments"
+      });
+
+    expect(routeResponse.status).toBe(404);
+  });
+
+  it("rejects invalid Tavily parameter combinations before payment verification", async () => {
+    const { app } = await createTestApp();
+
+    const response = await request(app)
+      .post("/api/tavily/search")
+      .send({
+        query: "fast payments",
+        topic: "news",
+        country: "united states"
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("Request body failed schema validation");
+  });
+
+  it("rejects invalid Tavily country values before payment verification", async () => {
+    const { app } = await createTestApp();
+
+    const response = await request(app)
+      .post("/api/tavily/search")
+      .send({
+        query: "fast payments",
+        country: "us"
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("Request body failed schema validation");
+  });
+
+  it("accepts Tavily country filters without an explicit topic and reaches payment gating", async () => {
+    const { app } = await createTestApp();
+
+    const response = await request(app)
+      .post("/api/tavily/search")
+      .send({
+        query: "fast payments",
+        country: "united states"
+      });
+
+    expect(response.status).toBe(402);
   });
 
   it("accepts public suggestions and requires an admin token for internal review", async () => {

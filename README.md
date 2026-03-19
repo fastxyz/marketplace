@@ -4,12 +4,23 @@ Greenfield TypeScript workspace for a Fast-native paid data marketplace.
 
 ## Workspace
 
-- `apps/api`: Express gateway with x402 compatibility, wallet auth, docs, and mock provider routes
+- `apps/api`: Express gateway with x402 compatibility, wallet auth, docs, provider passthrough routes, and the marketplace-owned Tavily example
 - `apps/facilitator`: x402 facilitator service for payment verification
 - `apps/web`: Next.js marketplace frontend for service discovery, `SKILL.md`, and suggestion intake
 - `apps/worker`: async job poller and refund worker
 - `packages/shared`: shared route registry, hashing, auth, payment compatibility, docs, and stores
 - `packages/cli`: buyer CLI for wallet, paid invocation, and job retrieval
+
+## Implementation Example
+
+This repo includes a concrete marketplace-owned third-party API integration: `Tavily Search`.
+
+- buyer-facing route: `POST /api/tavily/search`
+- upstream route: `POST https://api.tavily.com/search`
+- auth: server-side `TAVILY_API_KEY`
+- catalog behavior: the Tavily service is only published when `TAVILY_API_KEY` is configured
+
+This is the reference example for "marketplace-operated wrapper" routes in v1. The marketplace owns the public catalog entry, pricing, and payment flow, while the API executes the upstream request with server-held credentials.
 
 ## Quick Start
 
@@ -29,6 +40,7 @@ export MARKETPLACE_SESSION_SECRET=change-me
 export MARKETPLACE_ADMIN_TOKEN=change-me-too
 export MARKETPLACE_FAST_NETWORK=mainnet
 export MARKETPLACE_WEB_BASE_URL=http://localhost:3001
+export TAVILY_API_KEY=tvly-...
 ```
 
 Optional refund worker variables:
@@ -84,6 +96,7 @@ npm run dev:web
 npm run cli -- wallet init
 npm run cli -- wallet address
 npm run cli -- invoke mock quick-insight --body '{"query":"alpha"}'
+npm run cli -- invoke tavily search --body '{"query":"latest Fast blockchain updates","topic":"general","max_results":5}'
 ```
 
 8. Build runtime artifacts:
@@ -143,6 +156,7 @@ MARKETPLACE_ADMIN_TOKEN=change-me-too
 MARKETPLACE_FAST_NETWORK=mainnet
 MARKETPLACE_BASE_URL=https://fastapi.example.com
 MARKETPLACE_WEB_BASE_URL=https://fast.example.com
+TAVILY_API_KEY=tvly-...
 PORT=3000
 ```
 

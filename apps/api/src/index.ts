@@ -13,6 +13,7 @@ const adminToken = process.env.MARKETPLACE_ADMIN_TOKEN;
 const baseUrl = process.env.MARKETPLACE_BASE_URL ?? `http://localhost:${port}`;
 const webBaseUrl = process.env.MARKETPLACE_WEB_BASE_URL ?? baseUrl;
 const secretsKey = process.env.MARKETPLACE_SECRETS_KEY ?? "development-marketplace-secrets-key";
+const tavilyApiKey = process.env.TAVILY_API_KEY;
 const refundPrivateKey = process.env.MARKETPLACE_TREASURY_PRIVATE_KEY;
 const refundKeyfile = process.env.MARKETPLACE_TREASURY_KEYFILE;
 const refundRpcUrl = process.env.FAST_RPC_URL;
@@ -47,7 +48,8 @@ const app = createMarketplaceApi({
   }),
   baseUrl,
   webBaseUrl,
-  secretsKey
+  secretsKey,
+  tavilyApiKey
 });
 
 const server = app.listen(port, () => {

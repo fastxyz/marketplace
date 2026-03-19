@@ -15,6 +15,7 @@ import {
   normalizeFastWalletAddress,
   normalizePaymentHeaders,
   resolveMarketplaceNetworkConfig,
+  validateJsonSchema,
   verifyWalletChallenge
 } from "./index.js";
 
@@ -114,6 +115,7 @@ describe("shared marketplace helpers", () => {
     });
     expect(document.paths["/api/mock/quick-insight"]).toBeDefined();
     expect(document.paths["/api/mock/async-report"]).toBeDefined();
+    expect(document.paths["/api/tavily/search"]).toBeDefined();
     expect(document.paths["/catalog/services"]).toBeDefined();
   });
 
@@ -140,7 +142,11 @@ describe("shared marketplace helpers", () => {
   });
 
   it("builds service catalog summaries and prompts from the shared registry", () => {
-    const service = listServiceDefinitions()[0];
+    const service = listServiceDefinitions().find((candidate) => candidate.slug === "mock-research-signals");
+    if (!service) {
+      throw new Error("Mock seeded service is missing.");
+    }
+
     const endpoints = marketplaceRoutes.filter((route) => service.routeIds.includes(route.routeId));
     const detail = buildServiceDetail({
       service,
@@ -162,6 +168,90 @@ describe("shared marketplace helpers", () => {
     expect(detail.useThisServicePrompt).toContain('I want to use the "Mock Research Signals" service');
     expect(detail.useThisServicePrompt).toContain("https://fastapi.8o.vc/api/mock/quick-insight");
     expect(detail.useThisServicePrompt).toContain("($0.05 fastUSDC)");
+  });
+
+  it("publishes the seeded Tavily service from the shared registry", () => {
+    const tavilyService = listServiceDefinitions().find((service) => service.slug === "tavily-search");
+    if (!tavilyService) {
+      throw new Error("Tavily seeded service is missing.");
+    }
+
+    const tavilyRoute = marketplaceRoutes.find((route) => route.routeId === "tavily.search.v1");
+    if (!tavilyRoute) {
+      throw new Error("Tavily seeded route is missing.");
+    }
+
+    expect(tavilyRoute.executorKind).toBe("tavily");
+
+    const detail = buildServiceDetail({
+      service: tavilyService,
+      endpoints: [tavilyRoute],
+      analytics: {
+        totalCalls: 3,
+        revenueRaw: "150000",
+        successRate30d: 100,
+        volume30d: [{ date: "2026-03-18", amountRaw: "150000" }]
+      },
+      apiBaseUrl: "https://fastapi.8o.vc",
+      webBaseUrl: "https://fast.8o.vc"
+    });
+
+    expect(detail.summary.endpointCount).toBe(1);
+    expect(detail.endpoints[0]?.proxyUrl).toBe("https://fastapi.8o.vc/api/tavily/search");
+    expect(detail.useThisServicePrompt).toContain("https://fastapi.8o.vc/api/tavily/search");
+  });
+
+  it("rejects invalid Tavily request combinations in the shared schema", () => {
+    const tavilyRoute = marketplaceRoutes.find((route) => route.routeId === "tavily.search.v1");
+    if (!tavilyRoute) {
+      throw new Error("Tavily seeded route is missing.");
+    }
+
+    expect(() =>
+      validateJsonSchema({
+        schema: tavilyRoute.requestSchemaJson,
+        value: {
+          query: "fast payments",
+          country: "united states"
+        },
+        label: "Request body"
+      })
+    ).not.toThrow();
+
+    expect(() =>
+      validateJsonSchema({
+        schema: tavilyRoute.requestSchemaJson,
+        value: {
+          query: "fast payments",
+          topic: "news",
+          country: "united states"
+        },
+        label: "Request body"
+      })
+    ).toThrow(/schema validation/i);
+
+    expect(() =>
+      validateJsonSchema({
+        schema: tavilyRoute.requestSchemaJson,
+        value: {
+          query: "fast payments",
+          country: "us"
+        },
+        label: "Request body"
+      })
+    ).toThrow(/schema validation/i);
+
+    expect(() =>
+      validateJsonSchema({
+        schema: tavilyRoute.requestSchemaJson,
+        value: {
+          query: "fast payments",
+          search_depth: "basic",
+          chunks_per_source: 2
+        },
+        label: "Request body"
+      })
+    ).toThrow(/schema validation/i);
   });
 
   it("computes service analytics and provider request queue state in the in-memory store", async () => {

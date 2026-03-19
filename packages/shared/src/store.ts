@@ -4,11 +4,11 @@ import { Pool } from "pg";
 
 import { getDefaultMarketplaceNetworkConfig } from "./network.js";
 import {
+  MARKETPLACE_PROVIDER_SERVICE_SEEDS,
   MARKETPLACE_PROVIDER_ACCOUNT_SEED,
-  MOCK_PROVIDER_SERVICE_SEED,
   buildSeededProviderEndpointDrafts,
   buildSeededPublishedEndpointVersions,
-  buildSeededPublishedServiceVersion
+  buildSeededPublishedServiceVersions
 } from "./seed.js";
 import type {
   AccessGrantRecord,
@@ -213,29 +213,39 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
   }
 
   private seedDefaults() {
-    if (this.providerServicesById.has(MOCK_PROVIDER_SERVICE_SEED.id)) {
-      return;
-    }
-
     const network = getDefaultMarketplaceNetworkConfig();
     const account = clone(MARKETPLACE_PROVIDER_ACCOUNT_SEED);
-    const service = clone(MOCK_PROVIDER_SERVICE_SEED);
+    const services = MARKETPLACE_PROVIDER_SERVICE_SEEDS.map((service) => clone(service));
     const draftEndpoints = buildSeededProviderEndpointDrafts(network).map((endpoint) => clone(endpoint));
-    const publishedService = buildSeededPublishedServiceVersion();
+    const publishedServices = buildSeededPublishedServiceVersions(network).map((service) => clone(service));
     const publishedEndpoints = buildSeededPublishedEndpointVersions(network).map((endpoint) => clone(endpoint));
+    const publishedServiceVersionByServiceId = new Map(
+      publishedServices.map((service) => [service.serviceId, service.versionId])
+    );
 
     this.providerAccountsById.set(account.id, account);
     this.providerAccountIdByWallet.set(account.ownerWallet, account.id);
-    this.providerServicesById.set(service.id, service);
+    for (const service of services) {
+      this.providerServicesById.set(service.id, service);
+    }
     for (const endpoint of draftEndpoints) {
       this.endpointDraftsById.set(endpoint.id, endpoint);
     }
-    this.publishedServicesByVersionId.set(publishedService.versionId, publishedService);
+    for (const publishedService of publishedServices) {
+      this.publishedServicesByVersionId.set(publishedService.versionId, publishedService);
+    }
     for (const endpoint of publishedEndpoints) {
       this.publishedEndpointsByVersionId.set(endpoint.endpointVersionId, endpoint);
     }
-    this.latestSubmittedVersionByServiceId.set(service.id, publishedService.versionId);
-    this.latestPublishedVersionByServiceId.set(service.id, publishedService.versionId);
+    for (const service of services) {
+      const versionId = publishedServiceVersionByServiceId.get(service.id);
+      if (!versionId) {
+        continue;
+      }
+
+      this.latestSubmittedVersionByServiceId.set(service.id, versionId);
+      this.latestPublishedVersionByServiceId.set(service.id, versionId);
+    }
   }
 
   async getIdempotencyByPaymentId(paymentId: string): Promise<IdempotencyRecord | null> {
@@ -1818,10 +1828,11 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
   private async seedDefaults() {
     const network = getDefaultMarketplaceNetworkConfig();
     const account = MARKETPLACE_PROVIDER_ACCOUNT_SEED;
-    const service = MOCK_PROVIDER_SERVICE_SEED;
+    const services = MARKETPLACE_PROVIDER_SERVICE_SEEDS;
     const draftEndpoints = buildSeededProviderEndpointDrafts(network);
-    const publishedService = buildSeededPublishedServiceVersion();
+    const publishedServices = buildSeededPublishedServiceVersions(network);
     const publishedEndpoints = buildSeededPublishedEndpointVersions(network);
+    const publishedServiceByServiceId = new Map(publishedServices.map((service) => [service.serviceId, service]));
 
     const client = await this.pool.connect();
     try {
@@ -1850,54 +1861,61 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         ]
       );
 
-      await client.query(
-        `
-        INSERT INTO provider_services (
-          id, provider_account_id, slug, api_namespace, name, tagline, about, categories, prompt_intro,
-          setup_instructions, website_url, payout_wallet, featured, status, latest_submitted_version_id,
-          latest_published_version_id, latest_review_id, created_at, updated_at
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10::jsonb, $11, $12, $13, $14, $15, $16, NULL, $17, $18
-        )
-        ON CONFLICT (id) DO UPDATE SET
-          provider_account_id = EXCLUDED.provider_account_id,
-          slug = EXCLUDED.slug,
-          api_namespace = EXCLUDED.api_namespace,
-          name = EXCLUDED.name,
-          tagline = EXCLUDED.tagline,
-          about = EXCLUDED.about,
-          categories = EXCLUDED.categories,
-          prompt_intro = EXCLUDED.prompt_intro,
-          setup_instructions = EXCLUDED.setup_instructions,
-          website_url = EXCLUDED.website_url,
-          payout_wallet = EXCLUDED.payout_wallet,
-          featured = EXCLUDED.featured,
-          status = EXCLUDED.status,
-          latest_submitted_version_id = EXCLUDED.latest_submitted_version_id,
-          latest_published_version_id = EXCLUDED.latest_published_version_id,
-          updated_at = EXCLUDED.updated_at
-        `,
-        [
-          service.id,
-          service.providerAccountId,
-          service.slug,
-          service.apiNamespace,
-          service.name,
-          service.tagline,
-          service.about,
-          JSON.stringify(service.categories),
-          service.promptIntro,
-          JSON.stringify(service.setupInstructions),
-          service.websiteUrl,
-          service.payoutWallet,
-          service.featured,
-          service.status,
-          publishedService.versionId,
-          publishedService.versionId,
-          service.createdAt,
-          service.updatedAt
-        ]
-      );
+      for (const service of services) {
+        const publishedService = publishedServiceByServiceId.get(service.id);
+        if (!publishedService) {
+          throw new Error(`Seeded published service missing for ${service.id}.`);
+        }
+
+        await client.query(
+          `
+          INSERT INTO provider_services (
+            id, provider_account_id, slug, api_namespace, name, tagline, about, categories, prompt_intro,
+            setup_instructions, website_url, payout_wallet, featured, status, latest_submitted_version_id,
+            latest_published_version_id, latest_review_id, created_at, updated_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10::jsonb, $11, $12, $13, $14, $15, $16, NULL, $17, $18
+          )
+          ON CONFLICT (id) DO UPDATE SET
+            provider_account_id = EXCLUDED.provider_account_id,
+            slug = EXCLUDED.slug,
+            api_namespace = EXCLUDED.api_namespace,
+            name = EXCLUDED.name,
+            tagline = EXCLUDED.tagline,
+            about = EXCLUDED.about,
+            categories = EXCLUDED.categories,
+            prompt_intro = EXCLUDED.prompt_intro,
+            setup_instructions = EXCLUDED.setup_instructions,
+            website_url = EXCLUDED.website_url,
+            payout_wallet = EXCLUDED.payout_wallet,
+            featured = EXCLUDED.featured,
+            status = EXCLUDED.status,
+            latest_submitted_version_id = EXCLUDED.latest_submitted_version_id,
+            latest_published_version_id = EXCLUDED.latest_published_version_id,
+            updated_at = EXCLUDED.updated_at
+          `,
+          [
+            service.id,
+            service.providerAccountId,
+            service.slug,
+            service.apiNamespace,
+            service.name,
+            service.tagline,
+            service.about,
+            JSON.stringify(service.categories),
+            service.promptIntro,
+            JSON.stringify(service.setupInstructions),
+            service.websiteUrl,
+            service.payoutWallet,
+            service.featured,
+            service.status,
+            publishedService.versionId,
+            publishedService.versionId,
+            service.createdAt,
+            service.updatedAt
+          ]
+        );
+      }
 
       for (const endpoint of draftEndpoints) {
         await client.query(
@@ -1958,56 +1976,58 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         );
       }
 
-      await client.query(
-        `
-        INSERT INTO published_service_versions (
-          version_id, service_id, provider_account_id, slug, api_namespace, name, owner_name, tagline, about,
-          categories, route_ids, featured, prompt_intro, setup_instructions, website_url, contact_email,
-          payout_wallet, status, submitted_review_id, published_at, created_at, updated_at
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12, $13, $14::jsonb, $15, $16,
-          $17, $18, $19, $20, $21, $22
-        )
-        ON CONFLICT (version_id) DO UPDATE SET
-          owner_name = EXCLUDED.owner_name,
-          tagline = EXCLUDED.tagline,
-          about = EXCLUDED.about,
-          categories = EXCLUDED.categories,
-          route_ids = EXCLUDED.route_ids,
-          featured = EXCLUDED.featured,
-          prompt_intro = EXCLUDED.prompt_intro,
-          setup_instructions = EXCLUDED.setup_instructions,
-          website_url = EXCLUDED.website_url,
-          contact_email = EXCLUDED.contact_email,
-          payout_wallet = EXCLUDED.payout_wallet,
-          status = EXCLUDED.status,
-          updated_at = EXCLUDED.updated_at
-        `,
-        [
-          publishedService.versionId,
-          publishedService.serviceId,
-          publishedService.providerAccountId,
-          publishedService.slug,
-          publishedService.apiNamespace,
-          publishedService.name,
-          publishedService.ownerName,
-          publishedService.tagline,
-          publishedService.about,
-          JSON.stringify(publishedService.categories),
-          JSON.stringify(publishedService.routeIds),
-          publishedService.featured,
-          publishedService.promptIntro,
-          JSON.stringify(publishedService.setupInstructions),
-          publishedService.websiteUrl,
-          publishedService.contactEmail,
-          publishedService.payoutWallet,
-          publishedService.status,
-          publishedService.submittedReviewId,
-          publishedService.publishedAt,
-          publishedService.createdAt,
-          publishedService.updatedAt
-        ]
-      );
+      for (const publishedService of publishedServices) {
+        await client.query(
+          `
+          INSERT INTO published_service_versions (
+            version_id, service_id, provider_account_id, slug, api_namespace, name, owner_name, tagline, about,
+            categories, route_ids, featured, prompt_intro, setup_instructions, website_url, contact_email,
+            payout_wallet, status, submitted_review_id, published_at, created_at, updated_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12, $13, $14::jsonb, $15, $16,
+            $17, $18, $19, $20, $21, $22
+          )
+          ON CONFLICT (version_id) DO UPDATE SET
+            owner_name = EXCLUDED.owner_name,
+            tagline = EXCLUDED.tagline,
+            about = EXCLUDED.about,
+            categories = EXCLUDED.categories,
+            route_ids = EXCLUDED.route_ids,
+            featured = EXCLUDED.featured,
+            prompt_intro = EXCLUDED.prompt_intro,
+            setup_instructions = EXCLUDED.setup_instructions,
+            website_url = EXCLUDED.website_url,
+            contact_email = EXCLUDED.contact_email,
+            payout_wallet = EXCLUDED.payout_wallet,
+            status = EXCLUDED.status,
+            updated_at = EXCLUDED.updated_at
+          `,
+          [
+            publishedService.versionId,
+            publishedService.serviceId,
+            publishedService.providerAccountId,
+            publishedService.slug,
+            publishedService.apiNamespace,
+            publishedService.name,
+            publishedService.ownerName,
+            publishedService.tagline,
+            publishedService.about,
+            JSON.stringify(publishedService.categories),
+            JSON.stringify(publishedService.routeIds),
+            publishedService.featured,
+            publishedService.promptIntro,
+            JSON.stringify(publishedService.setupInstructions),
+            publishedService.websiteUrl,
+            publishedService.contactEmail,
+            publishedService.payoutWallet,
+            publishedService.status,
+            publishedService.submittedReviewId,
+            publishedService.publishedAt,
+            publishedService.createdAt,
+            publishedService.updatedAt
+          ]
+        );
+      }
 
       for (const endpoint of publishedEndpoints) {
         await client.query(

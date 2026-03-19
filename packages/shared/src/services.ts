@@ -1,7 +1,7 @@
-import { buildSeededPublishedServiceVersion } from "./seed.js";
+import { buildSeededPublishedServiceVersions } from "./seed.js";
 import type { ServiceDefinition } from "./types.js";
 
-export const marketplaceServices: ServiceDefinition[] = [buildSeededPublishedServiceVersion()];
+export const marketplaceServices: ServiceDefinition[] = buildSeededPublishedServiceVersions();
 
 export function listServiceDefinitions(): ServiceDefinition[] {
   return marketplaceServices;
