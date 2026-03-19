@@ -479,6 +479,17 @@ export interface PayoutService {
   issuePayout(input: { wallet: string; amount: string; reason: string }): Promise<PayoutReceipt>;
 }
 
+export type ProviderPayoutSourceKind = "route_charge" | "credit_topup";
+
+export interface ProviderPayoutInput {
+  sourceKind: ProviderPayoutSourceKind;
+  sourceId: string;
+  providerAccountId: string;
+  providerWallet: string;
+  currency: MarketplaceTokenSymbol;
+  amount: string;
+}
+
 export interface IdempotencyRecord {
   paymentId: string;
   normalizedRequestHash: string;
@@ -493,6 +504,7 @@ export interface IdempotencyRecord {
   responseStatusCode: number;
   responseBody: unknown;
   responseHeaders: Record<string, string>;
+  providerPayoutSourceKind?: ProviderPayoutSourceKind | null;
   jobToken?: string;
   createdAt: string;
   updatedAt: string;
@@ -556,7 +568,7 @@ export interface RefundRecord {
 
 export interface ProviderPayoutRecord {
   id: string;
-  sourceKind: "route_charge" | "credit_topup";
+  sourceKind: ProviderPayoutSourceKind;
   sourceId: string;
   providerAccountId: string;
   providerWallet: string;
@@ -642,6 +654,7 @@ export interface SaveSyncIdempotencyInput {
   statusCode: number;
   body: unknown;
   headers?: Record<string, string>;
+  providerPayoutSourceKind?: ProviderPayoutSourceKind | null;
 }
 
 export interface SaveAsyncAcceptanceInput {
@@ -696,14 +709,8 @@ export interface MarketplaceStore {
   markRefundSent(refundId: string, txHash: string): Promise<RefundRecord>;
   markRefundFailed(refundId: string, errorMessage: string): Promise<RefundRecord>;
   getRefundByJobToken(jobToken: string): Promise<RefundRecord | null>;
-  createProviderPayout(input: {
-    sourceKind: "route_charge" | "credit_topup";
-    sourceId: string;
-    providerAccountId: string;
-    providerWallet: string;
-    currency: MarketplaceTokenSymbol;
-    amount: string;
-  }): Promise<ProviderPayoutRecord>;
+  createProviderPayout(input: ProviderPayoutInput): Promise<ProviderPayoutRecord>;
+  listRecoverableProviderPayouts(limit: number): Promise<ProviderPayoutInput[]>;
   listPendingProviderPayouts(limit: number): Promise<ProviderPayoutRecord[]>;
   markProviderPayoutSendFailure(payoutIds: string[], errorMessage: string): Promise<void>;
   markProviderPayoutsSent(payoutIds: string[], txHash: string): Promise<ProviderPayoutRecord[]>;

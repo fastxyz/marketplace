@@ -1474,7 +1474,8 @@ async function handleX402Route(input: {
         facilitatorResponse: verifyResult,
         statusCode: 200,
         body: responseBody,
-        headers: paymentResponseHeaders
+        headers: paymentResponseHeaders,
+        providerPayoutSourceKind: "credit_topup"
       });
 
       return input.res.status(200).set(persisted.responseHeaders).json(responseBody);
@@ -1577,7 +1578,8 @@ async function handleX402Route(input: {
       headers: {
         ...paymentResponseHeaders,
         ...(executeResult.headers ?? {})
-      }
+      },
+      providerPayoutSourceKind: "route_charge"
     });
 
     await persistProviderPayoutSafely(input.store, {

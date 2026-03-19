@@ -51,8 +51,7 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
     }
 
     if (pollResult.status === "completed") {
-      const completedJob = await options.store.completeJob(job.jobToken, pollResult.body);
-      await persistCompletedJobPayout(options.store, completedJob);
+      await options.store.completeJob(job.jobToken, pollResult.body);
       continue;
     }
 
@@ -103,6 +102,11 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
     }
   }
 
+  await backfillProviderPayouts({
+    store: options.store,
+    limit: options.limit ?? 10
+  });
+
   if (options.payoutService) {
     await settleProviderPayouts({
       store: options.store,
@@ -112,22 +116,19 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
   }
 }
 
-async function persistCompletedJobPayout(
-  store: MarketplaceStore,
-  job: Awaited<ReturnType<MarketplaceStore["completeJob"]>>
-) {
-  if (BigInt(job.payoutSplit.providerAmount) <= 0n || !job.payoutSplit.providerWallet) {
-    return;
-  }
+async function backfillProviderPayouts(input: {
+  store: MarketplaceStore;
+  limit: number;
+}) {
+  const recoverable = await input.store.listRecoverableProviderPayouts(input.limit);
 
-  await store.createProviderPayout({
-    sourceKind: "route_charge",
-    sourceId: job.jobToken,
-    providerAccountId: job.payoutSplit.providerAccountId,
-    providerWallet: job.payoutSplit.providerWallet,
-    currency: job.payoutSplit.currency,
-    amount: job.payoutSplit.providerAmount
-  });
+  for (const payout of recoverable) {
+    try {
+      await input.store.createProviderPayout(payout);
+    } catch (error) {
+      console.error(`Failed to backfill provider payout for ${payout.sourceKind}:${payout.sourceId}`, error);
+    }
+  }
 }
 
 async function settleProviderPayouts(input: {

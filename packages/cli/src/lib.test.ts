@@ -52,7 +52,7 @@ describe("marketplace cli", () => {
       jsonResponse(402, {
         accepts: [
           {
-            maxAmountRequired: "50000"
+            maxAmountRequired: "0.05"
           }
         ]
       })
@@ -97,7 +97,7 @@ describe("marketplace cli", () => {
               {
                 scheme: "exact",
                 network: "fast-mainnet",
-                maxAmountRequired: "50000",
+                maxAmountRequired: "0.05",
                 payTo: "fast19cjwajufyuqv883ydlvrp8xrhxejuvfe40pxq5dsrv675zgh89sqg9txs8",
                 asset: "0xb4cf1b9e227bb6a21b959338895dfb39b8d2a96dfa1ce5dd633561c193124cb5"
               }
@@ -158,6 +158,9 @@ describe("marketplace cli", () => {
     expect("success" in result && result.success).toBe(true);
     expect(result.statusCode).toBe(200);
     expect(fetchImpl).toHaveBeenCalled();
+
+    const config = await readCliConfig(configPath);
+    expect(config.spendLedger?.spentRaw).toBe("50000");
   });
 
   it("retrieves a job through the wallet-challenge flow", async () => {

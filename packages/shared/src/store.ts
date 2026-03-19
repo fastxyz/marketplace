@@ -27,6 +27,7 @@ import type {
   ProviderAccountRecord,
   ProviderAttemptRecord,
   ProviderEndpointDraftRecord,
+  ProviderPayoutInput,
   ProviderPayoutRecord,
   ProviderReviewRecord,
   ProviderRuntimeKeyRecord,
@@ -290,6 +291,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       responseStatusCode: input.statusCode,
       responseBody: clone(input.body),
       responseHeaders: clone(input.headers ?? {}),
+      providerPayoutSourceKind: input.providerPayoutSourceKind ?? null,
       createdAt: now,
       updatedAt: now
     };
@@ -314,6 +316,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       responseStatusCode: 202,
       responseBody: clone(input.responseBody),
       responseHeaders: clone(input.responseHeaders ?? {}),
+      providerPayoutSourceKind: null,
       jobToken: input.jobToken,
       createdAt: now,
       updatedAt: now
@@ -583,14 +586,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     return clone(this.refundsByJobToken.get(jobToken) ?? null);
   }
 
-  async createProviderPayout(input: {
-    sourceKind: "route_charge" | "credit_topup";
-    sourceId: string;
-    providerAccountId: string;
-    providerWallet: string;
-    currency: "fastUSDC" | "testUSDC";
-    amount: string;
-  }): Promise<ProviderPayoutRecord> {
+  async createProviderPayout(input: ProviderPayoutInput): Promise<ProviderPayoutRecord> {
     const existing = Array.from(this.providerPayoutsById.values()).find(
       (record) => record.sourceKind === input.sourceKind && record.sourceId === input.sourceId
     );
@@ -616,6 +612,80 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     };
     this.providerPayoutsById.set(record.id, record);
     return clone(record);
+  }
+
+  async listRecoverableProviderPayouts(limit: number): Promise<ProviderPayoutInput[]> {
+    const recoverable: ProviderPayoutInput[] = [];
+    const existingKeys = new Set(
+      Array.from(this.providerPayoutsById.values()).map((record) => `${record.sourceKind}:${record.sourceId}`)
+    );
+    const syncRecords = Array.from(this.idempotencyByPaymentId.values()).sort((left, right) =>
+      left.createdAt.localeCompare(right.createdAt)
+    );
+
+    const addCandidate = (candidate: ProviderPayoutInput) => {
+      const key = `${candidate.sourceKind}:${candidate.sourceId}`;
+      if (existingKeys.has(key)) {
+        return;
+      }
+
+      existingKeys.add(key);
+      recoverable.push(clone(candidate));
+    };
+
+    for (const record of syncRecords) {
+      if (recoverable.length >= limit) {
+        return recoverable;
+      }
+
+      if (
+        record.responseKind !== "sync"
+        || record.responseStatusCode < 200
+        || record.responseStatusCode >= 400
+        || !record.providerPayoutSourceKind
+        || !record.payoutSplit.providerWallet
+        || BigInt(record.payoutSplit.providerAmount) <= 0n
+      ) {
+        continue;
+      }
+
+      addCandidate({
+        sourceKind: record.providerPayoutSourceKind,
+        sourceId: record.paymentId,
+        providerAccountId: record.payoutSplit.providerAccountId,
+        providerWallet: record.payoutSplit.providerWallet,
+        currency: record.payoutSplit.currency,
+        amount: record.payoutSplit.providerAmount
+      });
+    }
+
+    const completedJobs = Array.from(this.jobsByToken.values()).sort((left, right) =>
+      left.createdAt.localeCompare(right.createdAt)
+    );
+    for (const job of completedJobs) {
+      if (recoverable.length >= limit) {
+        break;
+      }
+
+      if (
+        job.status !== "completed"
+        || !job.payoutSplit.providerWallet
+        || BigInt(job.payoutSplit.providerAmount) <= 0n
+      ) {
+        continue;
+      }
+
+      addCandidate({
+        sourceKind: "route_charge",
+        sourceId: job.jobToken,
+        providerAccountId: job.payoutSplit.providerAccountId,
+        providerWallet: job.payoutSplit.providerWallet,
+        currency: job.payoutSplit.currency,
+        amount: job.payoutSplit.providerAmount
+      });
+    }
+
+    return recoverable;
   }
 
   async listPendingProviderPayouts(limit: number): Promise<ProviderPayoutRecord[]> {
@@ -1931,10 +2001,14 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         response_status_code INTEGER NOT NULL,
         response_body JSONB NOT NULL,
         response_headers JSONB NOT NULL DEFAULT '{}'::jsonb,
+        provider_payout_source_kind TEXT,
         job_token TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      ALTER TABLE idempotency_records
+      ADD COLUMN IF NOT EXISTS provider_payout_source_kind TEXT;
 
       CREATE TABLE IF NOT EXISTS jobs (
         job_token TEXT PRIMARY KEY,
@@ -2746,8 +2820,8 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       INSERT INTO idempotency_records (
         payment_id, normalized_request_hash, buyer_wallet, route_id, route_version,
         quoted_price, payout_split, payment_payload, facilitator_response, response_kind,
-        response_status_code, response_body, response_headers
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9::jsonb, 'sync', $10, $11::jsonb, $12::jsonb)
+        response_status_code, response_body, response_headers, provider_payout_source_kind
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9::jsonb, 'sync', $10, $11::jsonb, $12::jsonb, $13)
       RETURNING *
       `,
       [
@@ -2762,7 +2836,8 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         JSON.stringify(input.facilitatorResponse),
         input.statusCode,
         JSON.stringify(input.body),
-        JSON.stringify(input.headers ?? {})
+        JSON.stringify(input.headers ?? {}),
+        input.providerPayoutSourceKind ?? null
       ]
     );
 
@@ -3060,14 +3135,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     return result.rowCount ? mapRefundRow(result.rows[0]) : null;
   }
 
-  async createProviderPayout(input: {
-    sourceKind: "route_charge" | "credit_topup";
-    sourceId: string;
-    providerAccountId: string;
-    providerWallet: string;
-    currency: "fastUSDC" | "testUSDC";
-    amount: string;
-  }): Promise<ProviderPayoutRecord> {
+  async createProviderPayout(input: ProviderPayoutInput): Promise<ProviderPayoutRecord> {
     const result = await this.pool.query(
       `
       INSERT INTO provider_payouts (
@@ -3090,6 +3158,72 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       ]
     );
     return mapProviderPayoutRow(result.rows[0]);
+  }
+
+  async listRecoverableProviderPayouts(limit: number): Promise<ProviderPayoutInput[]> {
+    if (limit <= 0) {
+      return [];
+    }
+
+    const syncResult = await this.pool.query(
+      `
+      SELECT
+        provider_payout_source_kind AS source_kind,
+        payment_id AS source_id,
+        payout_split->>'providerAccountId' AS provider_account_id,
+        payout_split->>'providerWallet' AS provider_wallet,
+        payout_split->>'currency' AS currency,
+        payout_split->>'providerAmount' AS amount
+      FROM idempotency_records
+      WHERE response_kind = 'sync'
+        AND response_status_code >= 200
+        AND response_status_code < 400
+        AND provider_payout_source_kind IS NOT NULL
+        AND COALESCE(payout_split->>'providerWallet', '') <> ''
+        AND (payout_split->>'providerAmount')::numeric > 0
+        AND NOT EXISTS (
+          SELECT 1
+          FROM provider_payouts
+          WHERE source_kind = idempotency_records.provider_payout_source_kind
+            AND source_id = idempotency_records.payment_id
+        )
+      ORDER BY created_at ASC
+      LIMIT $1
+      `,
+      [limit]
+    );
+    const syncCount = syncResult.rowCount ?? 0;
+
+    if (syncCount >= limit) {
+      return syncResult.rows.map(mapProviderPayoutInputRow);
+    }
+
+    const jobResult = await this.pool.query(
+      `
+      SELECT
+        'route_charge' AS source_kind,
+        job_token AS source_id,
+        payout_split->>'providerAccountId' AS provider_account_id,
+        payout_split->>'providerWallet' AS provider_wallet,
+        payout_split->>'currency' AS currency,
+        payout_split->>'providerAmount' AS amount
+      FROM jobs
+      WHERE status = 'completed'
+        AND COALESCE(payout_split->>'providerWallet', '') <> ''
+        AND (payout_split->>'providerAmount')::numeric > 0
+        AND NOT EXISTS (
+          SELECT 1
+          FROM provider_payouts
+          WHERE source_kind = 'route_charge'
+            AND source_id = jobs.job_token
+        )
+      ORDER BY created_at ASC
+      LIMIT $1
+      `,
+      [limit - syncCount]
+    );
+
+    return [...syncResult.rows, ...jobResult.rows].map(mapProviderPayoutInputRow);
   }
 
   async listPendingProviderPayouts(limit: number): Promise<ProviderPayoutRecord[]> {
@@ -4979,9 +5113,21 @@ function mapIdempotencyRow(row: Record<string, unknown>): IdempotencyRecord {
     responseStatusCode: row.response_status_code as number,
     responseBody: row.response_body,
     responseHeaders: (row.response_headers as Record<string, string>) ?? {},
+    providerPayoutSourceKind: (row.provider_payout_source_kind as IdempotencyRecord["providerPayoutSourceKind"]) ?? null,
     jobToken: (row.job_token as string | null) ?? undefined,
     createdAt: new Date(row.created_at as string | Date).toISOString(),
     updatedAt: new Date(row.updated_at as string | Date).toISOString()
+  };
+}
+
+function mapProviderPayoutInputRow(row: Record<string, unknown>): ProviderPayoutInput {
+  return {
+    sourceKind: row.source_kind as ProviderPayoutInput["sourceKind"],
+    sourceId: row.source_id as string,
+    providerAccountId: row.provider_account_id as string,
+    providerWallet: row.provider_wallet as string,
+    currency: row.currency as ProviderPayoutInput["currency"],
+    amount: row.amount as string
   };
 }
 

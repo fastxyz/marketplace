@@ -147,4 +147,77 @@ describe("marketplace worker", () => {
     expect(payouts).toEqual([{ wallet: providerWallet, amount: "500000" }]);
     expect(pendingPayouts).toHaveLength(0);
   });
+
+  it("backfills and settles missing sync provider payouts", async () => {
+    const store = new InMemoryMarketplaceStore();
+    const providerWallet = "fast1provider000000000000000000000000000000000000000000000000000000";
+
+    await store.saveSyncIdempotency({
+      paymentId: "sync_payment_missing_1",
+      normalizedRequestHash: "sync-hash-1",
+      buyerWallet: "fast1buyer00000000000000000000000000000000000000000000000000000000",
+      routeId: "orders.quote.v1",
+      routeVersion: "v1",
+      quotedPrice: "200000",
+      payoutSplit: {
+        currency: "fastUSDC",
+        marketplaceWallet: "fast1marketplacetreasury000000000000000000000000000000000000",
+        marketplaceBps: 0,
+        marketplaceAmount: "0",
+        providerAccountId: "provider_1",
+        providerWallet,
+        providerBps: 10_000,
+        providerAmount: "200000"
+      },
+      paymentPayload: "payload-1",
+      facilitatorResponse: { isValid: true },
+      statusCode: 200,
+      body: { ok: true },
+      providerPayoutSourceKind: "route_charge"
+    });
+
+    await store.saveSyncIdempotency({
+      paymentId: "sync_payment_missing_2",
+      normalizedRequestHash: "sync-hash-2",
+      buyerWallet: "fast1buyer00000000000000000000000000000000000000000000000000000000",
+      routeId: "orders.topup.v1",
+      routeVersion: "v1",
+      quotedPrice: "300000",
+      payoutSplit: {
+        currency: "fastUSDC",
+        marketplaceWallet: "fast1marketplacetreasury000000000000000000000000000000000000",
+        marketplaceBps: 0,
+        marketplaceAmount: "0",
+        providerAccountId: "provider_1",
+        providerWallet,
+        providerBps: 10_000,
+        providerAmount: "300000"
+      },
+      paymentPayload: "payload-2",
+      facilitatorResponse: { isValid: true },
+      statusCode: 200,
+      body: { ok: true },
+      providerPayoutSourceKind: "credit_topup"
+    });
+
+    const payouts: Array<{ wallet: string; amount: string }> = [];
+
+    await runMarketplaceWorkerCycle({
+      store,
+      refundService: {
+        async issueRefund() {
+          return { txHash: "0xrefund" };
+        }
+      },
+      payoutService: {
+        async issuePayout({ wallet, amount }) {
+          payouts.push({ wallet, amount });
+          return { txHash: "0xpayout" };
+        }
+      }
+    });
+
+    expect(payouts).toEqual([{ wallet: providerWallet, amount: "500000" }]);
+    expect(await store.listPendingProviderPayouts(10)).toHaveLength(0);
+  });
 });

@@ -307,10 +307,11 @@ export async function invokePaidRoute(
     accepts?: Array<{ maxAmountRequired: string }>;
   };
 
-  const amountRaw = paymentRequired.accepts?.[0]?.maxAmountRequired;
-  if (!amountRaw) {
+  const maxAmountRequired = paymentRequired.accepts?.[0]?.maxAmountRequired;
+  if (!maxAmountRequired) {
     throw new Error("Marketplace did not return a usable payment requirement.");
   }
+  const amountRaw = decimalToRawString(maxAmountRequired, 6);
 
   await enforceSpendControls({
     routeKey,
@@ -322,7 +323,7 @@ export async function invokePaidRoute(
   });
 
   const previousFetch = globalThis.fetch;
-  globalThis.fetch = deps.fetchImpl;
+  globalThis.fetch = async (...args) => normalizeMarketplacePaymentRequirement(await deps.fetchImpl(...args));
 
   let result;
   try {
@@ -567,6 +568,46 @@ function createProvider(input: {
       }
     }
   });
+}
+
+async function normalizeMarketplacePaymentRequirement(response: Response): Promise<Response> {
+  if (response.status !== 402) {
+    return response;
+  }
+
+  let paymentRequired: {
+    accepts?: Array<Record<string, unknown> & { maxAmountRequired?: string }>;
+  };
+  try {
+    const responseForParsing =
+      "clone" in response && typeof response.clone === "function" ? response.clone() : response;
+    paymentRequired = await responseForParsing.json() as {
+      accepts?: Array<Record<string, unknown> & { maxAmountRequired?: string }>;
+    };
+  } catch {
+    return response;
+  }
+
+  if (!paymentRequired.accepts?.length) {
+    return response;
+  }
+
+  return new Response(
+    JSON.stringify({
+      ...paymentRequired,
+      accepts: paymentRequired.accepts.map((accept) => ({
+        ...accept,
+        ...(accept.maxAmountRequired
+          ? { maxAmountRequired: decimalToRawString(accept.maxAmountRequired, 6) }
+          : {})
+      }))
+    }),
+    {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers
+    }
+  );
 }
 
 async function safeJson(response: Response): Promise<unknown> {
