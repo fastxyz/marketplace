@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("marketplace browsing, suggestion submit, admin review, and skill markdown", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Payments for agents" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Data APIs for agents" })).toBeVisible();
   await expect(page.getByText("Mock Research Signals")).toBeVisible();
 
   await page.getByRole("link", { name: /Mock Research Signals/i }).click();

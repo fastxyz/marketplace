@@ -55,6 +55,10 @@ describe("MarketplaceHome", () => {
       />
     );
 
+    expect(screen.getByRole("heading", { name: "Data APIs for agents" })).toBeTruthy();
+    expect(screen.queryByText("Explore marketplace")).toBeNull();
+    expect(screen.queryByText("Suggest supply")).toBeNull();
+    expect(screen.queryByText("FAST-native supply snapshot")).toBeNull();
     expect(screen.getByText("Mock Research Signals")).toBeTruthy();
     expect(screen.getByText("Weather Wire")).toBeTruthy();
 

@@ -132,7 +132,7 @@ describe("ProviderDashboard", () => {
     expect(screen.getByText("Add a structured watchlist endpoint")).toBeTruthy();
     expect(screen.queryByText("builder@example.com")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Claim request" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Claim request" }));
 
     await waitFor(() => {
       expect(screen.getByText("Claimed by you")).toBeTruthy();

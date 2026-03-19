@@ -52,13 +52,20 @@ function ProviderDashboardInner({
   const [account, setAccount] = React.useState<ProviderAccountRecord | null | undefined>(undefined);
   const [services, setServices] = React.useState<ProviderServiceDetailRecord[]>([]);
   const [requests, setRequests] = React.useState<ProviderRequestRecord[]>([]);
-  const [pending, startTransition] = React.useTransition();
+  const [claimingRequestId, setClaimingRequestId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    startTransition(async () => {
+    let cancelled = false;
+
+    async function loadProviderDashboard() {
+      setError(null);
+
       try {
         const nextAccount = await fetchProviderAccount(apiBaseUrl, accessToken);
+        if (cancelled) {
+          return;
+        }
         setAccount(nextAccount);
 
         if (!nextAccount) {
@@ -72,28 +79,45 @@ function ProviderDashboardInner({
             fetchProviderServices(apiBaseUrl, accessToken),
             fetchProviderRequests(apiBaseUrl, accessToken)
           ]);
+          if (cancelled) {
+            return;
+          }
 
           setServices(nextServices);
           setRequests(nextRequests);
         } catch (nextError) {
+          if (cancelled) {
+            return;
+          }
           setServices([]);
           setRequests([]);
           setError(nextError instanceof Error ? nextError.message : "Failed to load provider dashboard.");
         }
       } catch (nextError) {
+        if (cancelled) {
+          return;
+        }
         setError(nextError instanceof Error ? nextError.message : "Failed to load provider dashboard.");
         setAccount(null);
       }
-    });
+    }
+
+    void loadProviderDashboard();
+
+    return () => {
+      cancelled = true;
+    };
   }, [accessToken, apiBaseUrl]);
 
   function onClaimRequest(requestId: string) {
-    if (!account) {
+    if (!account || claimingRequestId) {
       return;
     }
 
     setError(null);
-    startTransition(async () => {
+    setClaimingRequestId(requestId);
+
+    void (async () => {
       try {
         const updated = await claimProviderRequest(apiBaseUrl, accessToken, requestId);
         setRequests((current) =>
@@ -105,8 +129,10 @@ function ProviderDashboardInner({
         );
       } catch (nextError) {
         setError(nextError instanceof Error ? nextError.message : "Failed to claim request.");
+      } finally {
+        setClaimingRequestId((current) => (current === requestId ? null : current));
       }
-    });
+    })();
   }
 
   if (account === undefined) {
@@ -195,6 +221,7 @@ function ProviderDashboardInner({
               const claimedByCurrentProvider = request.claimedByCurrentProvider;
               const claimedByOtherProvider = Boolean(request.claimedByProviderName) && !request.claimedByCurrentProvider;
               const isClaimable = request.claimable;
+              const isClaimingThisRequest = claimingRequestId === request.id;
 
               return (
                 <div key={request.id} className="rounded-card border border-border bg-background/70 p-5 dark:bg-background/20">
@@ -225,8 +252,12 @@ function ProviderDashboardInner({
 
                   <div className="mt-4 flex flex-wrap gap-3">
                     {isClaimable ? (
-                      <Button type="button" onClick={() => onClaimRequest(request.id)} disabled={pending}>
-                        {pending ? "Claiming..." : "Claim request"}
+                      <Button
+                        type="button"
+                        onClick={() => onClaimRequest(request.id)}
+                        disabled={Boolean(claimingRequestId)}
+                      >
+                        {isClaimingThisRequest ? "Claiming..." : "Claim request"}
                       </Button>
                     ) : null}
                     <Button type="button" variant="outline" onClick={() => window.location.assign("/providers/services")}>

@@ -33,64 +33,25 @@ export function MarketplaceHome({ services }: { services: ServiceSummary[] }) {
     });
   }, [category, deferredQuery, services]);
 
-  const totals = useMemo(
-    () =>
-      services.reduce(
-        (summary, service) => {
-          summary.endpoints += service.endpointCount;
-          summary.calls += service.totalCalls;
-          summary.revenue += Number(service.revenue);
-          return summary;
-        },
-        { endpoints: 0, calls: 0, revenue: 0 }
-      ),
-    [services]
-  );
-
   return (
     <main className="page-shell">
       <section className="section-sep">
         <div className="section-container section-stack">
-          <div className="grid gap-12 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
-            <div className="page-intro">
-              <Badge variant="eyebrow">Go Fast</Badge>
-              <div className="space-y-6">
-                <h1 className="page-title">
-                  Payments for agents
-                  <span
-                    className="ml-3 inline-block h-[0.9em] w-3 rounded-pill bg-foreground align-[-0.1em]"
-                    style={{ animation: "blink 1.2s infinite" }}
-                  />
-                </h1>
-                <p className="body-copy">
-                  Paid APIs for agents, presented like a real marketplace. Browse live Fast-native services, compare
-                  pricing and performance, and route demand toward the next supply providers should ship.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <Link href="#catalog" className="btn-fast btn-fast-primary">
-                  Explore marketplace
-                </Link>
-                <Link href="/suggest" className="btn-fast btn-fast-secondary">
-                  Suggest supply
-                </Link>
-              </div>
+          <div className="page-intro max-w-4xl">
+            <Badge variant="eyebrow">Go Fast</Badge>
+            <div className="space-y-6">
+              <h1 className="page-title">
+                Data APIs for agents
+                <span
+                  className="ml-3 inline-block h-[0.9em] w-3 rounded-pill bg-foreground align-[-0.1em]"
+                  style={{ animation: "blink 1.2s infinite" }}
+                />
+              </h1>
+              <p className="body-copy">
+                Paid APIs for agents, presented like a real marketplace. Browse live Fast-native services, compare
+                pricing and performance, and route demand toward the next supply providers should ship.
+              </p>
             </div>
-
-            <Card variant="frosted" className="h-full">
-              <CardHeader>
-                <Badge variant="eyebrow">Live marketplace</Badge>
-                <CardTitle className="text-3xl">FAST-native supply snapshot</CardTitle>
-                <CardDescription>
-                  The current public catalog and transaction surface, updated from live marketplace data.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-6 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-                <Metric label="Services" value={String(services.length)} compact />
-                <Metric label="Endpoints" value={String(totals.endpoints)} compact />
-                <Metric label="Call volume" value={String(totals.calls)} compact />
-              </CardContent>
-            </Card>
           </div>
         </div>
       </section>
