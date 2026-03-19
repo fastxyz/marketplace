@@ -483,6 +483,38 @@ describe("shared marketplace helpers", () => {
     ).rejects.toThrow("Insufficient prepaid credit");
   });
 
+  it("deduplicates top-up credit by payment id", async () => {
+    const store = new InMemoryMarketplaceStore();
+    const serviceId = "service_credit_dedupe_1";
+    const buyerWallet = "fast1buyer00000000000000000000000000000000000000000000000000000000";
+
+    const first = await store.createCreditTopup({
+      serviceId,
+      buyerWallet,
+      currency: "fastUSDC",
+      amount: "250000",
+      paymentId: "payment_credit_dedupe_1",
+      metadata: {
+        routeId: "orders.topup.v1"
+      }
+    });
+
+    const second = await store.createCreditTopup({
+      serviceId,
+      buyerWallet,
+      currency: "fastUSDC",
+      amount: "999999",
+      paymentId: "payment_credit_dedupe_1",
+      metadata: {
+        routeId: "orders.topup.v1"
+      }
+    });
+
+    expect(second.entry.id).toBe(first.entry.id);
+    expect(second.entry.amount).toBe("250000");
+    expect(second.account.availableAmount).toBe("250000");
+  });
+
   it("publishes provider snapshots and resolves them by api namespace and operation", async () => {
     const store = new InMemoryMarketplaceStore();
     const wallet = "fast1provider000000000000000000000000000000000000000000000000000000";

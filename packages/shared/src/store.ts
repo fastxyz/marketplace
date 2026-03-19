@@ -198,6 +198,10 @@ function creditReservationKey(serviceId: string, idempotencyKey: string): string
   return `${serviceId}:${idempotencyKey}`;
 }
 
+function creditTopupKey(serviceId: string, paymentId: string): string {
+  return `${serviceId}:${paymentId}`;
+}
+
 export class InMemoryMarketplaceStore implements MarketplaceStore {
   private readonly idempotencyByPaymentId = new Map<string, IdempotencyRecord>();
   private readonly jobsByToken = new Map<string, JobRecord>();
@@ -209,6 +213,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
   private readonly creditAccountsById = new Map<string, CreditAccountRecord>();
   private readonly creditAccountIdByKey = new Map<string, string>();
   private readonly creditEntriesById = new Map<string, CreditLedgerEntryRecord>();
+  private readonly creditTopupEntryIdByPaymentKey = new Map<string, string>();
   private readonly creditReservationsById = new Map<string, CreditReservationRecord>();
   private readonly creditReservationIdByIdempotencyKey = new Map<string, string>();
   private readonly providerRuntimeKeysByServiceId = new Map<string, ProviderRuntimeKeyRecord>();
@@ -743,9 +748,8 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     paymentId: string;
     metadata?: Record<string, unknown>;
   }): Promise<{ account: CreditAccountRecord; entry: CreditLedgerEntryRecord }> {
-    const existingEntry = Array.from(this.creditEntriesById.values()).find(
-      (entry) => entry.kind === "topup" && entry.paymentId === input.paymentId && entry.serviceId === input.serviceId
-    );
+    const existingEntryId = this.creditTopupEntryIdByPaymentKey.get(creditTopupKey(input.serviceId, input.paymentId));
+    const existingEntry = existingEntryId ? this.creditEntriesById.get(existingEntryId) ?? null : null;
     if (existingEntry) {
       const existingAccount = this.creditAccountsById.get(existingEntry.accountId);
       if (!existingAccount) {
@@ -795,6 +799,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       createdAt: now
     };
     this.creditEntriesById.set(entry.id, entry);
+    this.creditTopupEntryIdByPaymentKey.set(creditTopupKey(input.serviceId, input.paymentId), entry.id);
 
     return {
       account: clone(account),
@@ -2295,6 +2300,10 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
+      CREATE UNIQUE INDEX IF NOT EXISTS credit_topup_entries_service_payment_idx
+      ON credit_ledger_entries(service_id, payment_id)
+      WHERE kind = 'topup' AND payment_id IS NOT NULL;
+
       CREATE TABLE IF NOT EXISTS provider_runtime_keys (
         id TEXT PRIMARY KEY,
         service_id TEXT NOT NULL UNIQUE REFERENCES provider_services(id) ON DELETE CASCADE,
@@ -3290,46 +3299,21 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     try {
       await client.query("BEGIN");
 
-      const existingEntryResult = await client.query(
-        `
-        SELECT *
-        FROM credit_ledger_entries
-        WHERE service_id = $1
-          AND payment_id = $2
-          AND kind = 'topup'
-        LIMIT 1
-        `,
-        [input.serviceId, input.paymentId]
-      );
-      if (existingEntryResult.rowCount) {
-        const entry = mapCreditLedgerEntryRow(existingEntryResult.rows[0]);
-        const accountResult = await client.query("SELECT * FROM credit_accounts WHERE id = $1", [entry.accountId]);
-        if (!accountResult.rowCount) {
-          throw new Error(`Credit account not found: ${entry.accountId}`);
-        }
-        await client.query("COMMIT");
-        return {
-          account: mapCreditAccountRow(accountResult.rows[0]),
-          entry
-        };
-      }
-
       const accountResult = await client.query(
         `
         INSERT INTO credit_accounts (
           id, service_id, buyer_wallet, currency, available_amount, reserved_amount
         ) VALUES (
-          $1, $2, $3, $4, $5, '0'
+          $1, $2, $3, $4, '0', '0'
         )
         ON CONFLICT (service_id, buyer_wallet, currency) DO UPDATE
         SET
-          available_amount = (credit_accounts.available_amount::numeric + EXCLUDED.available_amount::numeric)::text,
           updated_at = NOW()
         RETURNING *
         `,
-        [randomUUID(), input.serviceId, input.buyerWallet, input.currency, input.amount]
+        [randomUUID(), input.serviceId, input.buyerWallet, input.currency]
       );
-      const account = mapCreditAccountRow(accountResult.rows[0]);
+      let account = mapCreditAccountRow(accountResult.rows[0]);
 
       const entryResult = await client.query(
         `
@@ -3338,6 +3322,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         ) VALUES (
           $1, $2, $3, $4, $5, 'topup', $6, NULL, $7, $8::jsonb
         )
+        ON CONFLICT DO NOTHING
         RETURNING *
         `,
         [
@@ -3351,6 +3336,48 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
           JSON.stringify(input.metadata ?? {})
         ]
       );
+
+      if (!entryResult.rowCount) {
+        const existingEntryResult = await client.query(
+          `
+          SELECT *
+          FROM credit_ledger_entries
+          WHERE service_id = $1
+            AND payment_id = $2
+            AND kind = 'topup'
+          LIMIT 1
+          `,
+          [input.serviceId, input.paymentId]
+        );
+        if (!existingEntryResult.rowCount) {
+          throw new Error(`Credit top-up entry not found after conflict: ${input.serviceId}:${input.paymentId}`);
+        }
+
+        const entry = mapCreditLedgerEntryRow(existingEntryResult.rows[0]);
+        const existingAccountResult = await client.query("SELECT * FROM credit_accounts WHERE id = $1", [entry.accountId]);
+        if (!existingAccountResult.rowCount) {
+          throw new Error(`Credit account not found: ${entry.accountId}`);
+        }
+
+        await client.query("COMMIT");
+        return {
+          account: mapCreditAccountRow(existingAccountResult.rows[0]),
+          entry
+        };
+      }
+
+      const updatedAccountResult = await client.query(
+        `
+        UPDATE credit_accounts
+        SET
+          available_amount = (available_amount::numeric + $2::numeric)::text,
+          updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+        `,
+        [account.id, input.amount]
+      );
+      account = mapCreditAccountRow(updatedAccountResult.rows[0]);
 
       await client.query("COMMIT");
       return {
