@@ -95,6 +95,7 @@ export default async function AdminSuggestionsPage({
                   <div className="grid gap-2 text-sm text-muted-foreground">
                     {suggestion.sourceUrl ? <div>Source URL: {suggestion.sourceUrl}</div> : null}
                     {suggestion.requesterEmail ? <div>Requester: {suggestion.requesterEmail}</div> : null}
+                    {suggestion.claimedByProviderName ? <div>Claimed by: {suggestion.claimedByProviderName}</div> : null}
                   </div>
 
                   <form action={updateSuggestionAction} className="grid gap-4 lg:grid-cols-[220px_1fr_auto]">

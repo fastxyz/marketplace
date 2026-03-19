@@ -164,7 +164,7 @@ describe("shared marketplace helpers", () => {
     expect(detail.useThisServicePrompt).toContain("($0.05 fastUSDC)");
   });
 
-  it("computes service analytics and suggestion queue state in the in-memory store", async () => {
+  it("computes service analytics and provider request queue state in the in-memory store", async () => {
     const store = new InMemoryMarketplaceStore();
 
     await store.saveSyncIdempotency({
@@ -251,13 +251,23 @@ describe("shared marketplace helpers", () => {
       title: "Add a historical trend endpoint",
       description: "Expose a historical trend snapshot for repeated market checks."
     });
+    const provider = await store.upsertProviderAccount("fast1providerwallet000000000000000000000000000000000000000000000000", {
+      displayName: "Signal Labs"
+    });
+    const claimed = await store.claimProviderRequest(
+      created.id,
+      "fast1providerwallet000000000000000000000000000000000000000000000000"
+    );
     const updated = await store.updateSuggestion(created.id, {
-      status: "reviewing",
       internalNotes: "Assign to provider after mock launch."
     });
 
+    expect(claimed?.status).toBe("reviewing");
+    expect(claimed?.claimedByProviderAccountId).toBe(provider.id);
+    expect(claimed?.claimedByProviderName).toBe("Signal Labs");
     expect(updated?.status).toBe("reviewing");
     expect((await store.listSuggestions()).length).toBe(1);
+    expect((await store.listProviderRequests("fast1providerwallet000000000000000000000000000000000000000000000000")).length).toBe(1);
   });
 
   it("deduplicates refunds by payment id in the in-memory store", async () => {

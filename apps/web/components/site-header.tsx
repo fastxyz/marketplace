@@ -50,8 +50,8 @@ export function SiteHeader({
           <Link href="/suggest" className="fast-nav-link">
             Suggest
           </Link>
-          <Link href="/providers/onboard" className="fast-nav-link">
-            List your service
+          <Link href="/providers" className="fast-nav-link">
+            Providers
           </Link>
           <Link href="/skill.md" className="fast-nav-link">
             SKILL.md

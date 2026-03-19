@@ -161,6 +161,9 @@ export interface SuggestionRecord {
   requesterEmail: string | null;
   status: SuggestionStatus;
   internalNotes: string | null;
+  claimedByProviderAccountId: string | null;
+  claimedByProviderName: string | null;
+  claimedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -627,6 +630,8 @@ export interface MarketplaceStore {
   createSuggestion(input: CreateSuggestionInput): Promise<SuggestionRecord>;
   listSuggestions(filter?: { status?: SuggestionStatus }): Promise<SuggestionRecord[]>;
   updateSuggestion(id: string, input: UpdateSuggestionInput): Promise<SuggestionRecord | null>;
+  listProviderRequests(wallet: string): Promise<SuggestionRecord[]>;
+  claimProviderRequest(id: string, wallet: string): Promise<SuggestionRecord | null>;
 }
 
 export interface ChallengePayload {

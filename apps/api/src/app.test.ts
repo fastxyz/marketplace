@@ -142,6 +142,62 @@ describe("marketplace api", () => {
     expect(patched.body.status).toBe("reviewing");
   });
 
+  it("lets providers list and claim request intake from their wallet session", async () => {
+    const providerWallet = await createTestWallet(PROVIDER_PRIVATE_KEY);
+    const otherWallet = await createTestWallet(OTHER_PRIVATE_KEY);
+    const { app } = await createTestApp();
+    const providerToken = await createSiteSession(app, providerWallet);
+    const otherToken = await createSiteSession(app, otherWallet);
+
+    const created = await request(app)
+      .post("/catalog/suggestions")
+      .send({
+        type: "endpoint",
+        serviceSlug: "mock-research-signals",
+        title: "Add a structured watchlist endpoint",
+        description: "Expose a watchlist-friendly endpoint that returns a ranked signal feed."
+      });
+
+    expect(created.status).toBe(201);
+
+    await request(app)
+      .post("/provider/me")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        displayName: "Signal Labs"
+      });
+
+    await request(app)
+      .post("/provider/me")
+      .set("Authorization", `Bearer ${otherToken}`)
+      .send({
+        displayName: "Other Provider"
+      });
+
+    const listed = await request(app)
+      .get("/provider/requests")
+      .set("Authorization", `Bearer ${providerToken}`);
+
+    expect(listed.status).toBe(200);
+    expect(listed.body.requests).toHaveLength(1);
+    expect(listed.body.requests[0].claimedByProviderAccountId).toBeNull();
+
+    const claimed = await request(app)
+      .post(`/provider/requests/${created.body.id}/claim`)
+      .set("Authorization", `Bearer ${providerToken}`);
+
+    expect(claimed.status).toBe(200);
+    expect(claimed.body.status).toBe("reviewing");
+    expect(claimed.body.claimedByProviderName).toBe("Signal Labs");
+
+    const conflict = await request(app)
+      .post(`/provider/requests/${created.body.id}/claim`)
+      .set("Authorization", `Bearer ${otherToken}`);
+
+    expect(conflict.status).toBe(409);
+    expect(conflict.body.error).toContain("already claimed");
+  });
+
   it("returns 402 and payment requirements for unpaid routes", async () => {
     const { app } = await createTestApp();
 

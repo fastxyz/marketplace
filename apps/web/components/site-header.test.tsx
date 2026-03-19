@@ -28,7 +28,7 @@ describe("SiteHeader", () => {
     expect(screen.getByRole("link", { name: /fast marketplace/i }).getAttribute("href")).toBe("/");
     expect(screen.getByText("Marketplace")).toBeTruthy();
     expect(screen.getByText("Stats")).toBeTruthy();
-    expect(screen.getByText("List your service")).toBeTruthy();
+    expect(screen.getByText("Providers")).toBeTruthy();
     expect(screen.getByText("SKILL.md")).toBeTruthy();
     expect(screen.getByText("Testnet")).toBeTruthy();
     expect(screen.getByRole("button", { name: /toggle color theme/i })).toBeTruthy();

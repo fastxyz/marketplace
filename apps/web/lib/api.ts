@@ -166,6 +166,34 @@ export async function fetchProviderAccount(
   return response.json() as Promise<ProviderAccountRecord>;
 }
 
+export async function fetchProviderRequests(
+  apiBaseUrl: string,
+  accessToken: string
+): Promise<SuggestionRecord[]> {
+  const data = await fetchMarketplace<{ requests: SuggestionRecord[] }>({
+    apiBaseUrl,
+    accessToken,
+    path: "/provider/requests"
+  });
+
+  return data.requests;
+}
+
+export async function claimProviderRequest(
+  apiBaseUrl: string,
+  accessToken: string,
+  requestId: string
+): Promise<SuggestionRecord> {
+  return fetchMarketplace<SuggestionRecord>({
+    apiBaseUrl,
+    accessToken,
+    path: `/provider/requests/${requestId}/claim`,
+    init: {
+      method: "POST"
+    }
+  });
+}
+
 export async function upsertProviderAccount(
   apiBaseUrl: string,
   accessToken: string,

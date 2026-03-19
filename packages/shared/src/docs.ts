@@ -67,6 +67,16 @@ export function buildOpenApiDocument(input: {
         summary: "Create or update the provider account for the current website wallet session."
       }
     },
+    "/provider/requests": {
+      get: {
+        summary: "List provider-visible request intake for the current website wallet session."
+      }
+    },
+    "/provider/requests/{id}/claim": {
+      post: {
+        summary: "Claim one provider request from the current website wallet session."
+      }
+    },
     "/provider/services": {
       get: {
         summary: "List provider-owned service drafts."

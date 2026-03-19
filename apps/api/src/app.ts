@@ -513,6 +513,34 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
     return res.status(201).json(account);
   });
 
+  app.get("/provider/requests", async (req, res) => {
+    const session = requireSiteSession(req, res, options.sessionSecret, webBaseUrl);
+    if (!session) {
+      return;
+    }
+
+    const requests = await options.store.listProviderRequests(session.wallet);
+    return res.json({ requests });
+  });
+
+  app.post("/provider/requests/:id/claim", async (req, res) => {
+    const session = requireSiteSession(req, res, options.sessionSecret, webBaseUrl);
+    if (!session) {
+      return;
+    }
+
+    try {
+      const claimed = await options.store.claimProviderRequest(req.params.id, session.wallet);
+      if (!claimed) {
+        return res.status(404).json({ error: "Request not found." });
+      }
+
+      return res.json(claimed);
+    } catch (error) {
+      return handleProviderMutationError(res, error);
+    }
+  });
+
   app.get("/provider/services", async (req, res) => {
     const session = requireSiteSession(req, res, options.sessionSecret, webBaseUrl);
     if (!session) {
@@ -1477,7 +1505,12 @@ function parseServiceStatus(value: string | undefined | null) {
 function handleProviderMutationError(res: ExpressResponse, error: unknown) {
   const message = error instanceof Error ? error.message : "Provider mutation failed.";
 
-  if (message.includes("already exists") || message.includes("cannot change after endpoints exist")) {
+  if (
+    message.includes("already exists") ||
+    message.includes("cannot change after endpoints exist") ||
+    message.includes("already claimed") ||
+    message.includes("not claimable")
+  ) {
     return res.status(409).json({ error: message });
   }
 

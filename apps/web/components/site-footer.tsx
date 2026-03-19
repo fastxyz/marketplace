@@ -7,7 +7,7 @@ export function SiteFooter() {
       title: "Developers",
       links: [
         { href: "/skill.md", label: "SKILL.md" },
-        { href: "/providers/onboard", label: "List your service" }
+        { href: "/providers", label: "Providers" }
       ]
     },
     {

@@ -19,7 +19,7 @@ describe("SiteFooter", () => {
   it("renders the public suggestion links", () => {
     render(<SiteFooter />);
 
-    expect(screen.getByRole("link", { name: "List your service" }).getAttribute("href")).toBe("/providers/onboard");
+    expect(screen.getByRole("link", { name: "Providers" }).getAttribute("href")).toBe("/providers");
     expect(screen.getByRole("link", { name: "Suggest an endpoint" }).getAttribute("href")).toBe(
       "/suggest?type=endpoint"
     );

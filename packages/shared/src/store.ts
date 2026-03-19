@@ -81,6 +81,10 @@ function mapPublishedServiceToDefinition(service: PublishedServiceVersionRecord)
   return clone(service);
 }
 
+function isSuggestionProviderVisible(status: SuggestionStatus): boolean {
+  return status !== "rejected";
+}
+
 function buildProviderServiceDetail(input: {
   service: ProviderServiceRecord;
   account: ProviderAccountRecord;
@@ -1199,6 +1203,9 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       requesterEmail: input.requesterEmail ?? null,
       status: "submitted",
       internalNotes: null,
+      claimedByProviderAccountId: null,
+      claimedByProviderName: null,
+      claimedAt: null,
       createdAt: now,
       updatedAt: now
     };
@@ -1226,6 +1233,67 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       status: input.status ?? existing.status,
       internalNotes: input.internalNotes === undefined ? existing.internalNotes : input.internalNotes,
       updatedAt: timestamp()
+    };
+
+    this.suggestionsById.set(id, updated);
+    return clone(updated);
+  }
+
+  async listProviderRequests(wallet: string): Promise<SuggestionRecord[]> {
+    const account = await this.getProviderAccountByWallet(wallet);
+    if (!account) {
+      return [];
+    }
+
+    const requests = Array.from(this.suggestionsById.values())
+      .filter((suggestion) => isSuggestionProviderVisible(suggestion.status))
+      .sort((left, right) => {
+        const leftRank =
+          left.claimedByProviderAccountId === account.id ? 0 : left.claimedByProviderAccountId ? 2 : 1;
+        const rightRank =
+          right.claimedByProviderAccountId === account.id ? 0 : right.claimedByProviderAccountId ? 2 : 1;
+
+        if (leftRank !== rightRank) {
+          return leftRank - rightRank;
+        }
+
+        return right.updatedAt.localeCompare(left.updatedAt);
+      });
+
+    return clone(requests);
+  }
+
+  async claimProviderRequest(id: string, wallet: string): Promise<SuggestionRecord | null> {
+    const account = await this.getProviderAccountByWallet(wallet);
+    if (!account) {
+      throw new Error("Provider account not found.");
+    }
+
+    const existing = this.suggestionsById.get(id);
+    if (!existing) {
+      return null;
+    }
+
+    if (!isSuggestionProviderVisible(existing.status) || existing.status === "shipped") {
+      throw new Error("Request is not claimable.");
+    }
+
+    if (existing.claimedByProviderAccountId && existing.claimedByProviderAccountId !== account.id) {
+      throw new Error(`Request already claimed by ${existing.claimedByProviderName ?? "another provider"}.`);
+    }
+
+    if (existing.claimedByProviderAccountId === account.id) {
+      return clone(existing);
+    }
+
+    const now = timestamp();
+    const updated: SuggestionRecord = {
+      ...existing,
+      status: existing.status === "submitted" ? "reviewing" : existing.status,
+      claimedByProviderAccountId: account.id,
+      claimedByProviderName: account.displayName,
+      claimedAt: now,
+      updatedAt: now
     };
 
     this.suggestionsById.set(id, updated);
@@ -1384,6 +1452,9 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         requester_email TEXT,
         status TEXT NOT NULL,
         internal_notes TEXT,
+        claimed_provider_account_id TEXT,
+        claimed_provider_name TEXT,
+        claimed_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
@@ -1537,6 +1608,15 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
 
       ALTER TABLE jobs
       ADD COLUMN IF NOT EXISTS route_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+      ALTER TABLE service_suggestions
+      ADD COLUMN IF NOT EXISTS claimed_provider_account_id TEXT;
+
+      ALTER TABLE service_suggestions
+      ADD COLUMN IF NOT EXISTS claimed_provider_name TEXT;
+
+      ALTER TABLE service_suggestions
+      ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ;
 
       ALTER TABLE refunds
       ALTER COLUMN job_token DROP NOT NULL;
@@ -3147,6 +3227,92 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     return result.rowCount ? mapSuggestionRow(result.rows[0]) : null;
   }
 
+  async listProviderRequests(wallet: string): Promise<SuggestionRecord[]> {
+    const account = await this.getProviderAccountByWallet(wallet);
+    if (!account) {
+      return [];
+    }
+
+    const result = await this.pool.query(
+      `
+      SELECT *
+      FROM service_suggestions
+      WHERE status <> 'rejected'
+      ORDER BY
+        CASE
+          WHEN claimed_provider_account_id = $1 THEN 0
+          WHEN claimed_provider_account_id IS NULL THEN 1
+          ELSE 2
+        END,
+        updated_at DESC
+      `,
+      [account.id]
+    );
+
+    return result.rows.map(mapSuggestionRow);
+  }
+
+  async claimProviderRequest(id: string, wallet: string): Promise<SuggestionRecord | null> {
+    const account = await this.getProviderAccountByWallet(wallet);
+    if (!account) {
+      throw new Error("Provider account not found.");
+    }
+
+    const existingResult = await this.pool.query(
+      `
+      SELECT *
+      FROM service_suggestions
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [id]
+    );
+
+    if (!existingResult.rowCount) {
+      return null;
+    }
+
+    const existing = mapSuggestionRow(existingResult.rows[0]);
+    if (!isSuggestionProviderVisible(existing.status) || existing.status === "shipped") {
+      throw new Error("Request is not claimable.");
+    }
+
+    if (existing.claimedByProviderAccountId && existing.claimedByProviderAccountId !== account.id) {
+      throw new Error(`Request already claimed by ${existing.claimedByProviderName ?? "another provider"}.`);
+    }
+
+    if (existing.claimedByProviderAccountId === account.id) {
+      return existing;
+    }
+
+    const result = await this.pool.query(
+      `
+      UPDATE service_suggestions
+      SET
+        status = CASE
+          WHEN status = 'submitted' THEN 'reviewing'
+          ELSE status
+        END,
+        claimed_provider_account_id = $2,
+        claimed_provider_name = $3,
+        claimed_at = NOW(),
+        updated_at = NOW()
+      WHERE id = $1
+        AND status <> 'rejected'
+        AND status <> 'shipped'
+        AND (claimed_provider_account_id IS NULL OR claimed_provider_account_id = $2)
+      RETURNING *
+      `,
+      [id, account.id, account.displayName]
+    );
+
+    if (!result.rowCount) {
+      throw new Error(`Request already claimed by ${existing.claimedByProviderName ?? "another provider"}.`);
+    }
+
+    return mapSuggestionRow(result.rows[0]);
+  }
+
   private async assertServiceUniqueness(slug: string, apiNamespace: string, serviceId?: string) {
     const result = await this.pool.query(
       `
@@ -3321,6 +3487,9 @@ function mapSuggestionRow(row: Record<string, unknown>): SuggestionRecord {
     requesterEmail: (row.requester_email as string | null) ?? null,
     status: row.status as SuggestionRecord["status"],
     internalNotes: (row.internal_notes as string | null) ?? null,
+    claimedByProviderAccountId: (row.claimed_provider_account_id as string | null) ?? null,
+    claimedByProviderName: (row.claimed_provider_name as string | null) ?? null,
+    claimedAt: row.claimed_at ? new Date(row.claimed_at as string | Date).toISOString() : null,
     createdAt: new Date(row.created_at as string | Date).toISOString(),
     updatedAt: new Date(row.updated_at as string | Date).toISOString()
   };
