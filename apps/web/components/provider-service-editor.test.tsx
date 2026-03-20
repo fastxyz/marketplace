@@ -54,7 +54,7 @@ describe("ProviderServiceEditor", () => {
 
     render(
       <ProviderServiceEditor
-        apiBaseUrl="https://fastapi.8o.vc"
+        apiBaseUrl="https://api.marketplace.example.com"
         deploymentNetwork="mainnet"
         serviceId="missing_service"
       />

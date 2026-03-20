@@ -40,7 +40,7 @@ describe("ServicePage", () => {
           },
           about: "A mock service for wallet and x402 smoke tests.",
           useThisServicePrompt: "I want to use the Mock Research Signals service.",
-          skillUrl: "https://fast.8o.vc/skill.md",
+          skillUrl: "https://marketplace.example.com/skill.md",
           endpoints: [
             {
               routeId: "mock.quick-insight.v1",
@@ -52,7 +52,7 @@ describe("ServicePage", () => {
               mode: "sync",
               method: "POST",
               path: "/api/mock/quick-insight",
-              proxyUrl: "https://fastapi.8o.vc/api/mock/quick-insight",
+              proxyUrl: "https://api.marketplace.example.com/api/mock/quick-insight",
               requestExample: { query: "alpha" },
               responseExample: { summary: "alpha" },
               usageNotes: "Low-latency single request."

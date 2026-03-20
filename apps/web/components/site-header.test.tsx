@@ -19,7 +19,7 @@ describe("SiteHeader", () => {
   it("renders navigation plus the wallet login controls", () => {
     render(
       <SiteHeader
-        apiBaseUrl="https://fastapi.8o.vc"
+        apiBaseUrl="https://api.marketplace.example.com"
         deploymentNetwork="testnet"
         networkLabel="Testnet"
       />

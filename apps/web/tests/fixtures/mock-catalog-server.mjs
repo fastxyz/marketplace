@@ -35,7 +35,7 @@ const service = {
       mode: "sync",
       method: "POST",
       path: "/api/mock/quick-insight",
-      proxyUrl: "https://fastapi.8o.vc/api/mock/quick-insight",
+      proxyUrl: "https://api.marketplace.example.com/api/mock/quick-insight",
       requestExample: { query: "fast-native data marketplaces" },
       responseExample: { summary: "Mock alpha signal." },
       usageNotes: "Low-latency single request."
@@ -49,7 +49,7 @@ const service = {
       mode: "async",
       method: "POST",
       path: "/api/mock/async-report",
-      proxyUrl: "https://fastapi.8o.vc/api/mock/async-report",
+      proxyUrl: "https://api.marketplace.example.com/api/mock/async-report",
       requestExample: { topic: "consumer AI distribution shifts", delayMs: 5000 },
       responseExample: { report: "Mock report body." },
       usageNotes: "Async job with polling."

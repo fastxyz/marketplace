@@ -1,6 +1,6 @@
 ---
 name: fast-marketplace
-description: Discover services on the Fast Marketplace, choose the right endpoint, follow fixed-price x402, variable top-up, or prepaid-credit flows with a funded local wallet, handle async job retrieval, onboard providers, manage draft services, rotate provider runtime keys, review marketplace demand intake, and submit or review marketplace supply. Use this when a user wants to browse or call APIs exposed through fast.8o.vc or fastapi.8o.vc, or manage marketplace supply from the provider/admin surfaces.
+description: Discover services on the Fast Marketplace, choose the right endpoint, follow fixed-price x402, variable top-up, or prepaid-credit flows with a funded local wallet, handle async job retrieval, onboard providers, manage draft services, rotate provider runtime keys, review marketplace demand intake, and submit or review marketplace supply. Use this when a user wants to browse or call APIs exposed through marketplace.example.com or api.marketplace.example.com, or manage marketplace supply from the provider/admin surfaces.
 ---
 
 # Fast Marketplace
@@ -9,9 +9,9 @@ Use this skill when a user wants to work with APIs listed on the Fast Marketplac
 
 ## Use this skill when
 
-- the user wants to find a service or endpoint on `https://fast.8o.vc`
+- the user wants to find a service or endpoint on `https://marketplace.example.com`
 - the user needs the exact request body, proxy URL, or response shape for a marketplace endpoint
-- the user wants to sign into `https://fast.8o.vc` with a Fast browser wallet
+- the user wants to sign into `https://marketplace.example.com` with a Fast browser wallet
 - the user wants to pay and execute a marketplace route directly from the website with the Fast browser extension
 - the user needs to call a fixed-price x402 route, a variable top-up route, or a prepaid-credit route with a local Fast wallet
 - the user needs to retrieve an async result from a previously paid job
@@ -50,7 +50,7 @@ Before acting, identify:
 
 ## Buyer workflow
 
-1. Open the marketplace UI at `https://fast.8o.vc` and locate the relevant service.
+1. Open the marketplace UI at `https://marketplace.example.com` and locate the relevant service.
 2. Open the service page and identify the route billing type from the published endpoint docs, labels, pricing, and examples.
 3. If the user wants browser execution, use the endpoint's browser execution panel. Fixed-price and top-up routes pay through x402; prepaid-credit routes use the wallet session after the user is signed in.
 4. If the user is delegating the task to another agent, copy the service page's "Use this service" block or the canonical skill URL.
@@ -125,7 +125,7 @@ Important constraints:
 
 ## Provider workflow
 
-1. Sign into `https://fast.8o.vc` with the provider wallet and open `/providers` or `/providers/onboard`.
+1. Sign into `https://marketplace.example.com` with the provider wallet and open `/providers` or `/providers/onboard`.
 2. Create or update the provider profile tied to that wallet session.
 3. If building from marketplace demand, review provider-visible request intake and claim the request you want to build.
 4. Open `/providers/services` and create or update the target service draft.
@@ -175,19 +175,19 @@ Important provider constraints:
 
 ## Discovery and reference URLs
 
-- Marketplace UI: `https://fast.8o.vc`
-- Canonical skill: `https://fast.8o.vc/skill.md`
-- Suggest an endpoint: `https://fast.8o.vc/suggest?type=endpoint`
-- Suggest a source: `https://fast.8o.vc/suggest?type=source`
-- Provider dashboard: `https://fast.8o.vc/providers`
-- Provider onboarding: `https://fast.8o.vc/providers/onboard`
-- Provider services: `https://fast.8o.vc/providers/services`
-- Admin login: `https://fast.8o.vc/admin/login`
-- Admin suggestions: `https://fast.8o.vc/admin/suggestions`
+- Marketplace UI: `https://marketplace.example.com`
+- Canonical skill: `https://marketplace.example.com/skill.md`
+- Suggest an endpoint: `https://marketplace.example.com/suggest?type=endpoint`
+- Suggest a source: `https://marketplace.example.com/suggest?type=source`
+- Provider dashboard: `https://marketplace.example.com/providers`
+- Provider onboarding: `https://marketplace.example.com/providers/onboard`
+- Provider services: `https://marketplace.example.com/providers/services`
+- Admin login: `https://marketplace.example.com/admin/login`
+- Admin suggestions: `https://marketplace.example.com/admin/suggestions`
 - Website wallet login: use the `Connect Wallet` control in the site header
-- OpenAPI: `https://fastapi.8o.vc/openapi.json`
-- LLM summary: `https://fastapi.8o.vc/llms.txt`
-- Marketplace catalog JSON: `https://fastapi.8o.vc/.well-known/marketplace.json`
+- OpenAPI: `https://api.marketplace.example.com/openapi.json`
+- LLM summary: `https://api.marketplace.example.com/llms.txt`
+- Marketplace catalog JSON: `https://api.marketplace.example.com/.well-known/marketplace.json`
 
 ## Example requests that should trigger this skill
 

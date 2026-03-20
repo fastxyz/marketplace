@@ -119,7 +119,7 @@ describe("ProviderDashboard", () => {
 
     render(
       <ProviderDashboard
-        apiBaseUrl="https://fastapi.8o.vc"
+        apiBaseUrl="https://api.marketplace.example.com"
         deploymentNetwork="mainnet"
       />
     );
@@ -138,7 +138,7 @@ describe("ProviderDashboard", () => {
       expect(screen.getByText("Claimed by you")).toBeTruthy();
     });
 
-    expect(claimProviderRequest).toHaveBeenCalledWith("https://fastapi.8o.vc", "provider_token", "request_1");
+    expect(claimProviderRequest).toHaveBeenCalledWith("https://api.marketplace.example.com", "provider_token", "request_1");
   });
 
   it("shows onboarding when the wallet has no provider profile yet", async () => {
@@ -146,7 +146,7 @@ describe("ProviderDashboard", () => {
 
     render(
       <ProviderDashboard
-        apiBaseUrl="https://fastapi.8o.vc"
+        apiBaseUrl="https://api.marketplace.example.com"
         deploymentNetwork="mainnet"
       />
     );

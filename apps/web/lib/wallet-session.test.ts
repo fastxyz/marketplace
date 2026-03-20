@@ -37,7 +37,7 @@ describe("wallet session helpers", () => {
       accessToken: "token-1",
       wallet: "fast1abcdefghijklmnopqrstuvwxyz0123456789uvwxyz",
       deploymentNetwork: "testnet",
-      resourceId: "https://wrong.fast.8o.vc"
+      resourceId: "https://wrong.marketplace.example.com"
     });
 
     expect(readStoredWalletSession("testnet")).toBeNull();

@@ -84,7 +84,7 @@ describe("ProviderServicesDashboard", () => {
 
     render(
       <ProviderServicesDashboard
-        apiBaseUrl="https://fastapi.8o.vc"
+        apiBaseUrl="https://api.marketplace.example.com"
         deploymentNetwork="mainnet"
       />
     );
@@ -113,7 +113,7 @@ describe("ProviderServicesDashboard", () => {
 
     render(
       <ProviderServicesDashboard
-        apiBaseUrl="https://fastapi.8o.vc"
+        apiBaseUrl="https://api.marketplace.example.com"
         deploymentNetwork="mainnet"
       />
     );

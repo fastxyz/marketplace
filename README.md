@@ -47,11 +47,14 @@ export DATABASE_URL=postgres://localhost:5432/fast_marketplace
 export MARKETPLACE_TREASURY_ADDRESS=fast1...
 export MARKETPLACE_FACILITATOR_URL=http://localhost:4020
 export MARKETPLACE_SESSION_SECRET=change-me
+export MARKETPLACE_SECRETS_KEY=change-me-again
 export MARKETPLACE_ADMIN_TOKEN=change-me-too
 export MARKETPLACE_FAST_NETWORK=mainnet
 export MARKETPLACE_WEB_BASE_URL=http://localhost:3001
 export TAVILY_API_KEY=tvly-...
 ```
+
+Use long random values for `MARKETPLACE_SESSION_SECRET` and `MARKETPLACE_SECRETS_KEY`.
 
 Optional refund worker variables:
 
@@ -60,13 +63,7 @@ export MARKETPLACE_TREASURY_PRIVATE_KEY=<fast-ed25519-private-key-hex>
 export FAST_RPC_URL=https://api.fast.xyz/proxy
 ```
 
-Optional API secrets:
-
-```bash
-export MARKETPLACE_SECRETS_KEY=change-me-again
-```
-
-`MARKETPLACE_SECRETS_KEY` is strongly recommended in production. It is used for provider runtime keys, encrypted upstream secrets, and signed marketplace identity headers for prepaid-credit providers.
+`MARKETPLACE_SECRETS_KEY` is required. It is used for provider runtime keys, encrypted upstream secrets, and signed marketplace identity headers for prepaid-credit providers.
 
 Optional facilitator variables:
 
@@ -148,28 +145,6 @@ Use the repo-root Docker context with one Dockerfile per service:
 - Facilitator: `docker/facilitator.Dockerfile`
 - Web: `docker/web.Dockerfile`
 - Worker: `docker/worker.Dockerfile`
-
-Coolify setup:
-
-- Web service
-  - Dockerfile: `docker/web.Dockerfile`
-  - Port: `3000`
-  - Domain: `fast.8o.vc`
-  - Health check: `/`
-- API service
-  - Dockerfile: `docker/api.Dockerfile`
-  - Port: `3000`
-  - Domain: `fastapi.8o.vc`
-  - Health check: `/openapi.json`
-- Facilitator service
-  - Dockerfile: `docker/facilitator.Dockerfile`
-  - Port: `4020`
-  - Domain: `fastfacilitator.8o.vc`
-  - Health check: `/supported`
-- Worker service
-  - Dockerfile: `docker/worker.Dockerfile`
-  - No public domain or HTTP listener
-  - No HTTP health check
 
 Required API environment:
 
@@ -266,3 +241,7 @@ Provider-authored prepaid-credit services use marketplace-managed credit and pro
 - `npm run start:worker`: run the built worker bundle
 - `npm run start:web`: run the Next.js frontend
 - `npm run cli -- ...`: run the buyer CLI
+
+## License
+
+MIT
