@@ -72,6 +72,7 @@ async function createTestApp(
     store,
     payTo: buyer.address,
     sessionSecret: "test-session-secret",
+    secretsKey: "test-secrets-key",
     adminToken: "test-admin-token",
     facilitatorClient: {
       async verify() {
@@ -90,7 +91,7 @@ async function createTestApp(
         }
       },
     providers: input.providers,
-    webBaseUrl: "https://fast.8o.vc",
+    webBaseUrl: "https://marketplace.example.com",
     tavilyApiKey: input.tavilyApiKey === undefined ? "tvly-test-key" : (input.tavilyApiKey ?? undefined)
   });
 
@@ -119,8 +120,8 @@ describe("marketplace api", () => {
     const detailResponse = await request(app).get("/catalog/services/mock-research-signals");
     expect(detailResponse.status).toBe(200);
     expect(detailResponse.body.summary.endpointCount).toBe(2);
-    expect(detailResponse.body.skillUrl).toBe("https://fast.8o.vc/skill.md");
-    expect(detailResponse.body.useThisServicePrompt).toContain("https://fast.8o.vc/skill.md");
+    expect(detailResponse.body.skillUrl).toBe("https://marketplace.example.com/skill.md");
+    expect(detailResponse.body.useThisServicePrompt).toContain("https://marketplace.example.com/skill.md");
   });
 
   it("executes the seeded Tavily marketplace route", async () => {
@@ -133,7 +134,7 @@ describe("marketplace api", () => {
           results: [
             {
               title: "Fast payments overview",
-              url: "https://fast.8o.vc/blog/payments",
+              url: "https://marketplace.example.com/blog/payments",
               content: "Overview of Fast-native payment rails.",
               score: 0.88
             }
@@ -411,12 +412,12 @@ describe("marketplace api", () => {
 
     const response = await request(app)
       .options("/api/mock/quick-insight")
-      .set("Origin", "https://fast.8o.vc")
+      .set("Origin", "https://marketplace.example.com")
       .set("Access-Control-Request-Method", "POST")
       .set("Access-Control-Request-Headers", "content-type,payment-identifier,payment-signature");
 
     expect(response.status).toBe(204);
-    expect(response.headers["access-control-allow-origin"]).toBe("https://fast.8o.vc");
+    expect(response.headers["access-control-allow-origin"]).toBe("https://marketplace.example.com");
     expect(response.headers["access-control-allow-headers"]).toContain("PAYMENT-IDENTIFIER");
     expect(response.headers["access-control-expose-headers"]).toContain("PAYMENT-REQUIRED");
   });
@@ -782,7 +783,7 @@ describe("marketplace api", () => {
 
     expect(challenge.status).toBe(200);
     expect(challenge.body.resourceType).toBe("site");
-    expect(challenge.body.resourceId).toBe("https://fast.8o.vc");
+    expect(challenge.body.resourceId).toBe("https://marketplace.example.com");
 
     const signed = await buyer.wallet.sign({ message: challenge.body.message });
     const session = await request(app)
@@ -797,7 +798,7 @@ describe("marketplace api", () => {
     expect(session.status).toBe(200);
     expect(session.body.wallet).toBe(buyer.address);
     expect(session.body.resourceType).toBe("site");
-    expect(session.body.resourceId).toBe("https://fast.8o.vc");
+    expect(session.body.resourceId).toBe("https://marketplace.example.com");
     expect(session.body.accessToken).toBeDefined();
   });
 
@@ -807,6 +808,7 @@ describe("marketplace api", () => {
       store: new InMemoryMarketplaceStore(),
       payTo: buyer.address,
       sessionSecret: "test-session-secret",
+      secretsKey: "test-secrets-key",
       adminToken: "test-admin-token",
       facilitatorClient: {
         async verify() {
@@ -822,7 +824,7 @@ describe("marketplace api", () => {
           return { txHash: "0xrefund" };
         }
       },
-      webBaseUrl: "https://fast.8o.vc"
+      webBaseUrl: "https://marketplace.example.com"
     });
 
     const response = await request(app)

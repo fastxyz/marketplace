@@ -81,7 +81,7 @@ export interface MarketplaceApiOptions {
   providers?: ProviderRegistry;
   baseUrl?: string;
   webBaseUrl?: string;
-  secretsKey?: string;
+  secretsKey: string;
   tavilyApiKey?: string;
 }
 
@@ -196,13 +196,21 @@ const runtimeCaptureSchema = z.object({
 });
 
 export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
+  if (!options.sessionSecret) {
+    throw new Error("sessionSecret is required.");
+  }
+
+  if (!options.secretsKey) {
+    throw new Error("secretsKey is required.");
+  }
+
   const app = express();
   const providers = options.providers ?? createDefaultProviderRegistry();
   const baseUrl = options.baseUrl ?? "http://localhost:3000";
   const webBaseUrl = options.webBaseUrl ?? baseUrl;
   const allowedWebOrigin = safeOrigin(webBaseUrl);
   const networkConfig = getDefaultMarketplaceNetworkConfig();
-  const secretsKey = options.secretsKey ?? "development-marketplace-secrets-key";
+  const secretsKey = options.secretsKey;
   const tavilyEnabled = Boolean(options.tavilyApiKey);
 
   app.use(express.json({ limit: "1mb" }));

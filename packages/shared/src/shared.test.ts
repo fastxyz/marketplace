@@ -157,16 +157,16 @@ describe("shared marketplace helpers", () => {
         successRate30d: 66.666,
         volume30d: [{ date: "2026-03-18", amountRaw: "150000" }]
       },
-      apiBaseUrl: "https://fastapi.8o.vc",
-      webBaseUrl: "https://fast.8o.vc"
+      apiBaseUrl: "https://api.marketplace.example.com",
+      webBaseUrl: "https://marketplace.example.com"
     });
 
     expect(buildPriceRange(endpoints)).toBe("$0.05 fastUSDC - $0.15 fastUSDC");
-    expect(detail.skillUrl).toBe("https://fast.8o.vc/skill.md");
+    expect(detail.skillUrl).toBe("https://marketplace.example.com/skill.md");
     expect(detail.summary.endpointCount).toBe(2);
     expect(detail.summary.settlementToken).toBe("fastUSDC");
     expect(detail.useThisServicePrompt).toContain('I want to use the "Mock Research Signals" service');
-    expect(detail.useThisServicePrompt).toContain("https://fastapi.8o.vc/api/mock/quick-insight");
+    expect(detail.useThisServicePrompt).toContain("https://api.marketplace.example.com/api/mock/quick-insight");
     expect(detail.useThisServicePrompt).toContain("($0.05 fastUSDC)");
   });
 
@@ -192,13 +192,13 @@ describe("shared marketplace helpers", () => {
         successRate30d: 100,
         volume30d: [{ date: "2026-03-18", amountRaw: "150000" }]
       },
-      apiBaseUrl: "https://fastapi.8o.vc",
-      webBaseUrl: "https://fast.8o.vc"
+      apiBaseUrl: "https://api.marketplace.example.com",
+      webBaseUrl: "https://marketplace.example.com"
     });
 
     expect(detail.summary.endpointCount).toBe(1);
-    expect(detail.endpoints[0]?.proxyUrl).toBe("https://fastapi.8o.vc/api/tavily/search");
-    expect(detail.useThisServicePrompt).toContain("https://fastapi.8o.vc/api/tavily/search");
+    expect(detail.endpoints[0]?.proxyUrl).toBe("https://api.marketplace.example.com/api/tavily/search");
+    expect(detail.useThisServicePrompt).toContain("https://api.marketplace.example.com/api/tavily/search");
   });
 
   it("rejects invalid Tavily request combinations in the shared schema", () => {

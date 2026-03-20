@@ -16,8 +16,8 @@ export const MARKETPLACE_PROVIDER_ACCOUNT_SEED: ProviderAccountRecord = {
   ownerWallet: "fast1marketplaceowner000000000000000000000000000000000000000000",
   displayName: "Fast Marketplace",
   bio: "Marketplace-owned sandbox services for testing x402 payment flows.",
-  websiteUrl: "https://fast.8o.vc",
-  contactEmail: "operators@fast.8o.vc",
+  websiteUrl: "https://marketplace.example.com",
+  contactEmail: "contact@example.com",
   createdAt: SEEDED_AT,
   updatedAt: SEEDED_AT
 };
@@ -38,7 +38,7 @@ export const MOCK_PROVIDER_SERVICE_SEED: ProviderServiceRecord = {
     "Use the x402-paid trigger routes below from a funded Fast wallet.",
     "For async routes, keep the returned job token and poll the result later from the same wallet."
   ],
-  websiteUrl: "https://fast.8o.vc",
+  websiteUrl: "https://marketplace.example.com",
   payoutWallet: null,
   featured: true,
   status: "published",
@@ -62,7 +62,7 @@ export const TAVILY_PROVIDER_SERVICE_SEED: ProviderServiceRecord = {
     "Use the x402-paid trigger route below from a funded Fast wallet.",
     "Send Tavily-compatible JSON to the marketplace route and the response body will mirror Tavily's search API."
   ],
-  websiteUrl: "https://fast.8o.vc",
+  websiteUrl: "https://marketplace.example.com",
   payoutWallet: null,
   featured: true,
   status: "published",
@@ -410,10 +410,10 @@ function buildTavilySearchRoute(config: MarketplaceNetworkConfig): MarketplaceRo
       results: [
         {
           title: "Fast ecosystem update",
-          url: "https://fast.8o.vc/blog/ecosystem-update",
+          url: "https://marketplace.example.com/blog/ecosystem-update",
           content: "Fast shipped new marketplace and wallet tooling for agent-native payments.",
           score: 0.91,
-          favicon: "https://fast.8o.vc/favicon.ico"
+          favicon: "https://marketplace.example.com/favicon.ico"
         }
       ],
       response_time: 1.12,
