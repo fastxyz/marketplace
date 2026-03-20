@@ -102,6 +102,20 @@ async function createTestApp(
   };
 }
 
+function marketplaceServiceDraft<T extends Record<string, unknown>>(input: T) {
+  return {
+    serviceType: "marketplace_proxy" as const,
+    ...input
+  };
+}
+
+function marketplaceEndpointDraft<T extends Record<string, unknown>>(input: T) {
+  return {
+    endpointType: "marketplace_proxy" as const,
+    ...input
+  };
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -859,6 +873,7 @@ describe("marketplace api", () => {
       .post("/provider/services")
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        serviceType: "marketplace_proxy",
         slug: "signal-labs",
         apiNamespace: "signals",
         name: "Signal Labs",
@@ -886,6 +901,7 @@ describe("marketplace api", () => {
       .post(`/provider/services/${serviceId}/endpoints`)
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        endpointType: "marketplace_proxy",
         operation: "quote",
         title: "Quote",
         description: "Return a single quote snapshot.",
@@ -1056,6 +1072,7 @@ describe("marketplace api", () => {
       .post("/provider/services")
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        serviceType: "marketplace_proxy",
         slug: "signal-labs-free",
         apiNamespace: "signals-free",
         name: "Signal Labs Free",
@@ -1083,6 +1100,7 @@ describe("marketplace api", () => {
       .post(`/provider/services/${serviceId}/endpoints`)
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        endpointType: "marketplace_proxy",
         operation: "search",
         title: "Search",
         description: "Return a free signal snapshot.",
@@ -1223,6 +1241,115 @@ describe("marketplace api", () => {
     expect(analytics.successRate30d).toBe(50);
   });
 
+  it("publishes discovery-only external registry services without executable marketplace routes", async () => {
+    const providerWallet = await createTestWallet(PROVIDER_PRIVATE_KEY);
+    const { app } = await createTestApp();
+    const providerToken = await createSiteSession(app, providerWallet);
+
+    const profile = await request(app)
+      .post("/provider/me")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        displayName: "Signal Labs",
+        websiteUrl: "https://provider.example.com"
+      });
+
+    expect(profile.status).toBe(201);
+
+    const createdService = await request(app)
+      .post("/provider/services")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        serviceType: "external_registry",
+        slug: "signal-labs-direct",
+        name: "Signal Labs Direct",
+        tagline: "Direct provider APIs",
+        about: "Discovery-only direct APIs that the marketplace lists but does not execute.",
+        categories: ["Research"],
+        promptIntro: 'I want to use the "Signal Labs Direct" service.',
+        setupInstructions: ["Read the provider docs first."],
+        websiteUrl: "https://provider.example.com"
+      });
+
+    expect(createdService.status).toBe(201);
+    const serviceId = createdService.body.service.id as string;
+
+    const createdEndpoint = await request(app)
+      .post(`/provider/services/${serviceId}/endpoints`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        endpointType: "external_registry",
+        title: "Status",
+        description: "Returns service status directly from the provider.",
+        method: "GET",
+        publicUrl: "https://provider.example.com/api/status",
+        docsUrl: "https://provider.example.com/docs/status",
+        authNotes: "Bearer token required.",
+        requestExample: {},
+        responseExample: { status: "ok" }
+      });
+
+    expect(createdEndpoint.status).toBe(201);
+
+    const verificationChallenge = await request(app)
+      .post(`/provider/services/${serviceId}/verification-challenge`)
+      .set("Authorization", `Bearer ${providerToken}`);
+
+    expect(verificationChallenge.status).toBe(200);
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === verificationChallenge.body.expectedUrl) {
+        return new Response(verificationChallenge.body.token, { status: 200 });
+      }
+
+      return new Response("not found", { status: 404 });
+    });
+
+    const verified = await request(app)
+      .post(`/provider/services/${serviceId}/verify`)
+      .set("Authorization", `Bearer ${providerToken}`);
+
+    expect(verified.status).toBe(200);
+
+    const submitted = await request(app)
+      .post(`/provider/services/${serviceId}/submit`)
+      .set("Authorization", `Bearer ${providerToken}`);
+
+    expect(submitted.status).toBe(202);
+
+    const published = await request(app)
+      .post(`/internal/provider-services/${serviceId}/publish`)
+      .set("Authorization", "Bearer test-admin-token")
+      .send({
+        reviewerIdentity: "ops@test"
+      });
+
+    expect(published.status).toBe(200);
+
+    const publicDetail = await request(app).get("/catalog/services/signal-labs-direct");
+    expect(publicDetail.status).toBe(200);
+    expect(publicDetail.body.serviceType).toBe("external_registry");
+    expect(publicDetail.body.skillUrl).toBeNull();
+    expect(publicDetail.body.endpoints[0]).toMatchObject({
+      endpointType: "external_registry",
+      method: "GET",
+      publicUrl: "https://provider.example.com/api/status",
+      docsUrl: "https://provider.example.com/docs/status"
+    });
+
+    const llms = await request(app).get("/llms.txt");
+    expect(llms.status).toBe(200);
+    expect(llms.text).toContain("## Discovery-Only External APIs");
+    expect(llms.text).toContain("https://provider.example.com/api/status");
+
+    const routeResponse = await request(app)
+      .post("/api/signal-labs-direct/status")
+      .send({});
+
+    expect(routeResponse.status).toBe(404);
+  });
+
   it("still returns the free upstream result when completion persistence fails", async () => {
     class FailingCompletionAttemptStore extends InMemoryMarketplaceStore {
       private attemptWrites = 0;
@@ -1260,6 +1387,7 @@ describe("marketplace api", () => {
       .post("/provider/services")
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        serviceType: "marketplace_proxy",
         slug: "signal-labs-free-persist",
         apiNamespace: "signals-free-persist",
         name: "Signal Labs Free Persist",
@@ -1279,6 +1407,7 @@ describe("marketplace api", () => {
       .post(`/provider/services/${serviceId}/endpoints`)
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        endpointType: "marketplace_proxy",
         operation: "search",
         title: "Search",
         description: "Return a free signal snapshot.",
@@ -1393,6 +1522,7 @@ describe("marketplace api", () => {
       .post("/provider/services")
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        serviceType: "marketplace_proxy",
         slug: "signal-labs-snapshot",
         apiNamespace: "signals-snapshot",
         name: "Signal Snapshot",
@@ -1417,6 +1547,7 @@ describe("marketplace api", () => {
       .post(`/provider/services/${serviceId}/endpoints`)
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        endpointType: "marketplace_proxy",
         operation: "quote",
         title: "Get Quote",
         description: "Returns the latest signal quote.",
@@ -1475,6 +1606,7 @@ describe("marketplace api", () => {
       .post(`/provider/services/${serviceId}/endpoints`)
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        endpointType: "marketplace_proxy",
         operation: "topup",
         title: "Top Up",
         description: "Funds marketplace-managed balance for later spending.",
@@ -1553,6 +1685,7 @@ describe("marketplace api", () => {
       .post("/provider/services")
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        serviceType: "marketplace_proxy",
         slug: "signal-labs-recovery",
         apiNamespace: "signals-recovery",
         name: "Signal Labs Recovery",
@@ -1572,6 +1705,7 @@ describe("marketplace api", () => {
       .post(`/provider/services/${serviceId}/endpoints`)
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        endpointType: "marketplace_proxy",
         operation: "quote",
         title: "Quote",
         description: "Return a single quote snapshot.",
@@ -1727,6 +1861,7 @@ describe("marketplace api", () => {
       .post("/provider/services")
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        serviceType: "marketplace_proxy",
         slug: "orders-inc",
         apiNamespace: "orders",
         name: "Orders Inc",
@@ -1754,6 +1889,7 @@ describe("marketplace api", () => {
       .post(`/provider/services/${serviceId}/endpoints`)
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        endpointType: "marketplace_proxy",
         operation: "topup",
         title: "Top Up",
         description: "Add prepaid marketplace credit.",
@@ -1791,6 +1927,7 @@ describe("marketplace api", () => {
       .post(`/provider/services/${serviceId}/endpoints`)
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        endpointType: "marketplace_proxy",
         operation: "place-order",
         title: "Place Order",
         description: "Place an order against prepaid credit.",
@@ -2002,6 +2139,7 @@ describe("marketplace api", () => {
       .post("/provider/services")
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        serviceType: "marketplace_proxy",
         slug: "signal-labs-reverify",
         apiNamespace: "signals-reverify",
         name: "Signal Labs Reverify",
@@ -2020,6 +2158,7 @@ describe("marketplace api", () => {
       .post(`/provider/services/${serviceId}/endpoints`)
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        endpointType: "marketplace_proxy",
         operation: "quote",
         title: "Quote",
         description: "Return a single quote snapshot.",
@@ -2101,6 +2240,7 @@ describe("marketplace api", () => {
       .post("/provider/services")
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        serviceType: "marketplace_proxy",
         slug: "signal-labs-failure",
         apiNamespace: "signals-failure",
         name: "Signal Labs Failure",
@@ -2119,6 +2259,7 @@ describe("marketplace api", () => {
       .post(`/provider/services/${serviceId}/endpoints`)
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        endpointType: "marketplace_proxy",
         operation: "quote",
         title: "Quote",
         description: "Return a single quote snapshot.",
@@ -2230,6 +2371,7 @@ describe("marketplace api", () => {
       .post("/provider/services")
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        serviceType: "marketplace_proxy",
         slug: "private-signal-labs",
         apiNamespace: "private-signals",
         name: "Private Signal Labs",
@@ -2259,6 +2401,7 @@ describe("marketplace api", () => {
       .post("/provider/services")
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        serviceType: "marketplace_proxy",
         slug: "signal-labs",
         apiNamespace: "signals",
         name: "Signal Labs",
@@ -2285,6 +2428,7 @@ describe("marketplace api", () => {
       .post("/provider/services")
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        serviceType: "marketplace_proxy",
         slug: "signal-labs-2",
         apiNamespace: "signals-2",
         name: "Signal Labs 2",
@@ -2303,6 +2447,7 @@ describe("marketplace api", () => {
       .post(`/provider/services/${createdService.body.service.id}/endpoints`)
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        endpointType: "marketplace_proxy",
         operation: "quote",
         title: "Quote",
         description: "Return a single quote snapshot.",
@@ -2338,6 +2483,7 @@ describe("marketplace api", () => {
       .post(`/provider/services/${createdService.body.service.id}/endpoints`)
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        endpointType: "marketplace_proxy",
         operation: "quote",
         title: "Quote duplicate",
         description: "Duplicate operation.",
@@ -2382,6 +2528,7 @@ describe("marketplace api", () => {
       .post("/provider/services")
       .set("Authorization", `Bearer ${providerToken}`)
       .send({
+        serviceType: "marketplace_proxy",
         slug: "signal-import",
         apiNamespace: "signal-import",
         name: "Signal Import",

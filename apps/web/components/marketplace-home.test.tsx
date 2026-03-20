@@ -24,6 +24,7 @@ describe("MarketplaceHome", () => {
       <MarketplaceHome
         services={[
           {
+            serviceType: "marketplace_proxy",
             slug: "mock-research-signals",
             name: "Mock Research Signals",
             ownerName: "Fast Marketplace",
@@ -41,6 +42,7 @@ describe("MarketplaceHome", () => {
             volume30d: []
           },
           {
+            serviceType: "marketplace_proxy",
             slug: "weather-wire",
             name: "Weather Wire",
             ownerName: "Sky Data",

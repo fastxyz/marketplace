@@ -18,8 +18,15 @@ import {
   validateJsonSchema,
   verifyWalletChallenge
 } from "./index.js";
+import type {
+  MarketplaceRoute,
+  ProviderEndpointDraftRecord,
+  PublishedEndpointVersionRecord,
+  PublishedServiceEndpointVersionRecord
+} from "./index.js";
 
 const TEST_PRIVATE_KEY = "11".repeat(32);
+const TEST_TIMESTAMP = "2026-03-20T00:00:00.000Z";
 
 async function createTestWallet() {
   const provider = new FastProvider({
@@ -62,6 +69,33 @@ function buildEscrowSplit(input: {
     providerBps: input.providerBps,
     providerAmount: input.providerAmount
   };
+}
+
+function buildPublishedEndpointFromRoute(
+  route: MarketplaceRoute,
+  overrides: Partial<PublishedEndpointVersionRecord> = {}
+): PublishedEndpointVersionRecord {
+  return {
+    endpointType: "marketplace_proxy",
+    endpointVersionId: overrides.endpointVersionId ?? `published_${route.routeId}`,
+    serviceId: overrides.serviceId ?? "service_test",
+    serviceVersionId: overrides.serviceVersionId ?? "service_version_test",
+    endpointDraftId: overrides.endpointDraftId ?? `draft_${route.routeId}`,
+    ...route,
+    createdAt: overrides.createdAt ?? TEST_TIMESTAMP,
+    updatedAt: overrides.updatedAt ?? TEST_TIMESTAMP,
+    ...overrides
+  };
+}
+
+function expectMarketplaceCatalogEndpoint(
+  endpoint: PublishedServiceEndpointVersionRecord | ProviderEndpointDraftRecord | undefined | null
+) {
+  expect(endpoint?.endpointType).toBe("marketplace_proxy");
+  return endpoint as Extract<
+    PublishedServiceEndpointVersionRecord | ProviderEndpointDraftRecord,
+    { endpointType: "marketplace_proxy" }
+  >;
 }
 
 describe("shared marketplace helpers", () => {
@@ -197,7 +231,7 @@ describe("shared marketplace helpers", () => {
 
     const detail = buildServiceDetail({
       service: freeService,
-      endpoints: [freeRoute],
+      endpoints: [buildPublishedEndpointFromRoute(freeRoute)],
       analytics: {
         totalCalls: 0,
         revenueRaw: "0",
@@ -244,9 +278,10 @@ describe("shared marketplace helpers", () => {
     }
 
     const endpoints = marketplaceRoutes.filter((route) => service.routeIds.includes(route.routeId));
+    const publishedEndpoints = endpoints.map((endpoint) => buildPublishedEndpointFromRoute(endpoint));
     const detail = buildServiceDetail({
       service,
-      endpoints,
+      endpoints: publishedEndpoints,
       analytics: {
         totalCalls: 12,
         revenueRaw: "420000",
@@ -281,7 +316,7 @@ describe("shared marketplace helpers", () => {
 
     const detail = buildServiceDetail({
       service: tavilyService,
-      endpoints: [tavilyRoute],
+      endpoints: [buildPublishedEndpointFromRoute(tavilyRoute)],
       analytics: {
         totalCalls: 3,
         revenueRaw: "150000",
@@ -293,7 +328,9 @@ describe("shared marketplace helpers", () => {
     });
 
     expect(detail.summary.endpointCount).toBe(1);
-    expect(detail.endpoints[0]?.proxyUrl).toBe("https://api.marketplace.example.com/api/tavily/search");
+    const endpoint = detail.endpoints[0];
+    expect(endpoint?.endpointType).toBe("marketplace_proxy");
+    expect(endpoint && "proxyUrl" in endpoint ? endpoint.proxyUrl : null).toBe("https://api.marketplace.example.com/api/tavily/search");
     expect(detail.useThisServicePrompt).toContain("https://api.marketplace.example.com/api/tavily/search");
   });
 
@@ -686,6 +723,7 @@ describe("shared marketplace helpers", () => {
     });
 
     const created = await store.createProviderService(wallet, {
+      serviceType: "marketplace_proxy",
       slug: "signal-labs",
       apiNamespace: "signals",
       name: "Signal Labs",
@@ -699,6 +737,7 @@ describe("shared marketplace helpers", () => {
     });
 
     await store.createProviderEndpointDraft(created.service.id, wallet, {
+      endpointType: "marketplace_proxy",
       operation: "quote",
       title: "Quote",
       description: "Return a single quote snapshot.",
@@ -746,6 +785,58 @@ describe("shared marketplace helpers", () => {
     expect(publicService?.endpoints).toHaveLength(1);
   });
 
+  it("publishes external registry services without creating executable marketplace routes", async () => {
+    const store = new InMemoryMarketplaceStore();
+    const wallet = "fast1provider000000000000000000000000000000000000000000000000000000";
+
+    await store.upsertProviderAccount(wallet, {
+      displayName: "Signal Labs",
+      websiteUrl: "https://provider.example.com"
+    });
+
+    const created = await store.createProviderService(wallet, {
+      serviceType: "external_registry",
+      slug: "signal-labs-direct",
+      name: "Signal Labs Direct",
+      tagline: "Discovery-only external endpoints",
+      about: "Direct provider APIs listed in the marketplace catalog without proxy execution.",
+      categories: ["Research"],
+      promptIntro: 'I want to use the "Signal Labs Direct" service.',
+      setupInstructions: ["Read the provider docs before calling the API directly."],
+      websiteUrl: "https://provider.example.com"
+    });
+
+    await store.createProviderEndpointDraft(created.service.id, wallet, {
+      endpointType: "external_registry",
+      title: "Status",
+      description: "Returns service status directly from the provider.",
+      method: "GET",
+      publicUrl: "https://provider.example.com/api/status",
+      docsUrl: "https://provider.example.com/docs/status",
+      authNotes: "Bearer token required.",
+      requestExample: {},
+      responseExample: { status: "ok" }
+    });
+
+    await store.createProviderVerificationChallenge(created.service.id, wallet);
+    await store.markProviderVerificationResult(created.service.id, "verified", {
+      verifiedHost: "provider.example.com"
+    });
+    await store.submitProviderService(created.service.id, wallet);
+    await store.publishProviderService(created.service.id, {
+      reviewerIdentity: "ops@test"
+    });
+
+    const published = await store.getPublishedServiceBySlug("signal-labs-direct");
+    expect(published?.service.serviceType).toBe("external_registry");
+    expect(published?.service.routeIds).toEqual([]);
+    expect(published?.endpoints).toHaveLength(1);
+    expect(published?.endpoints[0]?.endpointType).toBe("external_registry");
+
+    const route = await store.findPublishedRoute("signal-labs-direct", "status", "fast-mainnet");
+    expect(route).toBeNull();
+  });
+
   it("propagates service payout-wallet changes into existing endpoint drafts before submit", async () => {
     const store = new InMemoryMarketplaceStore();
     const wallet = "fast1provider000000000000000000000000000000000000000000000000000000";
@@ -757,6 +848,7 @@ describe("shared marketplace helpers", () => {
     });
 
     const created = await store.createProviderService(wallet, {
+      serviceType: "marketplace_proxy",
       slug: "signal-labs-wallet-sync",
       apiNamespace: "signals-wallet-sync",
       name: "Signal Labs Wallet Sync",
@@ -770,6 +862,7 @@ describe("shared marketplace helpers", () => {
     });
 
     const endpoint = await store.createProviderEndpointDraft(created.service.id, wallet, {
+      endpointType: "marketplace_proxy",
       operation: "quote",
       title: "Quote",
       description: "Return a single quote snapshot.",
@@ -800,7 +893,7 @@ describe("shared marketplace helpers", () => {
       upstreamAuthMode: "none"
     });
 
-    expect(endpoint.payout.providerWallet).toBe(wallet);
+    expect(expectMarketplaceCatalogEndpoint(endpoint).payout.providerWallet).toBe(wallet);
 
     await store.updateProviderServiceForOwner(created.service.id, wallet, {
       payoutWallet: replacementWallet
@@ -808,7 +901,7 @@ describe("shared marketplace helpers", () => {
 
     const updatedDetail = await store.getProviderServiceForOwner(created.service.id, wallet);
     expect(updatedDetail?.service.payoutWallet).toBe(replacementWallet);
-    expect(updatedDetail?.endpoints[0]?.payout.providerWallet).toBe(replacementWallet);
+    expect(expectMarketplaceCatalogEndpoint(updatedDetail?.endpoints[0]).payout.providerWallet).toBe(replacementWallet);
 
     await store.createProviderVerificationChallenge(created.service.id, wallet);
     await store.markProviderVerificationResult(created.service.id, "verified", {
@@ -822,6 +915,6 @@ describe("shared marketplace helpers", () => {
 
     const published = await store.getPublishedServiceBySlug("signal-labs-wallet-sync");
     expect(published?.service.payoutWallet).toBe(replacementWallet);
-    expect(published?.endpoints[0]?.payout.providerWallet).toBe(replacementWallet);
+    expect(expectMarketplaceCatalogEndpoint(published?.endpoints[0]).payout.providerWallet).toBe(replacementWallet);
   });
 });

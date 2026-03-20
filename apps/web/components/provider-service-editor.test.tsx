@@ -40,6 +40,7 @@ function buildServiceDetail(overrides?: {
     service: {
       id: "service_1",
       providerAccountId: "provider_1",
+      serviceType: "marketplace_proxy" as const,
       settlementMode: "community_direct" as const,
       slug: "signal-labs",
       apiNamespace: "signals",
@@ -258,6 +259,7 @@ describe("ProviderServiceEditor", () => {
     fetchProviderService.mockResolvedValue(buildServiceDetail({
       endpoints: [
         {
+          endpointType: "marketplace_proxy" as const,
           id: "endpoint_1",
           serviceId: "service_1",
           routeId: "signal-labs.search.v1",

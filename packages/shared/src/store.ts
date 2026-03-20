@@ -25,10 +25,12 @@ import type {
   CreateProviderEndpointDraftInput,
   CreateProviderServiceInput,
   CreateSuggestionInput,
+  ExternalProviderEndpointDraftRecord,
   IdempotencyRecord,
   JobRecord,
   MarketplaceRoute,
   MarketplaceStore,
+  MarketplaceProviderEndpointDraftRecord,
   ProviderAccountRecord,
   ProviderAttemptRecord,
   ProviderEndpointDraftRecord,
@@ -40,9 +42,12 @@ import type {
   ProviderServiceDetailRecord,
   ProviderServiceRecord,
   ProviderServiceStatus,
+  ProviderServiceType,
   ProviderVerificationRecord,
   ProviderVerificationStatus,
+  PublishedExternalEndpointVersionRecord,
   PublishedEndpointVersionRecord,
+  PublishedServiceEndpointVersionRecord,
   PublishedServiceVersionRecord,
   ResourceType,
   RefundRecord,
@@ -72,6 +77,40 @@ function clone<T>(value: T): T {
 
 function buildRouteId(apiNamespace: string, operation: string): string {
   return `${apiNamespace}.${operation}.v1`;
+}
+
+function isMarketplaceServiceType(serviceType: ProviderServiceType): serviceType is "marketplace_proxy" {
+  return serviceType === "marketplace_proxy";
+}
+
+function isMarketplaceService(service: Pick<ProviderServiceRecord, "serviceType">): service is ProviderServiceRecord & {
+  serviceType: "marketplace_proxy";
+} {
+  return isMarketplaceServiceType(service.serviceType);
+}
+
+function isMarketplaceEndpointDraft(
+  endpoint: ProviderEndpointDraftRecord
+): endpoint is MarketplaceProviderEndpointDraftRecord {
+  return endpoint.endpointType === "marketplace_proxy";
+}
+
+function isExternalEndpointDraft(
+  endpoint: ProviderEndpointDraftRecord
+): endpoint is ExternalProviderEndpointDraftRecord {
+  return endpoint.endpointType === "external_registry";
+}
+
+function isMarketplacePublishedEndpoint(
+  endpoint: PublishedServiceEndpointVersionRecord
+): endpoint is PublishedEndpointVersionRecord {
+  return endpoint.endpointType === "marketplace_proxy";
+}
+
+function isExternalPublishedEndpoint(
+  endpoint: PublishedServiceEndpointVersionRecord
+): endpoint is PublishedExternalEndpointVersionRecord {
+  return endpoint.endpointType === "external_registry";
 }
 
 function sortByUpdatedDesc<T extends { updatedAt: string }>(records: T[]): T[] {
@@ -164,6 +203,7 @@ function mapPublishedServiceVersionToProviderService(version: PublishedServiceVe
   return {
     id: version.serviceId,
     providerAccountId: version.providerAccountId,
+    serviceType: version.serviceType,
     settlementMode: version.settlementMode,
     slug: version.slug,
     apiNamespace: version.apiNamespace,
@@ -184,8 +224,9 @@ function mapPublishedServiceVersionToProviderService(version: PublishedServiceVe
 
 function mapPublishedEndpointVersionToProviderDraft(
   endpoint: PublishedEndpointVersionRecord
-): ProviderEndpointDraftRecord {
+): MarketplaceProviderEndpointDraftRecord {
   return {
+    endpointType: "marketplace_proxy",
     id: endpoint.endpointDraftId ?? endpoint.endpointVersionId,
     serviceId: endpoint.serviceId,
     routeId: endpoint.routeId,
@@ -213,10 +254,46 @@ function mapPublishedEndpointVersionToProviderDraft(
   };
 }
 
+function mapPublishedExternalEndpointVersionToProviderDraft(
+  endpoint: PublishedExternalEndpointVersionRecord
+): ExternalProviderEndpointDraftRecord {
+  return {
+    endpointType: "external_registry",
+    id: endpoint.endpointDraftId ?? endpoint.endpointVersionId,
+    serviceId: endpoint.serviceId,
+    routeId: null,
+    operation: null,
+    title: endpoint.title,
+    description: endpoint.description,
+    price: null,
+    billing: null,
+    mode: null,
+    requestSchemaJson: null,
+    responseSchemaJson: null,
+    method: endpoint.method,
+    publicUrl: endpoint.publicUrl,
+    docsUrl: endpoint.docsUrl,
+    authNotes: endpoint.authNotes ?? null,
+    requestExample: clone(endpoint.requestExample),
+    responseExample: clone(endpoint.responseExample),
+    usageNotes: endpoint.usageNotes ?? null,
+    executorKind: null,
+    upstreamBaseUrl: null,
+    upstreamPath: null,
+    upstreamAuthMode: null,
+    upstreamAuthHeaderName: null,
+    upstreamSecretRef: null,
+    hasUpstreamSecret: false,
+    payout: null,
+    createdAt: endpoint.createdAt,
+    updatedAt: endpoint.updatedAt
+  };
+}
+
 function buildSubmittedProviderServiceDetail(input: {
   version: PublishedServiceVersionRecord;
   account: ProviderAccountRecord;
-  endpoints: PublishedEndpointVersionRecord[];
+  endpoints: PublishedServiceEndpointVersionRecord[];
   verification: ProviderVerificationRecord | null;
   latestReview: ProviderReviewRecord | null;
   latestPublishedVersionId: string | null;
@@ -224,7 +301,11 @@ function buildSubmittedProviderServiceDetail(input: {
   return buildProviderServiceDetail({
     service: mapPublishedServiceVersionToProviderService(input.version),
     account: input.account,
-    endpoints: input.endpoints.map(mapPublishedEndpointVersionToProviderDraft),
+    endpoints: input.endpoints.map((endpoint) =>
+      isMarketplacePublishedEndpoint(endpoint)
+        ? mapPublishedEndpointVersionToProviderDraft(endpoint)
+        : mapPublishedExternalEndpointVersionToProviderDraft(endpoint)
+    ),
     verification: input.verification,
     latestReview: input.latestReview,
     latestPublishedVersionId: input.latestPublishedVersionId
@@ -466,12 +547,14 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
   private readonly providerAccountsById = new Map<string, ProviderAccountRecord>();
   private readonly providerAccountIdByWallet = new Map<string, string>();
   private readonly providerServicesById = new Map<string, ProviderServiceRecord>();
-  private readonly endpointDraftsById = new Map<string, ProviderEndpointDraftRecord>();
+  private readonly endpointDraftsById = new Map<string, MarketplaceProviderEndpointDraftRecord>();
+  private readonly externalEndpointDraftsById = new Map<string, ExternalProviderEndpointDraftRecord>();
   private readonly verificationByService = new Map<string, ProviderVerificationRecord[]>();
   private readonly reviewsByService = new Map<string, ProviderReviewRecord[]>();
   private readonly providerSecretsById = new Map<string, ProviderSecretRecord>();
   private readonly publishedServicesByVersionId = new Map<string, PublishedServiceVersionRecord>();
   private readonly publishedEndpointsByVersionId = new Map<string, PublishedEndpointVersionRecord>();
+  private readonly publishedExternalEndpointsByVersionId = new Map<string, PublishedExternalEndpointVersionRecord>();
   private readonly latestSubmittedVersionByServiceId = new Map<string, string>();
   private readonly latestPublishedVersionByServiceId = new Map<string, string>();
 
@@ -500,7 +583,9 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       this.providerServicesById.set(service.id, service);
     }
     for (const endpoint of draftEndpoints) {
-      this.endpointDraftsById.set(endpoint.id, endpoint);
+      if (isMarketplaceEndpointDraft(endpoint)) {
+        this.endpointDraftsById.set(endpoint.id, endpoint);
+      }
     }
     for (const publishedService of publishedServices) {
       this.publishedServicesByVersionId.set(publishedService.versionId, publishedService);
@@ -1681,7 +1766,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
 
   async getPublishedServiceBySlug(slug: string): Promise<{
     service: PublishedServiceVersionRecord;
-    endpoints: PublishedEndpointVersionRecord[];
+    endpoints: PublishedServiceEndpointVersionRecord[];
   } | null> {
     const service = Array.from(this.providerServicesById.values()).find(
       (record) => record.slug === slug && record.status === "published"
@@ -1700,9 +1785,14 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       return null;
     }
 
-    const endpoints = Array.from(this.publishedEndpointsByVersionId.values()).filter(
-      (endpoint) => endpoint.serviceVersionId === versionId
-    );
+    const endpoints: PublishedServiceEndpointVersionRecord[] = [
+      ...Array.from(this.publishedEndpointsByVersionId.values()).filter(
+        (endpoint) => endpoint.serviceVersionId === versionId
+      ),
+      ...Array.from(this.publishedExternalEndpointsByVersionId.values()).filter(
+        (endpoint) => endpoint.serviceVersionId === versionId
+      )
+    ];
 
     return {
       service: clone(version),
@@ -1787,14 +1877,15 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       throw new Error("Provider account not found.");
     }
 
-    this.assertServiceUniqueness(input.slug, input.apiNamespace);
+    this.assertServiceUniqueness(input.slug, input.apiNamespace ?? null);
 
     const record: ProviderServiceRecord = {
       id: randomUUID(),
       providerAccountId: account.id,
-      settlementMode: settlementModeForNewProviderService(),
+      serviceType: input.serviceType,
+      settlementMode: isMarketplaceServiceType(input.serviceType) ? settlementModeForNewProviderService() : null,
       slug: input.slug,
-      apiNamespace: input.apiNamespace,
+      apiNamespace: isMarketplaceServiceType(input.serviceType) ? input.apiNamespace ?? null : null,
       name: input.name,
       tagline: input.tagline,
       about: input.about,
@@ -1802,7 +1893,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       promptIntro: input.promptIntro,
       setupInstructions: clone(input.setupInstructions),
       websiteUrl: input.websiteUrl ?? account.websiteUrl ?? null,
-      payoutWallet: input.payoutWallet,
+      payoutWallet: isMarketplaceServiceType(input.serviceType) ? input.payoutWallet ?? null : null,
       featured: Boolean(input.featured),
       status: "draft",
       createdAt: timestamp(),
@@ -1836,10 +1927,34 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       return null;
     }
 
+    const nextServiceType = input.serviceType ?? detail.service.serviceType;
+    if (nextServiceType !== detail.service.serviceType) {
+      if (
+        detail.endpoints.length > 0
+        || this.latestSubmittedVersionByServiceId.has(serviceId)
+        || this.latestPublishedVersionByServiceId.has(serviceId)
+        || this.providerRuntimeKeysByServiceId.has(serviceId)
+      ) {
+        throw new Error("serviceType can only change before endpoints, runtime keys, or published versions exist.");
+      }
+    }
+
+    const nextApiNamespace = isMarketplaceServiceType(nextServiceType)
+      ? (input.apiNamespace === undefined ? detail.service.apiNamespace : input.apiNamespace)
+      : null;
+    const nextPayoutWallet = isMarketplaceServiceType(nextServiceType)
+      ? (input.payoutWallet === undefined ? detail.service.payoutWallet : input.payoutWallet)
+      : null;
     const updated: ProviderServiceRecord = {
       ...detail.service,
+      serviceType: nextServiceType,
+      settlementMode: isMarketplaceServiceType(nextServiceType)
+        ? (nextServiceType === detail.service.serviceType
+          ? detail.service.settlementMode ?? settlementModeForNewProviderService()
+          : settlementModeForNewProviderService())
+        : null,
       slug: input.slug ?? detail.service.slug,
-      apiNamespace: input.apiNamespace ?? detail.service.apiNamespace,
+      apiNamespace: nextApiNamespace,
       name: input.name ?? detail.service.name,
       tagline: input.tagline ?? detail.service.tagline,
       about: input.about ?? detail.service.about,
@@ -1847,7 +1962,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       promptIntro: input.promptIntro ?? detail.service.promptIntro,
       setupInstructions: input.setupInstructions ? clone(input.setupInstructions) : detail.service.setupInstructions,
       websiteUrl: input.websiteUrl === undefined ? detail.service.websiteUrl : input.websiteUrl,
-      payoutWallet: input.payoutWallet === undefined ? detail.service.payoutWallet : input.payoutWallet,
+      payoutWallet: nextPayoutWallet,
       featured: input.featured ?? detail.service.featured,
       updatedAt: timestamp()
     };
@@ -1886,7 +2001,60 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       throw new Error("Provider service not found.");
     }
 
-    if (detail.endpoints.some((endpoint) => endpoint.operation === input.operation)) {
+    if (detail.service.serviceType === "external_registry") {
+      if (input.endpointType !== "external_registry") {
+        throw new Error("External services only accept external endpoint drafts.");
+      }
+
+      if (detail.endpoints.some((endpoint) =>
+        isExternalEndpointDraft(endpoint)
+        && endpoint.method === input.method
+        && endpoint.publicUrl === input.publicUrl
+      )) {
+        throw new Error(`External endpoint already exists: ${input.method} ${input.publicUrl}`);
+      }
+
+      const record: ExternalProviderEndpointDraftRecord = {
+        endpointType: "external_registry",
+        id: randomUUID(),
+        serviceId,
+        routeId: null,
+        operation: null,
+        title: input.title,
+        description: input.description,
+        price: null,
+        billing: null,
+        mode: null,
+        requestSchemaJson: null,
+        responseSchemaJson: null,
+        method: input.method,
+        publicUrl: input.publicUrl,
+        docsUrl: input.docsUrl,
+        authNotes: input.authNotes ?? null,
+        requestExample: clone(input.requestExample),
+        responseExample: clone(input.responseExample),
+        usageNotes: input.usageNotes ?? null,
+        executorKind: null,
+        upstreamBaseUrl: null,
+        upstreamPath: null,
+        upstreamAuthMode: null,
+        upstreamAuthHeaderName: null,
+        upstreamSecretRef: null,
+        hasUpstreamSecret: false,
+        payout: null,
+        createdAt: timestamp(),
+        updatedAt: timestamp()
+      };
+
+      this.externalEndpointDraftsById.set(record.id, record);
+      return clone(record);
+    }
+
+    if (input.endpointType !== "marketplace_proxy") {
+      throw new Error("Marketplace services only accept marketplace endpoint drafts.");
+    }
+
+    if (detail.endpoints.some((endpoint) => isMarketplaceEndpointDraft(endpoint) && endpoint.operation === input.operation)) {
       throw new Error(`Operation already exists: ${input.operation}`);
     }
 
@@ -1894,11 +2062,16 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       ? this.createProviderSecretRecord(detail.account.id, secretMaterial).id
       : null;
     const billing = createDraftRouteBilling(input);
+    const apiNamespace = detail.service.apiNamespace;
+    if (!apiNamespace) {
+      throw new Error("Marketplace services require an apiNamespace before creating endpoints.");
+    }
 
-    const record: ProviderEndpointDraftRecord = {
+    const record: MarketplaceProviderEndpointDraftRecord = {
+      endpointType: "marketplace_proxy",
       id: randomUUID(),
       serviceId,
-      routeId: buildRouteId(detail.service.apiNamespace, input.operation),
+      routeId: buildRouteId(apiNamespace, input.operation),
       operation: input.operation,
       title: input.title,
       description: input.description,
@@ -1942,15 +2115,60 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       return null;
     }
 
-    const existing = this.endpointDraftsById.get(endpointId);
+    const existing = this.endpointDraftsById.get(endpointId) ?? this.externalEndpointDraftsById.get(endpointId);
     if (!existing || existing.serviceId !== serviceId) {
       return null;
+    }
+
+    if (existing.endpointType === "external_registry") {
+      if (input.endpointType !== "external_registry") {
+        throw new Error("External endpoint drafts only accept external updates.");
+      }
+
+      const nextMethod = input.method ?? existing.method;
+      const nextPublicUrl = input.publicUrl ?? existing.publicUrl;
+      if (
+        (nextMethod !== existing.method || nextPublicUrl !== existing.publicUrl)
+        && detail.endpoints.some((endpoint) =>
+          endpoint.id !== endpointId
+          && isExternalEndpointDraft(endpoint)
+          && endpoint.method === nextMethod
+          && endpoint.publicUrl === nextPublicUrl
+        )
+      ) {
+        throw new Error(`External endpoint already exists: ${nextMethod} ${nextPublicUrl}`);
+      }
+
+      const updated: ExternalProviderEndpointDraftRecord = {
+        ...existing,
+        title: input.title ?? existing.title,
+        description: input.description ?? existing.description,
+        method: nextMethod,
+        publicUrl: nextPublicUrl,
+        docsUrl: input.docsUrl ?? existing.docsUrl,
+        authNotes: input.authNotes === undefined ? existing.authNotes : input.authNotes,
+        requestExample: input.requestExample === undefined ? existing.requestExample : clone(input.requestExample),
+        responseExample: input.responseExample === undefined ? existing.responseExample : clone(input.responseExample),
+        usageNotes: input.usageNotes === undefined ? existing.usageNotes : input.usageNotes,
+        updatedAt: timestamp()
+      };
+
+      this.externalEndpointDraftsById.set(updated.id, updated);
+      return clone(updated);
+    }
+
+    if (input.endpointType !== "marketplace_proxy") {
+      throw new Error("Marketplace endpoint drafts only accept marketplace updates.");
     }
 
     const nextOperation = input.operation ?? existing.operation;
     if (
       nextOperation !== existing.operation &&
-      detail.endpoints.some((endpoint) => endpoint.id !== endpointId && endpoint.operation === nextOperation)
+      detail.endpoints.some((endpoint) =>
+        endpoint.id !== endpointId
+        && isMarketplaceEndpointDraft(endpoint)
+        && endpoint.operation === nextOperation
+      )
     ) {
       throw new Error(`Operation already exists: ${nextOperation}`);
     }
@@ -1968,10 +2186,14 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       minAmount: input.minAmount ?? (existing.billing.type === "topup_x402_variable" ? existing.billing.minAmount : null),
       maxAmount: input.maxAmount ?? (existing.billing.type === "topup_x402_variable" ? existing.billing.maxAmount : null)
     });
+    const apiNamespace = detail.service.apiNamespace;
+    if (!apiNamespace) {
+      throw new Error("Marketplace services require an apiNamespace before updating endpoints.");
+    }
 
-    const updated: ProviderEndpointDraftRecord = {
+    const updated: MarketplaceProviderEndpointDraftRecord = {
       ...existing,
-      routeId: buildRouteId(detail.service.apiNamespace, nextOperation),
+      routeId: buildRouteId(apiNamespace, nextOperation),
       operation: nextOperation,
       title: input.title ?? existing.title,
       description: input.description ?? existing.description,
@@ -2012,12 +2234,16 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       return false;
     }
 
-    const existing = this.endpointDraftsById.get(endpointId);
+    const existing = this.endpointDraftsById.get(endpointId) ?? this.externalEndpointDraftsById.get(endpointId);
     if (!existing || existing.serviceId !== serviceId) {
       return false;
     }
 
-    this.endpointDraftsById.delete(endpointId);
+    if (existing.endpointType === "marketplace_proxy") {
+      this.endpointDraftsById.delete(endpointId);
+    } else {
+      this.externalEndpointDraftsById.delete(endpointId);
+    }
     return true;
   }
 
@@ -2088,6 +2314,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       versionId: serviceVersionId,
       serviceId,
       providerAccountId: detail.account.id,
+      serviceType: detail.service.serviceType,
       settlementMode: detail.service.settlementMode,
       slug: detail.service.slug,
       apiNamespace: detail.service.apiNamespace,
@@ -2096,7 +2323,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       tagline: detail.service.tagline,
       about: detail.service.about,
       categories: clone(detail.service.categories),
-      routeIds: detail.endpoints.map((endpoint) => endpoint.routeId),
+      routeIds: detail.endpoints.filter(isMarketplaceEndpointDraft).map((endpoint) => endpoint.routeId),
       featured: detail.service.featured,
       promptIntro: detail.service.promptIntro,
       setupInstructions: clone(detail.service.setupInstructions),
@@ -2111,16 +2338,17 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     };
 
     const network = getDefaultMarketplaceNetworkConfig();
-    const publishedEndpoints = detail.endpoints.map<PublishedEndpointVersionRecord>((endpoint) => ({
+    const publishedEndpoints = detail.endpoints.filter(isMarketplaceEndpointDraft).map<PublishedEndpointVersionRecord>((endpoint) => ({
+      endpointType: "marketplace_proxy",
       endpointVersionId: randomUUID(),
       serviceId,
       serviceVersionId,
       endpointDraftId: endpoint.id,
       routeId: endpoint.routeId,
-      provider: detail.service.apiNamespace,
+      provider: detail.service.apiNamespace ?? "unknown",
       operation: endpoint.operation,
       version: versionTag,
-      settlementMode: detail.service.settlementMode,
+      settlementMode: detail.service.settlementMode ?? "verified_escrow",
       mode: endpoint.mode,
       network: network.paymentNetwork,
       price: endpoint.price,
@@ -2142,6 +2370,42 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       createdAt: timestamp(),
       updatedAt: timestamp()
     }));
+    const publishedExternalEndpoints = detail.endpoints.filter(isExternalEndpointDraft).map<PublishedExternalEndpointVersionRecord>((endpoint) => ({
+      endpointType: "external_registry",
+      endpointVersionId: randomUUID(),
+      serviceId,
+      serviceVersionId,
+      endpointDraftId: endpoint.id,
+      routeId: null,
+      provider: null,
+      operation: null,
+      version: null,
+      settlementMode: null,
+      mode: null,
+      network: null,
+      price: null,
+      billing: null,
+      title: endpoint.title,
+      description: endpoint.description,
+      payout: null,
+      method: endpoint.method,
+      publicUrl: endpoint.publicUrl,
+      docsUrl: endpoint.docsUrl,
+      authNotes: endpoint.authNotes,
+      requestExample: clone(endpoint.requestExample),
+      responseExample: clone(endpoint.responseExample),
+      usageNotes: endpoint.usageNotes ?? undefined,
+      requestSchemaJson: null,
+      responseSchemaJson: null,
+      executorKind: null,
+      upstreamBaseUrl: null,
+      upstreamPath: null,
+      upstreamAuthMode: null,
+      upstreamAuthHeaderName: null,
+      upstreamSecretRef: null,
+      createdAt: timestamp(),
+      updatedAt: timestamp()
+    }));
 
     const review: ProviderReviewRecord = {
       id: reviewId,
@@ -2157,6 +2421,9 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     this.publishedServicesByVersionId.set(serviceVersionId, publishedService);
     for (const endpoint of publishedEndpoints) {
       this.publishedEndpointsByVersionId.set(endpoint.endpointVersionId, endpoint);
+    }
+    for (const endpoint of publishedExternalEndpoints) {
+      this.publishedExternalEndpointsByVersionId.set(endpoint.endpointVersionId, endpoint);
     }
 
     const currentReviews = this.reviewsByService.get(serviceId) ?? [];
@@ -2201,9 +2468,14 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       return null;
     }
 
-    const endpoints = Array.from(this.publishedEndpointsByVersionId.values())
-      .filter((endpoint) => endpoint.serviceVersionId === submittedVersionId)
-      .sort((left, right) => left.operation.localeCompare(right.operation));
+    const endpoints: PublishedServiceEndpointVersionRecord[] = [
+      ...Array.from(this.publishedEndpointsByVersionId.values()).filter(
+        (endpoint) => endpoint.serviceVersionId === submittedVersionId
+      ),
+      ...Array.from(this.publishedExternalEndpointsByVersionId.values()).filter(
+        (endpoint) => endpoint.serviceVersionId === submittedVersionId
+      )
+    ].sort((left, right) => left.title.localeCompare(right.title));
 
     return buildSubmittedProviderServiceDetail({
       version,
@@ -2278,7 +2550,9 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       return null;
     }
 
-    const settlementMode = normalizeSettlementMode(input?.settlementMode ?? service.settlementMode, service.settlementMode);
+    const settlementMode = service.serviceType === "marketplace_proxy"
+      ? normalizeSettlementMode(input?.settlementMode ?? service.settlementMode, service.settlementMode ?? "community_direct")
+      : null;
 
     this.latestPublishedVersionByServiceId.set(serviceId, version.versionId);
     this.providerServicesById.set(serviceId, {
@@ -2294,16 +2568,18 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       publishedAt: timestamp(),
       updatedAt: timestamp()
     });
-    for (const [endpointVersionId, endpoint] of this.publishedEndpointsByVersionId.entries()) {
-      if (endpoint.serviceVersionId !== version.versionId) {
-        continue;
-      }
+    if (settlementMode) {
+      for (const [endpointVersionId, endpoint] of this.publishedEndpointsByVersionId.entries()) {
+        if (endpoint.serviceVersionId !== version.versionId) {
+          continue;
+        }
 
-      this.publishedEndpointsByVersionId.set(endpointVersionId, {
-        ...endpoint,
-        settlementMode,
-        updatedAt: timestamp()
-      });
+        this.publishedEndpointsByVersionId.set(endpointVersionId, {
+          ...endpoint,
+          settlementMode,
+          updatedAt: timestamp()
+        });
+      }
     }
     this.reviewsByService.set(
       serviceId,
@@ -2336,7 +2612,11 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       return null;
     }
 
-    const settlementMode = normalizeSettlementMode(input.settlementMode, service.settlementMode);
+    if (service.serviceType === "external_registry") {
+      return this.buildProviderServiceDetail(serviceId);
+    }
+
+    const settlementMode = normalizeSettlementMode(input.settlementMode, service.settlementMode ?? "community_direct");
     this.providerServicesById.set(serviceId, {
       ...service,
       settlementMode,
@@ -2580,7 +2860,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     return record;
   }
 
-  private assertServiceUniqueness(slug: string, apiNamespace: string, serviceId?: string) {
+  private assertServiceUniqueness(slug: string, apiNamespace: string | null, serviceId?: string) {
     for (const service of this.providerServicesById.values()) {
       if (service.id === serviceId) {
         continue;
@@ -2590,7 +2870,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
         throw new Error(`Service slug already exists: ${slug}`);
       }
 
-      if (service.apiNamespace === apiNamespace) {
+      if (apiNamespace && service.apiNamespace === apiNamespace) {
         throw new Error(`API namespace already exists: ${apiNamespace}`);
       }
     }
@@ -2607,7 +2887,10 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       throw new Error(`Provider account not found: ${service.providerAccountId}`);
     }
 
-    const endpoints = Array.from(this.endpointDraftsById.values()).filter((endpoint) => endpoint.serviceId === serviceId);
+    const endpoints = [
+      ...Array.from(this.endpointDraftsById.values()).filter((endpoint) => endpoint.serviceId === serviceId),
+      ...Array.from(this.externalEndpointDraftsById.values()).filter((endpoint) => endpoint.serviceId === serviceId)
+    ];
     const verification = latestByCreatedAt(this.verificationByService.get(serviceId) ?? []);
     const latestReview = latestByCreatedAt(this.reviewsByService.get(serviceId) ?? []);
 
@@ -2776,9 +3059,10 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       CREATE TABLE IF NOT EXISTS provider_services (
         id TEXT PRIMARY KEY,
         provider_account_id TEXT NOT NULL REFERENCES provider_accounts(id),
-        settlement_mode TEXT NOT NULL DEFAULT 'community_direct',
+        service_type TEXT NOT NULL DEFAULT 'marketplace_proxy',
+        settlement_mode TEXT DEFAULT 'community_direct',
         slug TEXT NOT NULL UNIQUE,
-        api_namespace TEXT NOT NULL UNIQUE,
+        api_namespace TEXT UNIQUE,
         name TEXT NOT NULL,
         tagline TEXT NOT NULL,
         about TEXT NOT NULL,
@@ -2834,6 +3118,23 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         UNIQUE(service_id, operation)
       );
 
+      CREATE TABLE IF NOT EXISTS provider_external_endpoint_drafts (
+        id TEXT PRIMARY KEY,
+        service_id TEXT NOT NULL REFERENCES provider_services(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        method TEXT NOT NULL,
+        public_url TEXT NOT NULL,
+        docs_url TEXT NOT NULL,
+        auth_notes TEXT,
+        request_example JSONB NOT NULL,
+        response_example JSONB NOT NULL,
+        usage_notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(service_id, method, public_url)
+      );
+
       CREATE TABLE IF NOT EXISTS provider_verifications (
         id TEXT PRIMARY KEY,
         service_id TEXT NOT NULL REFERENCES provider_services(id) ON DELETE CASCADE,
@@ -2849,9 +3150,10 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         version_id TEXT PRIMARY KEY,
         service_id TEXT NOT NULL REFERENCES provider_services(id) ON DELETE CASCADE,
         provider_account_id TEXT NOT NULL REFERENCES provider_accounts(id),
-        settlement_mode TEXT NOT NULL DEFAULT 'verified_escrow',
+        service_type TEXT NOT NULL DEFAULT 'marketplace_proxy',
+        settlement_mode TEXT DEFAULT 'verified_escrow',
         slug TEXT NOT NULL,
-        api_namespace TEXT NOT NULL,
+        api_namespace TEXT,
         name TEXT NOT NULL,
         owner_name TEXT NOT NULL,
         tagline TEXT NOT NULL,
@@ -2899,6 +3201,24 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         upstream_auth_mode TEXT,
         upstream_auth_header_name TEXT,
         upstream_secret_ref TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS published_external_endpoint_versions (
+        endpoint_version_id TEXT PRIMARY KEY,
+        service_id TEXT NOT NULL REFERENCES provider_services(id) ON DELETE CASCADE,
+        service_version_id TEXT NOT NULL REFERENCES published_service_versions(version_id) ON DELETE CASCADE,
+        endpoint_draft_id TEXT,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        method TEXT NOT NULL,
+        public_url TEXT NOT NULL,
+        docs_url TEXT NOT NULL,
+        auth_notes TEXT,
+        request_example JSONB NOT NULL,
+        response_example JSONB NOT NULL,
+        usage_notes TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
@@ -3080,7 +3400,13 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       ADD COLUMN IF NOT EXISTS billing JSONB NOT NULL DEFAULT '{}'::jsonb;
 
       ALTER TABLE provider_services
+      ADD COLUMN IF NOT EXISTS service_type TEXT NOT NULL DEFAULT 'marketplace_proxy';
+
+      ALTER TABLE provider_services
       ADD COLUMN IF NOT EXISTS settlement_mode TEXT;
+
+      ALTER TABLE published_service_versions
+      ADD COLUMN IF NOT EXISTS service_type TEXT NOT NULL DEFAULT 'marketplace_proxy';
 
       ALTER TABLE published_service_versions
       ADD COLUMN IF NOT EXISTS settlement_mode TEXT;
@@ -3090,6 +3416,14 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
 
       ALTER TABLE published_endpoint_versions
       ADD COLUMN IF NOT EXISTS billing JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+      UPDATE provider_services
+      SET service_type = 'marketplace_proxy'
+      WHERE service_type IS NULL;
+
+      UPDATE published_service_versions
+      SET service_type = 'marketplace_proxy'
+      WHERE service_type IS NULL;
 
       UPDATE provider_services
       SET settlement_mode = 'verified_escrow'
@@ -3147,16 +3481,22 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       ALTER COLUMN pending_recovery_action SET NOT NULL;
 
       ALTER TABLE provider_services
+      ALTER COLUMN api_namespace DROP NOT NULL;
+
+      ALTER TABLE provider_services
       ALTER COLUMN settlement_mode SET DEFAULT 'community_direct';
 
       ALTER TABLE provider_services
-      ALTER COLUMN settlement_mode SET NOT NULL;
+      ALTER COLUMN settlement_mode DROP NOT NULL;
+
+      ALTER TABLE published_service_versions
+      ALTER COLUMN api_namespace DROP NOT NULL;
 
       ALTER TABLE published_service_versions
       ALTER COLUMN settlement_mode SET DEFAULT 'verified_escrow';
 
       ALTER TABLE published_service_versions
-      ALTER COLUMN settlement_mode SET NOT NULL;
+      ALTER COLUMN settlement_mode DROP NOT NULL;
 
       ALTER TABLE published_endpoint_versions
       ALTER COLUMN settlement_mode SET DEFAULT 'verified_escrow';
@@ -3214,6 +3554,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       ["provider_accounts", "bio"],
       ["provider_accounts", "website_url"],
       ["provider_accounts", "contact_email"],
+      ["provider_services", "service_type"],
       ["provider_services", "slug"],
       ["provider_services", "api_namespace"],
       ["provider_services", "settlement_mode"],
@@ -3239,6 +3580,13 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       ["provider_endpoint_drafts", "upstream_auth_mode"],
       ["provider_endpoint_drafts", "upstream_auth_header_name"],
       ["provider_endpoint_drafts", "upstream_secret_ref"],
+      ["provider_external_endpoint_drafts", "title"],
+      ["provider_external_endpoint_drafts", "description"],
+      ["provider_external_endpoint_drafts", "method"],
+      ["provider_external_endpoint_drafts", "public_url"],
+      ["provider_external_endpoint_drafts", "docs_url"],
+      ["provider_external_endpoint_drafts", "auth_notes"],
+      ["provider_external_endpoint_drafts", "usage_notes"],
       ["provider_verifications", "token"],
       ["provider_verifications", "status"],
       ["provider_verifications", "verified_host"],
@@ -3246,6 +3594,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       ["provider_reviews", "status"],
       ["provider_reviews", "review_notes"],
       ["provider_reviews", "reviewer_identity"],
+      ["published_service_versions", "service_type"],
       ["published_service_versions", "slug"],
       ["published_service_versions", "api_namespace"],
       ["published_service_versions", "settlement_mode"],
@@ -3276,6 +3625,13 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       ["published_endpoint_versions", "upstream_auth_mode"],
       ["published_endpoint_versions", "upstream_auth_header_name"],
       ["published_endpoint_versions", "upstream_secret_ref"],
+      ["published_external_endpoint_versions", "title"],
+      ["published_external_endpoint_versions", "description"],
+      ["published_external_endpoint_versions", "method"],
+      ["published_external_endpoint_versions", "public_url"],
+      ["published_external_endpoint_versions", "docs_url"],
+      ["published_external_endpoint_versions", "auth_notes"],
+      ["published_external_endpoint_versions", "usage_notes"],
       ["provider_secrets", "label"],
       ["provider_secrets", "secret_ciphertext"],
       ["provider_secrets", "iv"],
@@ -3411,14 +3767,15 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         await client.query(
           `
           INSERT INTO provider_services (
-            id, provider_account_id, settlement_mode, slug, api_namespace, name, tagline, about, categories, prompt_intro,
+            id, provider_account_id, service_type, settlement_mode, slug, api_namespace, name, tagline, about, categories, prompt_intro,
             setup_instructions, website_url, payout_wallet, featured, status, latest_submitted_version_id,
             latest_published_version_id, latest_review_id, created_at, updated_at
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11::jsonb, $12, $13, $14, $15, $16, $17, NULL, $18, $19
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, NULL, $19, $20
           )
           ON CONFLICT (id) DO UPDATE SET
             provider_account_id = EXCLUDED.provider_account_id,
+            service_type = EXCLUDED.service_type,
             settlement_mode = EXCLUDED.settlement_mode,
             slug = EXCLUDED.slug,
             api_namespace = EXCLUDED.api_namespace,
@@ -3439,6 +3796,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
           [
             service.id,
             service.providerAccountId,
+            service.serviceType,
             service.settlementMode,
             service.slug,
             service.apiNamespace,
@@ -3525,14 +3883,15 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         await client.query(
           `
           INSERT INTO published_service_versions (
-            version_id, service_id, provider_account_id, settlement_mode, slug, api_namespace, name, owner_name, tagline, about,
+            version_id, service_id, provider_account_id, service_type, settlement_mode, slug, api_namespace, name, owner_name, tagline, about,
             categories, route_ids, featured, prompt_intro, setup_instructions, website_url, contact_email,
             payout_wallet, status, submitted_review_id, published_at, created_at, updated_at
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13, $14, $15::jsonb, $16, $17,
-            $18, $19, $20, $21, $22, $23
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14, $15, $16::jsonb, $17, $18,
+            $19, $20, $21, $22, $23, $24
           )
           ON CONFLICT (version_id) DO UPDATE SET
+            service_type = EXCLUDED.service_type,
             settlement_mode = EXCLUDED.settlement_mode,
             owner_name = EXCLUDED.owner_name,
             tagline = EXCLUDED.tagline,
@@ -3552,6 +3911,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
             publishedService.versionId,
             publishedService.serviceId,
             publishedService.providerAccountId,
+            publishedService.serviceType,
             publishedService.settlementMode,
             publishedService.slug,
             publishedService.apiNamespace,
@@ -5400,7 +5760,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     return result.rows.map(mapPublishedServiceVersionRow);
   }
 
-  async getPublishedServiceBySlug(slug: string): Promise<{ service: PublishedServiceVersionRecord; endpoints: PublishedEndpointVersionRecord[] } | null> {
+  async getPublishedServiceBySlug(slug: string): Promise<{ service: PublishedServiceVersionRecord; endpoints: PublishedServiceEndpointVersionRecord[] } | null> {
     const serviceResult = await this.pool.query(
       `
       SELECT v.*
@@ -5417,18 +5777,31 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     }
 
     const service = mapPublishedServiceVersionRow(serviceResult.rows[0]);
-    const endpointsResult = await this.pool.query(
-      `
-      SELECT * FROM published_endpoint_versions
-      WHERE service_version_id = $1
-      ORDER BY operation ASC
-      `,
-      [service.versionId]
-    );
+    const [endpointsResult, externalEndpointsResult] = await Promise.all([
+      this.pool.query(
+        `
+        SELECT * FROM published_endpoint_versions
+        WHERE service_version_id = $1
+        ORDER BY operation ASC
+        `,
+        [service.versionId]
+      ),
+      this.pool.query(
+        `
+        SELECT * FROM published_external_endpoint_versions
+        WHERE service_version_id = $1
+        ORDER BY title ASC
+        `,
+        [service.versionId]
+      )
+    ]);
 
     return {
       service,
-      endpoints: endpointsResult.rows.map(mapPublishedEndpointVersionRow)
+      endpoints: [
+        ...endpointsResult.rows.map(mapPublishedEndpointVersionRow),
+        ...externalEndpointsResult.rows.map(mapPublishedExternalEndpointVersionRow)
+      ]
     };
   }
 
@@ -5520,21 +5893,22 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       throw new Error("Provider account not found.");
     }
 
-    await this.assertServiceUniqueness(input.slug, input.apiNamespace);
+    await this.assertServiceUniqueness(input.slug, input.apiNamespace ?? null);
     const id = randomUUID();
     await this.pool.query(
       `
       INSERT INTO provider_services (
-        id, provider_account_id, settlement_mode, slug, api_namespace, name, tagline, about, categories,
+        id, provider_account_id, service_type, settlement_mode, slug, api_namespace, name, tagline, about, categories,
         prompt_intro, setup_instructions, website_url, payout_wallet, featured, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11::jsonb, $12, $13, $14, 'draft')
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12::jsonb, $13, $14, $15, 'draft')
       `,
       [
         id,
         account.id,
-        settlementModeForNewProviderService(),
+        input.serviceType,
+        isMarketplaceServiceType(input.serviceType) ? settlementModeForNewProviderService() : null,
         input.slug,
-        input.apiNamespace,
+        isMarketplaceServiceType(input.serviceType) ? input.apiNamespace ?? null : null,
         input.name,
         input.tagline,
         input.about,
@@ -5542,7 +5916,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         input.promptIntro,
         JSON.stringify(input.setupInstructions),
         input.websiteUrl ?? account.websiteUrl ?? null,
-        input.payoutWallet,
+        isMarketplaceServiceType(input.serviceType) ? input.payoutWallet ?? null : null,
         Boolean(input.featured)
       ]
     );
@@ -5573,9 +5947,25 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       return null;
     }
 
+    const nextServiceType = input.serviceType ?? detail.service.serviceType;
+    if (nextServiceType !== detail.service.serviceType) {
+      if (
+        detail.endpoints.length > 0
+        || detail.latestPublishedVersionId
+        || detail.latestReview
+        || await this.getProviderRuntimeKeyForOwner(serviceId, wallet)
+      ) {
+        throw new Error("serviceType can only change before endpoints, runtime keys, or published versions exist.");
+      }
+    }
+
     const nextSlug = input.slug ?? detail.service.slug;
-    const nextNamespace = input.apiNamespace ?? detail.service.apiNamespace;
-    const nextPayoutWallet = input.payoutWallet === undefined ? detail.service.payoutWallet : input.payoutWallet;
+    const nextNamespace = isMarketplaceServiceType(nextServiceType)
+      ? (input.apiNamespace === undefined ? detail.service.apiNamespace : input.apiNamespace)
+      : null;
+    const nextPayoutWallet = isMarketplaceServiceType(nextServiceType)
+      ? (input.payoutWallet === undefined ? detail.service.payoutWallet : input.payoutWallet)
+      : null;
     await this.assertServiceUniqueness(nextSlug, nextNamespace, serviceId);
 
     const client = await this.pool.connect();
@@ -5586,23 +5976,31 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         `
         UPDATE provider_services
         SET
-          slug = $2,
-          api_namespace = $3,
-          name = $4,
-          tagline = $5,
-          about = $6,
-          categories = $7::jsonb,
-          prompt_intro = $8,
-          setup_instructions = $9::jsonb,
-          website_url = $10,
-          payout_wallet = $11,
-          featured = $12,
+          service_type = $2,
+          settlement_mode = $3,
+          slug = $4,
+          api_namespace = $5,
+          name = $6,
+          tagline = $7,
+          about = $8,
+          categories = $9::jsonb,
+          prompt_intro = $10,
+          setup_instructions = $11::jsonb,
+          website_url = $12,
+          payout_wallet = $13,
+          featured = $14,
           updated_at = NOW()
         WHERE id = $1
         RETURNING *
         `,
         [
           serviceId,
+          nextServiceType,
+          isMarketplaceServiceType(nextServiceType)
+            ? (nextServiceType === detail.service.serviceType
+              ? detail.service.settlementMode ?? settlementModeForNewProviderService()
+              : settlementModeForNewProviderService())
+            : null,
           nextSlug,
           nextNamespace,
           input.name ?? detail.service.name,
@@ -5664,6 +6062,42 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       throw new Error("Provider service not found.");
     }
 
+    if (detail.service.serviceType === "external_registry") {
+      if (input.endpointType !== "external_registry") {
+        throw new Error("External services only accept external endpoint drafts.");
+      }
+
+      const result = await this.pool.query(
+        `
+        INSERT INTO provider_external_endpoint_drafts (
+          id, service_id, title, description, method, public_url, docs_url, auth_notes, request_example, response_example, usage_notes
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11
+        )
+        RETURNING *
+        `,
+        [
+          randomUUID(),
+          serviceId,
+          input.title,
+          input.description,
+          input.method,
+          input.publicUrl,
+          input.docsUrl,
+          input.authNotes ?? null,
+          JSON.stringify(input.requestExample),
+          JSON.stringify(input.responseExample),
+          input.usageNotes ?? null
+        ]
+      );
+
+      return mapProviderExternalEndpointDraftRow(result.rows[0]);
+    }
+
+    if (input.endpointType !== "marketplace_proxy") {
+      throw new Error("Marketplace services only accept marketplace endpoint drafts.");
+    }
+
     const secretRef = secretMaterial
       ? (
           await this.pool.query(
@@ -5684,6 +6118,10 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         ).rows[0].id as string
       : null;
     const billing = createDraftRouteBilling(input);
+    const apiNamespace = detail.service.apiNamespace;
+    if (!apiNamespace) {
+      throw new Error("Marketplace services require an apiNamespace before creating endpoints.");
+    }
 
     const result = await this.pool.query(
       `
@@ -5700,7 +6138,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       [
         randomUUID(),
         serviceId,
-        buildRouteId(detail.service.apiNamespace, input.operation),
+        buildRouteId(apiNamespace, input.operation),
         input.operation,
         input.title,
         input.description,
@@ -5741,12 +6179,63 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       return null;
     }
 
-    const existingResult = await this.pool.query(
-      "SELECT * FROM provider_endpoint_drafts WHERE id = $1 AND service_id = $2",
-      [endpointId, serviceId]
-    );
-    if (!existingResult.rowCount) {
+    const [existingResult, existingExternalResult] = await Promise.all([
+      this.pool.query(
+        "SELECT * FROM provider_endpoint_drafts WHERE id = $1 AND service_id = $2",
+        [endpointId, serviceId]
+      ),
+      this.pool.query(
+        "SELECT * FROM provider_external_endpoint_drafts WHERE id = $1 AND service_id = $2",
+        [endpointId, serviceId]
+      )
+    ]);
+    if (!existingResult.rowCount && !existingExternalResult.rowCount) {
       return null;
+    }
+
+    if (existingExternalResult.rowCount) {
+      if (input.endpointType !== "external_registry") {
+        throw new Error("External endpoint drafts only accept external updates.");
+      }
+
+      const existing = mapProviderExternalEndpointDraftRow(existingExternalResult.rows[0]);
+      const result = await this.pool.query(
+        `
+        UPDATE provider_external_endpoint_drafts
+        SET
+          title = $3,
+          description = $4,
+          method = $5,
+          public_url = $6,
+          docs_url = $7,
+          auth_notes = $8,
+          request_example = $9::jsonb,
+          response_example = $10::jsonb,
+          usage_notes = $11,
+          updated_at = NOW()
+        WHERE id = $1 AND service_id = $2
+        RETURNING *
+        `,
+        [
+          endpointId,
+          serviceId,
+          input.title ?? existing.title,
+          input.description ?? existing.description,
+          input.method ?? existing.method,
+          input.publicUrl ?? existing.publicUrl,
+          input.docsUrl ?? existing.docsUrl,
+          input.authNotes === undefined ? existing.authNotes : input.authNotes,
+          JSON.stringify(input.requestExample === undefined ? existing.requestExample : input.requestExample),
+          JSON.stringify(input.responseExample === undefined ? existing.responseExample : input.responseExample),
+          input.usageNotes === undefined ? existing.usageNotes : input.usageNotes
+        ]
+      );
+
+      return result.rowCount ? mapProviderExternalEndpointDraftRow(result.rows[0]) : null;
+    }
+
+    if (input.endpointType !== "marketplace_proxy") {
+      throw new Error("Marketplace endpoint drafts only accept marketplace updates.");
     }
 
     const existing = mapProviderEndpointDraftRow(existingResult.rows[0]);
@@ -5775,6 +6264,10 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     }
 
     const operation = input.operation ?? existing.operation;
+    const apiNamespace = detail.service.apiNamespace;
+    if (!apiNamespace) {
+      throw new Error("Marketplace services require an apiNamespace before updating endpoints.");
+    }
     const billing = createDraftRouteBilling({
       billingType: input.billingType ?? existing.billing.type,
       price: input.price ?? existing.price,
@@ -5810,7 +6303,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       [
         endpointId,
         serviceId,
-        buildRouteId(detail.service.apiNamespace, operation),
+        buildRouteId(apiNamespace, operation),
         operation,
         input.title ?? existing.title,
         input.description ?? existing.description,
@@ -5848,11 +6341,17 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       return false;
     }
 
-    const result = await this.pool.query(
-      "DELETE FROM provider_endpoint_drafts WHERE id = $1 AND service_id = $2",
-      [endpointId, serviceId]
-    );
-    return Boolean(result.rowCount);
+    const [result, externalResult] = await Promise.all([
+      this.pool.query(
+        "DELETE FROM provider_endpoint_drafts WHERE id = $1 AND service_id = $2",
+        [endpointId, serviceId]
+      ),
+      this.pool.query(
+        "DELETE FROM provider_external_endpoint_drafts WHERE id = $1 AND service_id = $2",
+        [endpointId, serviceId]
+      )
+    ]);
+    return Boolean(result.rowCount || externalResult.rowCount);
   }
 
   async createProviderVerificationChallenge(serviceId: string, wallet: string): Promise<ProviderVerificationRecord | null> {
@@ -5934,17 +6433,18 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       await client.query(
         `
         INSERT INTO published_service_versions (
-          version_id, service_id, provider_account_id, settlement_mode, slug, api_namespace, name, owner_name, tagline, about,
+          version_id, service_id, provider_account_id, service_type, settlement_mode, slug, api_namespace, name, owner_name, tagline, about,
           categories, route_ids, featured, prompt_intro, setup_instructions, website_url, contact_email,
           payout_wallet, status, submitted_review_id
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13, $14, $15::jsonb, $16, $17, $18, 'pending_review', $19
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14, $15, $16::jsonb, $17, $18, $19, 'pending_review', $20
         )
         `,
         [
           serviceVersionId,
           serviceId,
           detail.account.id,
+          detail.service.serviceType,
           detail.service.settlementMode,
           detail.service.slug,
           detail.service.apiNamespace,
@@ -5953,7 +6453,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
           detail.service.tagline,
           detail.service.about,
           JSON.stringify(detail.service.categories),
-          JSON.stringify(detail.endpoints.map((endpoint) => endpoint.routeId)),
+          JSON.stringify(detail.endpoints.filter(isMarketplaceEndpointDraft).map((endpoint) => endpoint.routeId)),
           detail.service.featured,
           detail.service.promptIntro,
           JSON.stringify(detail.service.setupInstructions),
@@ -5964,7 +6464,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         ]
       );
 
-      for (const endpoint of detail.endpoints) {
+      for (const endpoint of detail.endpoints.filter(isMarketplaceEndpointDraft)) {
         await client.query(
           `
           INSERT INTO published_endpoint_versions (
@@ -6005,6 +6505,34 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
             endpoint.upstreamAuthMode,
             endpoint.upstreamAuthHeaderName,
             endpoint.upstreamSecretRef
+          ]
+        );
+      }
+
+      for (const endpoint of detail.endpoints.filter(isExternalEndpointDraft)) {
+        await client.query(
+          `
+          INSERT INTO published_external_endpoint_versions (
+            endpoint_version_id, service_id, service_version_id, endpoint_draft_id, title, description, method, public_url,
+            docs_url, auth_notes, request_example, response_example, usage_notes
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13
+          )
+          `,
+          [
+            randomUUID(),
+            serviceId,
+            serviceVersionId,
+            endpoint.id,
+            endpoint.title,
+            endpoint.description,
+            endpoint.method,
+            endpoint.publicUrl,
+            endpoint.docsUrl,
+            endpoint.authNotes,
+            JSON.stringify(endpoint.requestExample),
+            JSON.stringify(endpoint.responseExample),
+            endpoint.usageNotes
           ]
         );
       }
@@ -6065,13 +6593,21 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       return null;
     }
 
-    const [serviceResult, endpointsResult] = await Promise.all([
+    const [serviceResult, endpointsResult, externalEndpointsResult] = await Promise.all([
       this.pool.query("SELECT * FROM published_service_versions WHERE version_id = $1", [submittedVersionId]),
       this.pool.query(
         `
         SELECT * FROM published_endpoint_versions
         WHERE service_version_id = $1
         ORDER BY operation ASC
+        `,
+        [submittedVersionId]
+      ),
+      this.pool.query(
+        `
+        SELECT * FROM published_external_endpoint_versions
+        WHERE service_version_id = $1
+        ORDER BY title ASC
         `,
         [submittedVersionId]
       )
@@ -6084,7 +6620,10 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     return buildSubmittedProviderServiceDetail({
       version: mapPublishedServiceVersionRow(serviceResult.rows[0]),
       account: detail.account,
-      endpoints: endpointsResult.rows.map(mapPublishedEndpointVersionRow),
+      endpoints: [
+        ...endpointsResult.rows.map(mapPublishedEndpointVersionRow),
+        ...externalEndpointsResult.rows.map(mapPublishedExternalEndpointVersionRow)
+      ],
       verification: detail.verification,
       latestReview: detail.latestReview,
       latestPublishedVersionId: detail.latestPublishedVersionId
@@ -6142,7 +6681,12 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       return null;
     }
 
-    const settlementMode = normalizeSettlementMode(input?.settlementMode ?? service.service.settlementMode, service.service.settlementMode);
+    const settlementMode = service.service.serviceType === "marketplace_proxy"
+      ? normalizeSettlementMode(
+        input?.settlementMode ?? service.service.settlementMode,
+        service.service.settlementMode ?? "community_direct"
+      )
+      : null;
 
     await this.pool.query(
       `
@@ -6160,14 +6704,16 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       `,
       [serviceId, submittedVersionId, settlementMode]
     );
-    await this.pool.query(
-      `
-      UPDATE published_endpoint_versions
-      SET settlement_mode = $3, updated_at = NOW()
-      WHERE service_id = $1 AND service_version_id = $2
-      `,
-      [serviceId, submittedVersionId, settlementMode]
-    );
+    if (settlementMode) {
+      await this.pool.query(
+        `
+        UPDATE published_endpoint_versions
+        SET settlement_mode = $3, updated_at = NOW()
+        WHERE service_id = $1 AND service_version_id = $2
+        `,
+        [serviceId, submittedVersionId, settlementMode]
+      );
+    }
     await this.pool.query(
       `
       UPDATE provider_services
@@ -6194,7 +6740,11 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       return null;
     }
 
-    const settlementMode = normalizeSettlementMode(input.settlementMode, service.service.settlementMode);
+    if (service.service.serviceType === "external_registry") {
+      return this.getProviderServiceDetailById(serviceId);
+    }
+
+    const settlementMode = normalizeSettlementMode(input.settlementMode, service.service.settlementMode ?? "community_direct");
     const versionIds = Array.from(
       new Set(
         [
@@ -6453,12 +7003,12 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     return mapSuggestionRow(result.rows[0]);
   }
 
-  private async assertServiceUniqueness(slug: string, apiNamespace: string, serviceId?: string) {
+  private async assertServiceUniqueness(slug: string, apiNamespace: string | null, serviceId?: string) {
     const result = await this.pool.query(
       `
       SELECT id, slug, api_namespace
       FROM provider_services
-      WHERE (slug = $1 OR api_namespace = $2)
+      WHERE (slug = $1 OR ($2::text IS NOT NULL AND api_namespace = $2))
         AND ($3::text IS NULL OR id <> $3)
       LIMIT 1
       `,
@@ -6473,7 +7023,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       throw new Error(`Service slug already exists: ${slug}`);
     }
 
-    throw new Error(`API namespace already exists: ${apiNamespace}`);
+    throw new Error(`API namespace already exists: ${apiNamespace ?? ""}`);
   }
 
   private async getProviderServiceDetailById(serviceId: string): Promise<ProviderServiceDetailRecord> {
@@ -6489,10 +7039,18 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     }
     const account = mapProviderAccountRow(accountResult.rows[0]);
 
-    const [endpointsResult, verificationResult, reviewResult] = await Promise.all([
+    const [endpointsResult, externalEndpointsResult, verificationResult, reviewResult] = await Promise.all([
       this.pool.query(
         `
         SELECT * FROM provider_endpoint_drafts
+        WHERE service_id = $1
+        ORDER BY updated_at DESC
+        `,
+        [serviceId]
+      ),
+      this.pool.query(
+        `
+        SELECT * FROM provider_external_endpoint_drafts
         WHERE service_id = $1
         ORDER BY updated_at DESC
         `,
@@ -6521,7 +7079,10 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     return buildProviderServiceDetail({
       service,
       account,
-      endpoints: endpointsResult.rows.map(mapProviderEndpointDraftRow),
+      endpoints: [
+        ...endpointsResult.rows.map(mapProviderEndpointDraftRow),
+        ...externalEndpointsResult.rows.map(mapProviderExternalEndpointDraftRow)
+      ],
       verification: verificationResult.rowCount ? mapProviderVerificationRow(verificationResult.rows[0]) : null,
       latestReview: reviewResult.rowCount ? mapProviderReviewRow(reviewResult.rows[0]) : null,
       latestPublishedVersionId:
@@ -6670,9 +7231,12 @@ function mapProviderServiceRow(row: Record<string, unknown>): ProviderServiceRec
   return {
     id: row.id as string,
     providerAccountId: row.provider_account_id as string,
-    settlementMode: normalizeSettlementMode(row.settlement_mode as SettlementMode | null | undefined, "community_direct"),
+    serviceType: ((row.service_type as ProviderServiceType | null) ?? "marketplace_proxy"),
+    settlementMode: row.settlement_mode
+      ? normalizeSettlementMode(row.settlement_mode as SettlementMode | null | undefined, "community_direct")
+      : null,
     slug: row.slug as string,
-    apiNamespace: row.api_namespace as string,
+    apiNamespace: (row.api_namespace as string | null) ?? null,
     name: row.name as string,
     tagline: row.tagline as string,
     about: row.about as string,
@@ -6688,9 +7252,10 @@ function mapProviderServiceRow(row: Record<string, unknown>): ProviderServiceRec
   };
 }
 
-function mapProviderEndpointDraftRow(row: Record<string, unknown>): ProviderEndpointDraftRecord {
-  const billing = normalizeRouteBilling(row.price as string, row.billing as ProviderEndpointDraftRecord["billing"]);
+function mapProviderEndpointDraftRow(row: Record<string, unknown>): MarketplaceProviderEndpointDraftRecord {
+  const billing = normalizeRouteBilling(row.price as string, row.billing as MarketplaceProviderEndpointDraftRecord["billing"]);
   return {
+    endpointType: "marketplace_proxy",
     id: row.id as string,
     serviceId: row.service_id as string,
     routeId: row.route_id as string,
@@ -6699,20 +7264,54 @@ function mapProviderEndpointDraftRow(row: Record<string, unknown>): ProviderEndp
     description: row.description as string,
     price: row.price as string,
     billing,
-    mode: row.mode as ProviderEndpointDraftRecord["mode"],
-    requestSchemaJson: row.request_schema_json as ProviderEndpointDraftRecord["requestSchemaJson"],
-    responseSchemaJson: row.response_schema_json as ProviderEndpointDraftRecord["responseSchemaJson"],
+    mode: row.mode as MarketplaceProviderEndpointDraftRecord["mode"],
+    requestSchemaJson: row.request_schema_json as MarketplaceProviderEndpointDraftRecord["requestSchemaJson"],
+    responseSchemaJson: row.response_schema_json as MarketplaceProviderEndpointDraftRecord["responseSchemaJson"],
     requestExample: row.request_example,
     responseExample: row.response_example,
     usageNotes: (row.usage_notes as string | null) ?? null,
-    executorKind: row.executor_kind as ProviderEndpointDraftRecord["executorKind"],
+    executorKind: row.executor_kind as MarketplaceProviderEndpointDraftRecord["executorKind"],
     upstreamBaseUrl: (row.upstream_base_url as string | null) ?? null,
     upstreamPath: (row.upstream_path as string | null) ?? null,
-    upstreamAuthMode: (row.upstream_auth_mode as ProviderEndpointDraftRecord["upstreamAuthMode"]) ?? null,
+    upstreamAuthMode: (row.upstream_auth_mode as MarketplaceProviderEndpointDraftRecord["upstreamAuthMode"]) ?? null,
     upstreamAuthHeaderName: (row.upstream_auth_header_name as string | null) ?? null,
     upstreamSecretRef: (row.upstream_secret_ref as string | null) ?? null,
     hasUpstreamSecret: Boolean(row.upstream_secret_ref),
-    payout: row.payout as ProviderEndpointDraftRecord["payout"],
+    payout: row.payout as MarketplaceProviderEndpointDraftRecord["payout"],
+    createdAt: new Date(row.created_at as string | Date).toISOString(),
+    updatedAt: new Date(row.updated_at as string | Date).toISOString()
+  };
+}
+
+function mapProviderExternalEndpointDraftRow(row: Record<string, unknown>): ExternalProviderEndpointDraftRecord {
+  return {
+    endpointType: "external_registry",
+    id: row.id as string,
+    serviceId: row.service_id as string,
+    routeId: null,
+    operation: null,
+    title: row.title as string,
+    description: row.description as string,
+    price: null,
+    billing: null,
+    mode: null,
+    requestSchemaJson: null,
+    responseSchemaJson: null,
+    method: row.method as ExternalProviderEndpointDraftRecord["method"],
+    publicUrl: row.public_url as string,
+    docsUrl: row.docs_url as string,
+    authNotes: (row.auth_notes as string | null) ?? null,
+    requestExample: row.request_example,
+    responseExample: row.response_example,
+    usageNotes: (row.usage_notes as string | null) ?? null,
+    executorKind: null,
+    upstreamBaseUrl: null,
+    upstreamPath: null,
+    upstreamAuthMode: null,
+    upstreamAuthHeaderName: null,
+    upstreamSecretRef: null,
+    hasUpstreamSecret: false,
+    payout: null,
     createdAt: new Date(row.created_at as string | Date).toISOString(),
     updatedAt: new Date(row.updated_at as string | Date).toISOString()
   };
@@ -6749,9 +7348,12 @@ function mapPublishedServiceVersionRow(row: Record<string, unknown>): PublishedS
     versionId: row.version_id as string,
     serviceId: row.service_id as string,
     providerAccountId: row.provider_account_id as string,
-    settlementMode: normalizeSettlementMode(row.settlement_mode as SettlementMode | null | undefined),
+    serviceType: ((row.service_type as ProviderServiceType | null) ?? "marketplace_proxy"),
+    settlementMode: row.settlement_mode
+      ? normalizeSettlementMode(row.settlement_mode as SettlementMode | null | undefined)
+      : null,
     slug: row.slug as string,
-    apiNamespace: row.api_namespace as string,
+    apiNamespace: (row.api_namespace as string | null) ?? null,
     name: row.name as string,
     ownerName: row.owner_name as string,
     tagline: row.tagline as string,
@@ -6775,6 +7377,7 @@ function mapPublishedServiceVersionRow(row: Record<string, unknown>): PublishedS
 function mapPublishedEndpointVersionRow(row: Record<string, unknown>): PublishedEndpointVersionRecord {
   const billing = normalizeRouteBilling(row.price as string, row.billing as PublishedEndpointVersionRecord["billing"]);
   return {
+    endpointType: "marketplace_proxy",
     endpointVersionId: row.endpoint_version_id as string,
     serviceId: row.service_id as string,
     serviceVersionId: row.service_version_id as string,
@@ -6802,6 +7405,45 @@ function mapPublishedEndpointVersionRow(row: Record<string, unknown>): Published
     upstreamAuthMode: (row.upstream_auth_mode as PublishedEndpointVersionRecord["upstreamAuthMode"]) ?? null,
     upstreamAuthHeaderName: (row.upstream_auth_header_name as string | null) ?? null,
     upstreamSecretRef: (row.upstream_secret_ref as string | null) ?? null,
+    createdAt: new Date(row.created_at as string | Date).toISOString(),
+    updatedAt: new Date(row.updated_at as string | Date).toISOString()
+  };
+}
+
+function mapPublishedExternalEndpointVersionRow(row: Record<string, unknown>): PublishedExternalEndpointVersionRecord {
+  return {
+    endpointType: "external_registry",
+    endpointVersionId: row.endpoint_version_id as string,
+    serviceId: row.service_id as string,
+    serviceVersionId: row.service_version_id as string,
+    endpointDraftId: (row.endpoint_draft_id as string | null) ?? null,
+    routeId: null,
+    provider: null,
+    operation: null,
+    version: null,
+    settlementMode: null,
+    mode: null,
+    network: null,
+    price: null,
+    billing: null,
+    title: row.title as string,
+    description: row.description as string,
+    payout: null,
+    method: row.method as PublishedExternalEndpointVersionRecord["method"],
+    publicUrl: row.public_url as string,
+    docsUrl: row.docs_url as string,
+    authNotes: (row.auth_notes as string | null) ?? null,
+    requestExample: row.request_example,
+    responseExample: row.response_example,
+    usageNotes: (row.usage_notes as string | null) ?? undefined,
+    requestSchemaJson: null,
+    responseSchemaJson: null,
+    executorKind: null,
+    upstreamBaseUrl: null,
+    upstreamPath: null,
+    upstreamAuthMode: null,
+    upstreamAuthHeaderName: null,
+    upstreamSecretRef: null,
     createdAt: new Date(row.created_at as string | Date).toISOString(),
     updatedAt: new Date(row.updated_at as string | Date).toISOString()
   };

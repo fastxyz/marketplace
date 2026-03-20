@@ -54,18 +54,23 @@ import {
   PAYMENT_RESPONSE_HEADER,
   PAYMENT_SIGNATURE_HEADER,
   type CreateProviderEndpointDraftInput,
+  type ExternalProviderEndpointDraftRecord,
   type FacilitatorClient,
   type IdempotencyRecord,
   type JobRecord,
   type MarketplaceRoute,
   type MarketplaceStore,
   type OpenApiImportPreview,
+  type ProviderEndpointDraftRecord,
   type ProviderExecuteContext,
   type ProviderRequestRecord,
   type ProviderRuntimeKeyRecord,
   type ProviderServiceDetailRecord,
+  type ProviderServiceRecord,
+  type ProviderServiceType,
   type ProviderRegistry,
   type PublishedEndpointVersionRecord,
+  type PublishedServiceEndpointVersionRecord,
   type PublishedServiceVersionRecord,
   type RefundService,
   type RouteBillingType,
@@ -88,6 +93,11 @@ export interface MarketplaceApiOptions {
   secretsKey: string;
   tavilyApiKey?: string;
 }
+
+type PublishedCatalogService = {
+  service: PublishedServiceVersionRecord;
+  endpoints: PublishedServiceEndpointVersionRecord[];
+};
 
 const suggestionCreateSchema = z
   .object({
@@ -123,9 +133,12 @@ const providerAccountSchema = z.object({
   contactEmail: z.string().email().optional().nullable()
 });
 
+const providerServiceTypeSchema = z.enum(["marketplace_proxy", "external_registry"]);
+
 const providerServiceCreateSchema = z.object({
+  serviceType: providerServiceTypeSchema,
   slug: z.string().regex(/^[a-z0-9-]{3,64}$/),
-  apiNamespace: z.string().regex(/^[a-z0-9-]{3,64}$/),
+  apiNamespace: z.string().regex(/^[a-z0-9-]{3,64}$/).optional().nullable(),
   name: z.string().min(2).max(120),
   tagline: z.string().min(5).max(240),
   about: z.string().min(20).max(4_000),
@@ -133,16 +146,46 @@ const providerServiceCreateSchema = z.object({
   promptIntro: z.string().min(10).max(500),
   setupInstructions: z.array(z.string().min(3).max(240)).min(1).max(10),
   websiteUrl: z.string().url().optional().nullable(),
-  payoutWallet: z.string().min(1),
+  payoutWallet: z.string().min(1).optional().nullable(),
   featured: z.boolean().optional()
+}).superRefine((value, ctx) => {
+  if (value.serviceType === "marketplace_proxy" && !value.apiNamespace) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "apiNamespace is required when serviceType=marketplace_proxy.",
+      path: ["apiNamespace"]
+    });
+  }
+
+  if (value.serviceType === "marketplace_proxy" && !value.payoutWallet) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "payoutWallet is required when serviceType=marketplace_proxy.",
+      path: ["payoutWallet"]
+    });
+  }
 });
 
-const providerServiceUpdateSchema = providerServiceCreateSchema.partial();
+const providerServiceUpdateSchema = z.object({
+  serviceType: providerServiceTypeSchema.optional(),
+  slug: z.string().regex(/^[a-z0-9-]{3,64}$/).optional(),
+  apiNamespace: z.string().regex(/^[a-z0-9-]{3,64}$/).optional().nullable(),
+  name: z.string().min(2).max(120).optional(),
+  tagline: z.string().min(5).max(240).optional(),
+  about: z.string().min(20).max(4_000).optional(),
+  categories: z.array(z.string().min(2).max(40)).min(1).max(8).optional(),
+  promptIntro: z.string().min(10).max(500).optional(),
+  setupInstructions: z.array(z.string().min(3).max(240)).min(1).max(10).optional(),
+  websiteUrl: z.string().url().optional().nullable(),
+  payoutWallet: z.string().min(1).optional().nullable(),
+  featured: z.boolean().optional()
+});
 
 const routeBillingTypeSchema = z.enum(["fixed_x402", "topup_x402_variable", "prepaid_credit", "free"]);
 const decimalAmountSchema = z.string().regex(/^\d+(?:\.\d{1,6})?$/);
 
-const endpointSchemaInput = z.object({
+const marketplaceEndpointSchemaInput = z.object({
+  endpointType: z.literal("marketplace_proxy"),
   operation: z.string().regex(/^[a-z0-9-]{2,64}$/),
   title: z.string().min(2).max(120),
   description: z.string().min(10).max(500),
@@ -163,16 +206,44 @@ const endpointSchemaInput = z.object({
   upstreamSecret: z.string().min(1).max(4_000).optional().nullable()
 });
 
-const endpointCreateSchema = endpointSchemaInput;
+const externalEndpointSchemaInput = z.object({
+  endpointType: z.literal("external_registry"),
+  title: z.string().min(2).max(120),
+  description: z.string().min(10).max(500),
+  method: z.enum(["GET", "POST"]),
+  publicUrl: z.string().url(),
+  docsUrl: z.string().url(),
+  authNotes: z.string().max(1_000).optional().nullable(),
+  requestExample: z.unknown(),
+  responseExample: z.unknown(),
+  usageNotes: z.string().max(1_000).optional().nullable()
+});
 
-const endpointUpdateSchema = endpointSchemaInput
+const endpointCreateSchema = z.discriminatedUnion("endpointType", [
+  marketplaceEndpointSchemaInput,
+  externalEndpointSchemaInput
+]);
+
+const marketplaceEndpointUpdateSchema = marketplaceEndpointSchemaInput
   .omit({
     mode: true
   })
   .partial()
   .extend({
+    endpointType: z.literal("marketplace_proxy"),
     clearUpstreamSecret: z.boolean().optional()
   });
+
+const externalEndpointUpdateSchema = externalEndpointSchemaInput
+  .partial()
+  .extend({
+    endpointType: z.literal("external_registry")
+  });
+
+const endpointUpdateSchema = z.discriminatedUnion("endpointType", [
+  marketplaceEndpointUpdateSchema,
+  externalEndpointUpdateSchema
+]);
 
 const openApiImportSchema = z.object({
   documentUrl: z.string().url()
@@ -266,7 +337,7 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
     res.json(
       buildOpenApiDocument({
         baseUrl,
-        services: catalog.services,
+        services: catalog.services.map((entry) => entry.service),
         routes: catalog.routes
       })
     );
@@ -298,11 +369,11 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
     const catalog = filterVisibleCatalog(await loadPublishedCatalog(options.store), tavilyEnabled);
 
     const services = await Promise.all(
-      catalog.services.map(async (service) =>
+      catalog.services.map(async (serviceDetail) =>
         buildServiceSummary({
-          service,
-          endpoints: catalog.routes.filter((route) => route.serviceVersionId === service.versionId),
-          analytics: await options.store.getServiceAnalytics(service.routeIds)
+          service: serviceDetail.service,
+          endpoints: serviceDetail.endpoints,
+          analytics: await options.store.getServiceAnalytics(serviceDetail.service.routeIds)
         })
       )
     );
@@ -654,11 +725,13 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
       return res.status(400).json({ error: "Provider service validation failed.", issues: parsed.error.issues });
     }
 
-    let payoutWallet: string;
-    try {
-      payoutWallet = normalizeFastWalletAddress(parsed.data.payoutWallet);
-    } catch (error) {
-      return res.status(400).json({ error: error instanceof Error ? error.message : "Invalid payout wallet." });
+    let payoutWallet: string | null = null;
+    if (parsed.data.serviceType === "marketplace_proxy" && parsed.data.payoutWallet) {
+      try {
+        payoutWallet = normalizeFastWalletAddress(parsed.data.payoutWallet);
+      } catch (error) {
+        return res.status(400).json({ error: error instanceof Error ? error.message : "Invalid payout wallet." });
+      }
     }
 
     try {
@@ -692,6 +765,15 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
       return;
     }
 
+    const detail = await options.store.getProviderServiceForOwner(req.params.id, session.wallet);
+    if (!detail) {
+      return res.status(404).json({ error: "Provider service not found." });
+    }
+
+    if (detail.service.serviceType === "external_registry") {
+      return res.json({ runtimeKey: null });
+    }
+
     const runtimeKey = await options.store.getProviderRuntimeKeyForOwner(req.params.id, session.wallet);
     return res.json({
       runtimeKey: runtimeKey
@@ -709,6 +791,15 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
     const session = requireSiteSession(req, res, options.sessionSecret, webBaseUrl);
     if (!session) {
       return;
+    }
+
+    const detail = await options.store.getProviderServiceForOwner(req.params.id, session.wallet);
+    if (!detail) {
+      return res.status(404).json({ error: "Provider service not found." });
+    }
+
+    if (detail.service.serviceType === "external_registry") {
+      return res.status(400).json({ error: "External registry services do not use runtime keys." });
     }
 
     try {
@@ -751,7 +842,9 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
       return res.status(400).json({ error: "Provider service validation failed.", issues: parsed.error.issues });
     }
 
+    const nextServiceType = parsed.data.serviceType ?? existing.service.serviceType;
     if (
+      nextServiceType === "marketplace_proxy" &&
       parsed.data.apiNamespace &&
       parsed.data.apiNamespace !== existing.service.apiNamespace &&
       existing.endpoints.length > 0
@@ -760,16 +853,19 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
     }
 
     let payoutWallet = parsed.data.payoutWallet;
-    if (payoutWallet) {
+    if (nextServiceType === "marketplace_proxy" && payoutWallet) {
       try {
         payoutWallet = normalizeFastWalletAddress(payoutWallet);
       } catch (error) {
         return res.status(400).json({ error: error instanceof Error ? error.message : "Invalid payout wallet." });
       }
+    } else if (nextServiceType === "external_registry") {
+      payoutWallet = null;
     }
 
     const updated = await options.store.updateProviderServiceForOwner(req.params.id, session.wallet, {
       ...parsed.data,
+      apiNamespace: nextServiceType === "external_registry" ? null : parsed.data.apiNamespace,
       payoutWallet
     });
     if (!updated) {
@@ -797,7 +893,34 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
       return res.status(404).json({ error: "Provider service not found." });
     }
 
-    const parsed = endpointCreateSchema.safeParse(req.body ?? {});
+    if (service.service.serviceType === "external_registry") {
+      const parsed = externalEndpointSchemaInput.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Endpoint validation failed.", issues: parsed.error.issues });
+      }
+
+      const validation = validateExternalEndpointInput({
+        service: service.service,
+        input: parsed.data
+      });
+      if (!validation.ok) {
+        return res.status(validation.statusCode).json({ error: validation.error });
+      }
+
+      try {
+        const endpoint = await options.store.createProviderEndpointDraft(
+          req.params.id,
+          session.wallet,
+          parsed.data as CreateProviderEndpointDraftInput
+        );
+
+        return res.status(201).json(endpoint);
+      } catch (error) {
+        return handleProviderMutationError(res, error);
+      }
+    }
+
+    const parsed = marketplaceEndpointSchemaInput.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ error: "Endpoint validation failed.", issues: parsed.error.issues });
     }
@@ -847,9 +970,50 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
       return res.status(404).json({ error: "Endpoint draft not found." });
     }
 
-    const parsed = endpointUpdateSchema.safeParse(req.body ?? {});
+    if (service.service.serviceType === "external_registry") {
+      const parsed = externalEndpointUpdateSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Endpoint validation failed.", issues: parsed.error.issues });
+      }
+
+      if (existingEndpoint.endpointType !== "external_registry") {
+        return res.status(409).json({ error: "Endpoint type does not match the parent service." });
+      }
+
+      const validation = validateExternalEndpointInput({
+        service: service.service,
+        existingEndpoint,
+        input: parsed.data
+      });
+      if (!validation.ok) {
+        return res.status(validation.statusCode).json({ error: validation.error });
+      }
+
+      try {
+        const endpoint = await options.store.updateProviderEndpointDraft(
+          req.params.id,
+          req.params.endpointId,
+          session.wallet,
+          parsed.data as UpdateProviderEndpointDraftInput
+        );
+
+        if (!endpoint) {
+          return res.status(404).json({ error: "Endpoint draft not found." });
+        }
+
+        return res.json(endpoint);
+      } catch (error) {
+        return handleProviderMutationError(res, error);
+      }
+    }
+
+    const parsed = marketplaceEndpointUpdateSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ error: "Endpoint validation failed.", issues: parsed.error.issues });
+    }
+
+    if (existingEndpoint.endpointType !== "marketplace_proxy") {
+      return res.status(409).json({ error: "Endpoint type does not match the parent service." });
     }
 
     const validation = await validateProviderEndpointInput({
@@ -909,6 +1073,10 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
     const service = await options.store.getProviderServiceForOwner(req.params.id, session.wallet);
     if (!service) {
       return res.status(404).json({ error: "Provider service not found." });
+    }
+
+    if (service.service.serviceType === "external_registry") {
+      return res.status(400).json({ error: "External registry services do not support OpenAPI import." });
     }
 
     const parsed = openApiImportSchema.safeParse(req.body ?? {});
@@ -1273,15 +1441,20 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
       return res.status(404).json({ error: "Provider service not found." });
     }
 
-    const settlementMode = parsed.data.settlementMode ?? detail.service.settlementMode;
     const validationDetail = (await options.store.getSubmittedProviderService(req.params.id)) ?? detail;
-    const publishValidation = await validateProviderServiceForSettlement({
-      detail: validationDetail,
-      store: options.store,
-      settlementMode
-    });
-    if (!publishValidation.ok) {
-      return res.status(publishValidation.statusCode).json({ error: publishValidation.error });
+    const settlementMode = detail.service.serviceType === "marketplace_proxy"
+      ? (parsed.data.settlementMode ?? detail.service.settlementMode ?? "verified_escrow")
+      : null;
+
+    if (detail.service.serviceType === "marketplace_proxy") {
+      const publishValidation = await validateProviderServiceForSettlement({
+        detail: validationDetail,
+        store: options.store,
+        settlementMode
+      });
+      if (!publishValidation.ok) {
+        return res.status(publishValidation.statusCode).json({ error: publishValidation.error });
+      }
     }
 
     const updated = await options.store.publishProviderService(req.params.id, {
@@ -1309,6 +1482,10 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
     const detail = await options.store.getAdminProviderService(req.params.id);
     if (!detail) {
       return res.status(404).json({ error: "Provider service not found." });
+    }
+
+    if (detail.service.serviceType === "external_registry") {
+      return res.status(400).json({ error: "External registry services do not use settlement modes." });
     }
 
     const validationDetail = (await options.store.getSubmittedProviderService(req.params.id)) ?? detail;
@@ -1454,45 +1631,45 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
 }
 
 async function loadPublishedCatalog(store: MarketplaceStore): Promise<{
-  services: PublishedServiceVersionRecord[];
+  services: PublishedCatalogService[];
   routes: PublishedEndpointVersionRecord[];
 }> {
   const [services, routes] = await Promise.all([store.listPublishedServices(), store.listPublishedRoutes()]);
-  return { services, routes };
+  const serviceDetails = (
+    await Promise.all(services.map((service) => store.getPublishedServiceBySlug(service.slug)))
+  ).filter((service): service is PublishedCatalogService => Boolean(service));
+
+  return { services: serviceDetails, routes };
 }
 
-function isRouteVisible(route: Pick<MarketplaceRoute, "executorKind">, tavilyEnabled: boolean): boolean {
-  if (route.executorKind === "tavily") {
-    return tavilyEnabled;
+function isExternalPublishedEndpoint(
+  endpoint: PublishedServiceEndpointVersionRecord
+): endpoint is Extract<PublishedServiceEndpointVersionRecord, { endpointType: "external_registry" }> {
+  return endpoint.endpointType === "external_registry";
+}
+
+function filterVisiblePublishedService(
+  input: PublishedCatalogService,
+  tavilyEnabled: boolean
+): PublishedCatalogService | null {
+  if (input.service.serviceType === "external_registry") {
+    const endpoints = input.endpoints.filter(isExternalPublishedEndpoint);
+    if (endpoints.length === 0) {
+      return null;
+    }
+
+    return {
+      service: {
+        ...input.service,
+        routeIds: []
+      },
+      endpoints
+    };
   }
 
-  return true;
-}
-
-function filterVisibleCatalog(input: {
-  services: PublishedServiceVersionRecord[];
-  routes: PublishedEndpointVersionRecord[];
-}, tavilyEnabled: boolean): {
-  services: PublishedServiceVersionRecord[];
-  routes: PublishedEndpointVersionRecord[];
-} {
-  const routes = input.routes.filter((route) => isRouteVisible(route, tavilyEnabled));
-  const routeIds = new Set(routes.map((route) => route.routeId));
-  const services = input.services
-    .map((service) => ({
-      ...service,
-      routeIds: service.routeIds.filter((routeId) => routeIds.has(routeId))
-    }))
-    .filter((service) => service.routeIds.length > 0);
-
-  return { services, routes };
-}
-
-function filterVisibleServiceDetail(
-  input: { service: PublishedServiceVersionRecord; endpoints: PublishedEndpointVersionRecord[] },
-  tavilyEnabled: boolean
-): { service: PublishedServiceVersionRecord; endpoints: PublishedEndpointVersionRecord[] } | null {
-  const endpoints = input.endpoints.filter((endpoint) => isRouteVisible(endpoint, tavilyEnabled));
+  const endpoints = input.endpoints.filter((endpoint): endpoint is PublishedEndpointVersionRecord =>
+    endpoint.endpointType === "marketplace_proxy" && isRouteVisible(endpoint, tavilyEnabled)
+  );
   if (endpoints.length === 0) {
     return null;
   }
@@ -1505,6 +1682,36 @@ function filterVisibleServiceDetail(
     },
     endpoints
   };
+}
+
+function isRouteVisible(route: Pick<MarketplaceRoute, "executorKind">, tavilyEnabled: boolean): boolean {
+  if (route.executorKind === "tavily") {
+    return tavilyEnabled;
+  }
+
+  return true;
+}
+
+function filterVisibleCatalog(input: {
+  services: PublishedCatalogService[];
+  routes: PublishedEndpointVersionRecord[];
+}, tavilyEnabled: boolean): {
+  services: PublishedCatalogService[];
+  routes: PublishedEndpointVersionRecord[];
+} {
+  const routes = input.routes.filter((route) => isRouteVisible(route, tavilyEnabled));
+  const services = input.services
+    .map((service) => filterVisiblePublishedService(service, tavilyEnabled))
+    .filter((service): service is PublishedCatalogService => Boolean(service));
+
+  return { services, routes };
+}
+
+function filterVisibleServiceDetail(
+  input: PublishedCatalogService,
+  tavilyEnabled: boolean
+): PublishedCatalogService | null {
+  return filterVisiblePublishedService(input, tavilyEnabled);
 }
 
 async function handlePrepaidCreditRoute(input: {
@@ -2432,7 +2639,7 @@ function encryptSecretForStore(secret: string, secretsKey: string) {
 
 async function validateProviderEndpointInput(input: {
   mode: "create" | "update";
-  service: { websiteUrl: string | null; apiNamespace: string };
+  service: { websiteUrl: string | null };
   existingEndpoint: {
     billing: MarketplaceRoute["billing"];
     upstreamBaseUrl: string | null;
@@ -2442,8 +2649,8 @@ async function validateProviderEndpointInput(input: {
     upstreamSecretRef: string | null;
   } | null;
   input:
-    | z.infer<typeof endpointCreateSchema>
-    | z.infer<typeof endpointUpdateSchema>;
+    | z.infer<typeof marketplaceEndpointSchemaInput>
+    | z.infer<typeof marketplaceEndpointUpdateSchema>;
 }): Promise<{ ok: true } | { ok: false; statusCode: number; error: string }> {
   const billingType = (input.input.billingType ??
     input.existingEndpoint?.billing.type) as RouteBillingType | undefined;
@@ -2527,13 +2734,46 @@ async function validateProviderEndpointInput(input: {
   return { ok: true };
 }
 
+function validateExternalEndpointInput(input: {
+  service: Pick<ProviderServiceRecord, "websiteUrl">;
+  existingEndpoint?: Pick<ExternalProviderEndpointDraftRecord, "method" | "publicUrl" | "docsUrl"> | null;
+  input: z.infer<typeof externalEndpointSchemaInput> | z.infer<typeof externalEndpointUpdateSchema>;
+}): { ok: true } | { ok: false; statusCode: number; error: string } {
+  const websiteUrl = input.service.websiteUrl;
+  if (!websiteUrl) {
+    return { ok: false, statusCode: 400, error: "websiteUrl is required before managing endpoints." };
+  }
+
+  const serviceHost = new URL(websiteUrl).hostname;
+  const publicUrl = input.input.publicUrl ?? input.existingEndpoint?.publicUrl;
+  const docsUrl = input.input.docsUrl ?? input.existingEndpoint?.docsUrl;
+
+  if (!publicUrl || !docsUrl) {
+    return { ok: false, statusCode: 400, error: "publicUrl and docsUrl are required." };
+  }
+
+  if (!isSameOrSubdomain(serviceHost, new URL(publicUrl).hostname)) {
+    return {
+      ok: false,
+      statusCode: 400,
+      error: "publicUrl host must match the service website host or one of its subdomains."
+    };
+  }
+
+  if (!isSameOrSubdomain(serviceHost, new URL(docsUrl).hostname)) {
+    return {
+      ok: false,
+      statusCode: 400,
+      error: "docsUrl host must match the service website host or one of its subdomains."
+    };
+  }
+
+  return { ok: true };
+}
+
 async function validateProviderServiceForSubmit(detail: ProviderServiceDetailRecord) {
   if (!detail.service.websiteUrl) {
     return { ok: false as const, statusCode: 400, error: "websiteUrl is required before submit." };
-  }
-
-  if (!detail.service.payoutWallet) {
-    return { ok: false as const, statusCode: 400, error: "payoutWallet is required before submit." };
   }
 
   if (detail.endpoints.length === 0) {
@@ -2554,7 +2794,49 @@ async function validateProviderServiceForSubmit(detail: ProviderServiceDetailRec
     };
   }
 
+  if (detail.service.serviceType === "external_registry") {
+    for (const endpoint of detail.endpoints) {
+      if (endpoint.endpointType !== "external_registry") {
+        return {
+          ok: false as const,
+          statusCode: 400,
+          error: "External registry services can only publish external endpoints."
+        };
+      }
+
+      if (!isSameOrSubdomain(serviceHost, new URL(endpoint.publicUrl).hostname)) {
+        return {
+          ok: false as const,
+          statusCode: 400,
+          error: "All external endpoint URLs must match the verified website host or a subdomain."
+        };
+      }
+
+      if (!isSameOrSubdomain(serviceHost, new URL(endpoint.docsUrl).hostname)) {
+        return {
+          ok: false as const,
+          statusCode: 400,
+          error: "All external docs URLs must match the verified website host or a subdomain."
+        };
+      }
+    }
+
+    return { ok: true as const };
+  }
+
+  if (!detail.service.payoutWallet) {
+    return { ok: false as const, statusCode: 400, error: "payoutWallet is required before submit." };
+  }
+
   for (const endpoint of detail.endpoints) {
+    if (endpoint.endpointType !== "marketplace_proxy") {
+      return {
+        ok: false as const,
+        statusCode: 400,
+        error: "Marketplace proxy services can only publish marketplace endpoints."
+      };
+    }
+
     if (endpoint.mode !== "sync") {
       return { ok: false as const, statusCode: 400, error: "Provider-authored endpoints must be sync-only in v1." };
     }
@@ -2577,7 +2859,8 @@ async function validateProviderServiceForSubmit(detail: ProviderServiceDetailRec
 
 function isCommunityDirectPublishCompatible(detail: ProviderServiceDetailRecord): boolean {
   return detail.endpoints.every((endpoint) =>
-    endpoint.mode === "sync"
+    endpoint.endpointType === "marketplace_proxy"
+    && endpoint.mode === "sync"
     && endpoint.billing.type === "fixed_x402"
     && endpoint.executorKind === "http"
   );
@@ -2586,11 +2869,19 @@ function isCommunityDirectPublishCompatible(detail: ProviderServiceDetailRecord)
 async function validateProviderServiceForSettlement(input: {
   detail: ProviderServiceDetailRecord;
   store: MarketplaceStore;
-  settlementMode: SettlementMode;
+  settlementMode: SettlementMode | null;
 }) {
   const baseValidation = await validateProviderServiceForSubmit(input.detail);
   if (!baseValidation.ok) {
     return baseValidation;
+  }
+
+  if (input.detail.service.serviceType === "external_registry") {
+    return { ok: true as const };
+  }
+
+  if (!input.settlementMode) {
+    return { ok: false as const, statusCode: 400, error: "settlementMode is required for marketplace proxy services." };
   }
 
   const runtimeKey = await input.store.getProviderRuntimeKeyForOwner(
@@ -2618,7 +2909,7 @@ async function validateProviderServiceForSettlement(input: {
   }
 
   if (
-    input.detail.endpoints.some((endpoint) => endpoint.billing.type === "prepaid_credit")
+    input.detail.endpoints.some((endpoint) => endpoint.endpointType === "marketplace_proxy" && endpoint.billing.type === "prepaid_credit")
     && !runtimeKey
   ) {
     return {

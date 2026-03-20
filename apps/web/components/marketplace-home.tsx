@@ -90,10 +90,16 @@ export function MarketplaceHome({ services }: { services: ServiceSummary[] }) {
                   <CardHeader>
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="outline">{service.ownerName}</Badge>
-                      <Badge variant={service.settlementMode === "verified_escrow" ? "default" : "secondary"}>
-                        {service.settlementLabel}
-                      </Badge>
-                      <span className="text-sm tracking-headline text-muted-foreground">{service.priceRange}</span>
+                      {service.serviceType === "marketplace_proxy" ? (
+                        <>
+                          <Badge variant={service.settlementMode === "verified_escrow" ? "default" : "secondary"}>
+                            {service.settlementLabel}
+                          </Badge>
+                          <span className="text-sm tracking-headline text-muted-foreground">{service.priceRange}</span>
+                        </>
+                      ) : (
+                        <Badge variant="secondary">{service.accessModelLabel}</Badge>
+                      )}
                     </div>
                     <div className="space-y-3">
                       <CardTitle className="text-3xl">{service.name}</CardTitle>
@@ -109,14 +115,24 @@ export function MarketplaceHome({ services }: { services: ServiceSummary[] }) {
                       ))}
                     </div>
 
-                    <p className="text-sm leading-7 text-muted-foreground">{service.settlementDescription}</p>
+                    <p className="text-sm leading-7 text-muted-foreground">
+                      {service.serviceType === "marketplace_proxy" ? service.settlementDescription : service.accessModelDescription}
+                    </p>
 
-                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                      <Metric label="Calls" value={String(service.totalCalls)} compact />
-                      <Metric label="Revenue" value={`$${service.revenue}`} compact />
-                      <Metric label="Endpoints" value={String(service.endpointCount)} compact />
-                      <Metric label="30d success" value={`${service.successRate30d.toFixed(1)}%`} compact />
-                    </div>
+                    {service.serviceType === "marketplace_proxy" ? (
+                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                        <Metric label="Calls" value={String(service.totalCalls)} compact />
+                        <Metric label="Revenue" value={`$${service.revenue}`} compact />
+                        <Metric label="Endpoints" value={String(service.endpointCount)} compact />
+                        <Metric label="30d success" value={`${service.successRate30d.toFixed(1)}%`} compact />
+                      </div>
+                    ) : (
+                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        <Metric label="Endpoints" value={String(service.endpointCount)} compact />
+                        <Metric label="Access" value="Direct API" compact />
+                        <Metric label="Website" value={service.websiteUrl ? new URL(service.websiteUrl).hostname : "N/A"} compact />
+                      </div>
+                    )}
 
                     <div className="flex items-center justify-between border-t border-border pt-5 text-sm tracking-headline text-muted-foreground">
                       <span>Open service</span>

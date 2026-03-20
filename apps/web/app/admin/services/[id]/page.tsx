@@ -84,6 +84,7 @@ export default async function AdminProviderServiceDetailPage({
   const error = getSingleParam(query.error);
   const returnTo = `/admin/services/${id}`;
   const hasSubmittedSnapshot = Boolean(submittedDetail?.latestReview?.submittedVersionId);
+  const isMarketplaceService = currentDetail.service.serviceType === "marketplace_proxy";
 
   return (
     <main className="page-shell">
@@ -113,9 +114,13 @@ export default async function AdminProviderServiceDetailPage({
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <Badge variant="secondary">{currentDetail.service.status}</Badge>
-            <Badge variant={currentDetail.service.settlementMode === "verified_escrow" ? "default" : "outline"}>
-              {currentDetail.service.settlementMode === "verified_escrow" ? "Verified" : "Community"}
-            </Badge>
+            {isMarketplaceService ? (
+              <Badge variant={currentDetail.service.settlementMode === "verified_escrow" ? "default" : "outline"}>
+                {currentDetail.service.settlementMode === "verified_escrow" ? "Verified" : "Community"}
+              </Badge>
+            ) : (
+              <Badge variant="outline">External API</Badge>
+            )}
             {currentDetail.verification ? (
               <Badge variant="outline">verification: {currentDetail.verification.status}</Badge>
             ) : null}
@@ -148,7 +153,11 @@ export default async function AdminProviderServiceDetailPage({
               <CardContent className="grid gap-4 text-sm">
                 <div className="rounded-card border border-border bg-background/70 p-5 dark:bg-background/20">
                   <div className="font-medium">Service metadata</div>
-                  <div className="mt-2 text-muted-foreground">{reviewDetail.service.apiNamespace}</div>
+                  <div className="mt-2 text-muted-foreground">
+                    {reviewDetail.service.serviceType === "marketplace_proxy"
+                      ? reviewDetail.service.apiNamespace
+                      : "discovery-only external registry"}
+                  </div>
                   <div className="mt-2 text-muted-foreground">{reviewDetail.service.tagline}</div>
                   <div className="mt-2 whitespace-pre-wrap text-muted-foreground">{reviewDetail.service.about}</div>
                 </div>
@@ -157,7 +166,9 @@ export default async function AdminProviderServiceDetailPage({
                   <div className="mt-2 text-muted-foreground">{reviewDetail.account.displayName}</div>
                   <div className="mt-2 text-muted-foreground">{reviewDetail.account.ownerWallet}</div>
                   <div className="mt-2 text-muted-foreground">Website: {reviewDetail.service.websiteUrl ?? "not set"}</div>
-                  <div className="mt-2 text-muted-foreground">Payout wallet: {reviewDetail.service.payoutWallet ?? "not set"}</div>
+                  {reviewDetail.service.serviceType === "marketplace_proxy" ? (
+                    <div className="mt-2 text-muted-foreground">Payout wallet: {reviewDetail.service.payoutWallet ?? "not set"}</div>
+                  ) : null}
                 </div>
                 <div className="rounded-card border border-border bg-background/70 p-5 dark:bg-background/20">
                   <div className="font-medium">Verification and review</div>
@@ -178,23 +189,29 @@ export default async function AdminProviderServiceDetailPage({
               <Card variant="frosted">
                 <CardHeader>
                   <CardTitle className="text-3xl">Review actions</CardTitle>
-                  <CardDescription>Publish with a settlement tier or send the draft back with notes.</CardDescription>
+                  <CardDescription>
+                    {isMarketplaceService
+                      ? "Publish with a settlement tier or send the draft back with notes."
+                      : "Publish the discovery-only listing or send the draft back with notes."}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-6">
                   <form action={publishProviderServiceAction} className="grid gap-4">
                     <input type="hidden" name="id" value={id} />
                     <input type="hidden" name="returnTo" value={returnTo} />
-                    <label className="grid gap-2 text-sm font-medium">
-                      Settlement tier
-                      <select
-                        name="settlementMode"
-                        defaultValue={currentDetail.service.settlementMode}
-                        className="fast-select min-h-12"
-                      >
-                        <option value="community_direct">Community</option>
-                        <option value="verified_escrow">Verified</option>
-                      </select>
-                    </label>
+                    {isMarketplaceService ? (
+                      <label className="grid gap-2 text-sm font-medium">
+                        Settlement tier
+                        <select
+                          name="settlementMode"
+                          defaultValue={currentDetail.service.settlementMode ?? "verified_escrow"}
+                          className="fast-select min-h-12"
+                        >
+                          <option value="community_direct">Community</option>
+                          <option value="verified_escrow">Verified</option>
+                        </select>
+                      </label>
+                    ) : null}
                     <label className="grid gap-2 text-sm font-medium">
                       Reviewer identity
                       <input
@@ -245,37 +262,47 @@ export default async function AdminProviderServiceDetailPage({
               <Card variant="frosted">
                 <CardHeader>
                   <CardTitle className="text-3xl">Published controls</CardTitle>
-                  <CardDescription>Adjust the current settlement tier or suspend the public listing.</CardDescription>
+                  <CardDescription>
+                    {isMarketplaceService
+                      ? "Adjust the current settlement tier or suspend the public listing."
+                      : "Suspend the public listing. External APIs do not use settlement tiers."}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-6">
-                  <form action={updateProviderServiceSettlementModeAction} className="grid gap-4">
-                    <input type="hidden" name="id" value={id} />
-                    <input type="hidden" name="returnTo" value={returnTo} />
-                    <label className="grid gap-2 text-sm font-medium">
-                      Current live settlement tier
-                      <select
-                        name="settlementMode"
-                        defaultValue={currentDetail.service.settlementMode}
-                        className="fast-select min-h-12"
-                      >
-                        <option value="community_direct">Community</option>
-                        <option value="verified_escrow">Verified</option>
-                      </select>
-                    </label>
-                    <label className="grid gap-2 text-sm font-medium">
-                      Reviewer identity
-                      <input
-                        name="reviewerIdentity"
-                        type="text"
-                        defaultValue=""
-                        className="fast-input min-h-12"
-                        placeholder="operator@fast.xyz"
-                      />
-                    </label>
-                    <Button type="submit" variant="outline">
-                      Save settlement tier
-                    </Button>
-                  </form>
+                  {isMarketplaceService ? (
+                    <form action={updateProviderServiceSettlementModeAction} className="grid gap-4">
+                      <input type="hidden" name="id" value={id} />
+                      <input type="hidden" name="returnTo" value={returnTo} />
+                      <label className="grid gap-2 text-sm font-medium">
+                        Current live settlement tier
+                        <select
+                          name="settlementMode"
+                          defaultValue={currentDetail.service.settlementMode ?? "verified_escrow"}
+                          className="fast-select min-h-12"
+                        >
+                          <option value="community_direct">Community</option>
+                          <option value="verified_escrow">Verified</option>
+                        </select>
+                      </label>
+                      <label className="grid gap-2 text-sm font-medium">
+                        Reviewer identity
+                        <input
+                          name="reviewerIdentity"
+                          type="text"
+                          defaultValue=""
+                          className="fast-input min-h-12"
+                          placeholder="operator@fast.xyz"
+                        />
+                      </label>
+                      <Button type="submit" variant="outline">
+                        Save settlement tier
+                      </Button>
+                    </form>
+                  ) : (
+                    <div className="rounded-card border border-border bg-background/70 px-4 py-3 text-sm text-muted-foreground dark:bg-background/20">
+                      External registry services do not use marketplace settlement tiers or runtime payout handling.
+                    </div>
+                  )}
 
                   <form action={suspendProviderServiceAction} className="grid gap-4">
                     <input type="hidden" name="id" value={id} />
@@ -321,19 +348,34 @@ export default async function AdminProviderServiceDetailPage({
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="text-lg font-medium tracking-headline">{endpoint.title}</div>
-                      <div className="mt-1 text-sm text-muted-foreground">{endpoint.operation}</div>
+                      <div className="mt-1 text-sm text-muted-foreground">
+                        {endpoint.endpointType === "marketplace_proxy" ? endpoint.operation : `${endpoint.method} ${endpoint.publicUrl}`}
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Badge variant="outline">{endpoint.mode}</Badge>
-                      <Badge variant="outline">{endpoint.executorKind}</Badge>
-                      <Badge variant="outline">{formatBillingLabel(endpoint.billing.type)}</Badge>
+                      {endpoint.endpointType === "marketplace_proxy" ? (
+                        <>
+                          <Badge variant="outline">{endpoint.mode}</Badge>
+                          <Badge variant="outline">{endpoint.executorKind}</Badge>
+                          <Badge variant="outline">{formatBillingLabel(endpoint.billing.type)}</Badge>
+                        </>
+                      ) : (
+                        <Badge variant="outline">External API</Badge>
+                      )}
                     </div>
                   </div>
                   <div className="mt-3 text-sm text-muted-foreground">{endpoint.description}</div>
-                  <div className="mt-3 grid gap-2 text-sm text-muted-foreground md:grid-cols-2">
-                    <div>Price: {endpoint.price}</div>
-                    <div>Upstream: {endpoint.upstreamBaseUrl ?? "marketplace-managed"}</div>
-                  </div>
+                  {endpoint.endpointType === "marketplace_proxy" ? (
+                    <div className="mt-3 grid gap-2 text-sm text-muted-foreground md:grid-cols-2">
+                      <div>Price: {endpoint.price}</div>
+                      <div>Upstream: {endpoint.upstreamBaseUrl ?? "marketplace-managed"}</div>
+                    </div>
+                  ) : (
+                    <div className="mt-3 grid gap-2 text-sm text-muted-foreground md:grid-cols-2">
+                      <div>Docs: {endpoint.docsUrl}</div>
+                      <div>Auth: {endpoint.authNotes ?? "Provider-defined"}</div>
+                    </div>
+                  )}
                 </div>
               ))}
             </CardContent>
