@@ -1766,6 +1766,24 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
 
     this.assertServiceUniqueness(updated.slug, updated.apiNamespace, updated.id);
     this.providerServicesById.set(updated.id, updated);
+
+    if (updated.payoutWallet !== detail.service.payoutWallet) {
+      for (const [endpointId, endpoint] of this.endpointDraftsById.entries()) {
+        if (endpoint.serviceId !== serviceId) {
+          continue;
+        }
+
+        this.endpointDraftsById.set(endpointId, {
+          ...endpoint,
+          payout: {
+            ...endpoint.payout,
+            providerWallet: updated.payoutWallet
+          },
+          updatedAt: timestamp()
+        });
+      }
+    }
+
     return clone(updated);
   }
 
@@ -5426,44 +5444,82 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
 
     const nextSlug = input.slug ?? detail.service.slug;
     const nextNamespace = input.apiNamespace ?? detail.service.apiNamespace;
+    const nextPayoutWallet = input.payoutWallet === undefined ? detail.service.payoutWallet : input.payoutWallet;
     await this.assertServiceUniqueness(nextSlug, nextNamespace, serviceId);
 
-    const result = await this.pool.query(
-      `
-      UPDATE provider_services
-      SET
-        slug = $2,
-        api_namespace = $3,
-        name = $4,
-        tagline = $5,
-        about = $6,
-        categories = $7::jsonb,
-        prompt_intro = $8,
-        setup_instructions = $9::jsonb,
-        website_url = $10,
-        payout_wallet = $11,
-        featured = $12,
-        updated_at = NOW()
-      WHERE id = $1
-      RETURNING *
-      `,
-      [
-        serviceId,
-        nextSlug,
-        nextNamespace,
-        input.name ?? detail.service.name,
-        input.tagline ?? detail.service.tagline,
-        input.about ?? detail.service.about,
-        JSON.stringify(input.categories ?? detail.service.categories),
-        input.promptIntro ?? detail.service.promptIntro,
-        JSON.stringify(input.setupInstructions ?? detail.service.setupInstructions),
-        input.websiteUrl === undefined ? detail.service.websiteUrl : input.websiteUrl,
-        input.payoutWallet === undefined ? detail.service.payoutWallet : input.payoutWallet,
-        input.featured ?? detail.service.featured
-      ]
-    );
+    const client = await this.pool.connect();
 
-    return result.rowCount ? mapProviderServiceRow(result.rows[0]) : null;
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(
+        `
+        UPDATE provider_services
+        SET
+          slug = $2,
+          api_namespace = $3,
+          name = $4,
+          tagline = $5,
+          about = $6,
+          categories = $7::jsonb,
+          prompt_intro = $8,
+          setup_instructions = $9::jsonb,
+          website_url = $10,
+          payout_wallet = $11,
+          featured = $12,
+          updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+        `,
+        [
+          serviceId,
+          nextSlug,
+          nextNamespace,
+          input.name ?? detail.service.name,
+          input.tagline ?? detail.service.tagline,
+          input.about ?? detail.service.about,
+          JSON.stringify(input.categories ?? detail.service.categories),
+          input.promptIntro ?? detail.service.promptIntro,
+          JSON.stringify(input.setupInstructions ?? detail.service.setupInstructions),
+          input.websiteUrl === undefined ? detail.service.websiteUrl : input.websiteUrl,
+          nextPayoutWallet,
+          input.featured ?? detail.service.featured
+        ]
+      );
+
+      if (!result.rowCount) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+
+      if (nextPayoutWallet !== detail.service.payoutWallet) {
+        await client.query(
+          `
+          UPDATE provider_endpoint_drafts
+          SET
+            payout = jsonb_set(
+              COALESCE(payout, '{}'::jsonb),
+              '{providerWallet}',
+              CASE
+                WHEN $2::text IS NULL THEN 'null'::jsonb
+                ELSE to_jsonb($2::text)
+              END,
+              true
+            ),
+            updated_at = NOW()
+          WHERE service_id = $1
+          `,
+          [serviceId, nextPayoutWallet]
+        );
+      }
+
+      await client.query("COMMIT");
+      return mapProviderServiceRow(result.rows[0]);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async createProviderEndpointDraft(

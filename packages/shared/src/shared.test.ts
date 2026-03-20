@@ -610,4 +610,83 @@ describe("shared marketplace helpers", () => {
     expect(publicService?.service.status).toBe("published");
     expect(publicService?.endpoints).toHaveLength(1);
   });
+
+  it("propagates service payout-wallet changes into existing endpoint drafts before submit", async () => {
+    const store = new InMemoryMarketplaceStore();
+    const wallet = "fast1provider000000000000000000000000000000000000000000000000000000";
+    const replacementWallet = "fast1replacement00000000000000000000000000000000000000000000000000";
+
+    await store.upsertProviderAccount(wallet, {
+      displayName: "Signal Labs",
+      websiteUrl: "https://provider.example.com"
+    });
+
+    const created = await store.createProviderService(wallet, {
+      slug: "signal-labs-wallet-sync",
+      apiNamespace: "signals-wallet-sync",
+      name: "Signal Labs Wallet Sync",
+      tagline: "Provider payout wallet propagation.",
+      about: "Provider-authored signal endpoints used to verify payout wallet propagation into drafts and snapshots.",
+      categories: ["Research"],
+      promptIntro: 'I want to use the "Signal Labs Wallet Sync" service on Fast Marketplace.',
+      setupInstructions: ["Use a funded Fast wallet."],
+      websiteUrl: "https://provider.example.com",
+      payoutWallet: wallet
+    });
+
+    const endpoint = await store.createProviderEndpointDraft(created.service.id, wallet, {
+      operation: "quote",
+      title: "Quote",
+      description: "Return a single quote snapshot.",
+      billingType: "fixed_x402",
+      price: "$0.25",
+      mode: "sync",
+      requestSchemaJson: {
+        type: "object",
+        properties: {
+          symbol: { type: "string" }
+        },
+        required: ["symbol"],
+        additionalProperties: false
+      },
+      responseSchemaJson: {
+        type: "object",
+        properties: {
+          symbol: { type: "string" },
+          price: { type: "number" }
+        },
+        required: ["symbol", "price"],
+        additionalProperties: false
+      },
+      requestExample: { symbol: "FAST" },
+      responseExample: { symbol: "FAST", price: 42.5 },
+      upstreamBaseUrl: "https://provider.example.com",
+      upstreamPath: "/api/quote",
+      upstreamAuthMode: "none"
+    });
+
+    expect(endpoint.payout.providerWallet).toBe(wallet);
+
+    await store.updateProviderServiceForOwner(created.service.id, wallet, {
+      payoutWallet: replacementWallet
+    });
+
+    const updatedDetail = await store.getProviderServiceForOwner(created.service.id, wallet);
+    expect(updatedDetail?.service.payoutWallet).toBe(replacementWallet);
+    expect(updatedDetail?.endpoints[0]?.payout.providerWallet).toBe(replacementWallet);
+
+    await store.createProviderVerificationChallenge(created.service.id, wallet);
+    await store.markProviderVerificationResult(created.service.id, "verified", {
+      verifiedHost: "provider.example.com"
+    });
+    await store.submitProviderService(created.service.id, wallet);
+    await store.publishProviderService(created.service.id, {
+      reviewerIdentity: "ops@test",
+      settlementMode: "community_direct"
+    });
+
+    const published = await store.getPublishedServiceBySlug("signal-labs-wallet-sync");
+    expect(published?.service.payoutWallet).toBe(replacementWallet);
+    expect(published?.endpoints[0]?.payout.providerWallet).toBe(replacementWallet);
+  });
 });

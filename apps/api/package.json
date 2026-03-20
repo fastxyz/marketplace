@@ -1,7 +1,6 @@
 {
   "name": "@marketplace/api",
   "private": true,
-  "license": "MIT",
   "type": "module",
   "dependencies": {
     "@marketplace/shared": "*"

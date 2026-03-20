@@ -839,6 +839,7 @@ describe("marketplace api", () => {
 
   it("supports provider onboarding, review publish, and paid execution for a self-serve service", async () => {
     const providerWallet = await createTestWallet(PROVIDER_PRIVATE_KEY);
+    const replacementPayoutWallet = await createTestWallet(OTHER_PRIVATE_KEY);
     const { app, buyer, store } = await createTestApp();
     const providerToken = await createSiteSession(app, providerWallet);
 
@@ -923,6 +924,15 @@ describe("marketplace api", () => {
 
     expect(createdEndpoint.status).toBe(201);
 
+    const updatedService = await request(app)
+      .patch(`/provider/services/${serviceId}`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        payoutWallet: replacementPayoutWallet.address
+      });
+
+    expect(updatedService.status).toBe(200);
+
     const verificationChallenge = await request(app)
       .post(`/provider/services/${serviceId}/verification-challenge`)
       .set("Authorization", `Bearer ${providerToken}`);
@@ -993,7 +1003,7 @@ describe("marketplace api", () => {
       .send({ symbol: "FAST" });
 
     expect(unpaid.status).toBe(402);
-    expect(unpaid.body.accepts[0].payTo).toBe(providerWallet.address);
+    expect(unpaid.body.accepts[0].payTo).toBe(replacementPayoutWallet.address);
 
     const paid = await request(app)
       .post("/api/signals/quote")
@@ -1019,7 +1029,8 @@ describe("marketplace api", () => {
     expect(record?.routeId).toBe("signals.quote.v1");
     expect(record?.payoutSplit.providerAccountId).toBe(providerAccountId);
     expect(record?.payoutSplit.settlementMode).toBe("community_direct");
-    expect(record?.payoutSplit.paymentDestinationWallet).toBe(providerWallet.address);
+    expect(record?.payoutSplit.providerWallet).toBe(replacementPayoutWallet.address);
+    expect(record?.payoutSplit.paymentDestinationWallet).toBe(replacementPayoutWallet.address);
     expect(record?.payoutSplit.usesTreasurySettlement).toBe(false);
     expect(record?.payoutSplit.providerAmount).toBe("250000");
     expect(record?.payoutSplit.marketplaceAmount).toBe("0");
