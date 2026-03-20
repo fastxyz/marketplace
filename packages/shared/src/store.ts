@@ -84,6 +84,49 @@ function latestByCreatedAt<T extends { createdAt: string }>(records: T[]): T | n
   );
 }
 
+function chooseCanonicalFreeAttempt(attempts: ProviderAttemptRecord[]): ProviderAttemptRecord {
+  let best = attempts[0];
+  if (!best) {
+    throw new Error("Expected at least one free execution attempt.");
+  }
+
+  const isResolved = (attempt: ProviderAttemptRecord) => attempt.status !== "pending" && attempt.responseStatusCode !== null;
+
+  for (const attempt of attempts.slice(1)) {
+    const bestResolved = isResolved(best);
+    const nextResolved = isResolved(attempt);
+    if (bestResolved !== nextResolved) {
+      if (nextResolved) {
+        best = attempt;
+      }
+      continue;
+    }
+
+    if (attempt.createdAt !== best.createdAt) {
+      if (attempt.createdAt > best.createdAt) {
+        best = attempt;
+      }
+      continue;
+    }
+
+    if (best.status === "pending" && attempt.status !== "pending") {
+      best = attempt;
+      continue;
+    }
+
+    if ((best.responseStatusCode ?? -1) !== (attempt.responseStatusCode ?? -1) && attempt.responseStatusCode !== null) {
+      best = attempt;
+      continue;
+    }
+
+    if (attempt.id > best.id) {
+      best = attempt;
+    }
+  }
+
+  return best;
+}
+
 function isSameOrSubdomain(input: { rootHost: string; candidateHost: string }): boolean {
   const root = input.rootHost.toLowerCase();
   const candidate = input.candidateHost.toLowerCase();
@@ -211,14 +254,21 @@ function computeServiceAnalytics(input: {
     if (!routeIds.has(attempt.routeId) || attempt.jobToken || attempt.phase !== "execute") {
       return false;
     }
-
-    return attempt.responseStatusCode !== null;
+    return true;
   });
-  const successfulFreeCalls = freeExecuteAttempts.filter((attempt) => {
-    return attempt.status === "succeeded"
-      && attempt.responseStatusCode !== null
-      && attempt.responseStatusCode >= 200
-      && attempt.responseStatusCode < 400;
+  const freeAttemptsByRequestId = new Map<string, ProviderAttemptRecord[]>();
+  for (const attempt of freeExecuteAttempts) {
+    const key = attempt.requestId ?? attempt.id;
+    const existing = freeAttemptsByRequestId.get(key);
+    if (existing) {
+      existing.push(attempt);
+    } else {
+      freeAttemptsByRequestId.set(key, [attempt]);
+    }
+  }
+  const latestFreeAttempts = Array.from(freeAttemptsByRequestId.values()).map(chooseCanonicalFreeAttempt);
+  const resolvedFreeAttempts = latestFreeAttempts.filter((attempt) => {
+    return attempt.status !== "pending" && attempt.responseStatusCode !== null;
   });
   const windowStart = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000);
   const volumeMap = new Map<string, bigint>();
@@ -270,7 +320,7 @@ function computeServiceAnalytics(input: {
     }
   }
 
-  for (const attempt of freeExecuteAttempts) {
+  for (const attempt of resolvedFreeAttempts) {
     const createdAt = new Date(attempt.createdAt);
     if (createdAt < windowStart) {
       continue;
@@ -288,7 +338,7 @@ function computeServiceAnalytics(input: {
   }
 
   return {
-    totalCalls: acceptedCalls.length + successfulFreeCalls.length,
+    totalCalls: acceptedCalls.length + latestFreeAttempts.length,
     revenueRaw: revenueRaw.toString(),
     successRate30d: resolvedCalls30d === 0 ? 0 : (successfulCalls30d / resolvedCalls30d) * 100,
     volume30d: Array.from(volumeMap.entries()).map(([date, amountRaw]) => ({
@@ -722,7 +772,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     requestId?: string | null;
     responseStatusCode?: number | null;
     phase: "execute" | "poll" | "refund";
-    status: "succeeded" | "failed";
+    status: "pending" | "succeeded" | "failed";
     requestPayload?: unknown;
     responsePayload?: unknown;
     errorMessage?: string;
@@ -3965,7 +4015,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     requestId?: string | null;
     responseStatusCode?: number | null;
     phase: "execute" | "poll" | "refund";
-    status: "succeeded" | "failed";
+    status: "pending" | "succeeded" | "failed";
     requestPayload?: unknown;
     responsePayload?: unknown;
     errorMessage?: string;

@@ -1195,6 +1195,7 @@ describe("marketplace api", () => {
     const openApi = await request(app).get("/openapi.json");
     expect(openApi.status).toBe(200);
     expect(openApi.body.paths["/api/signals-free/search"].post.responses["402"]).toBeUndefined();
+    expect(openApi.body.paths["/api/signals-free/search"].post.responses["202"]).toBeUndefined();
     expect(openApi.body.paths["/api/signals-free/search"].post.parameters).toEqual([]);
 
     const response = await request(app)
@@ -1217,9 +1218,160 @@ describe("marketplace api", () => {
     );
 
     const analytics = await store.getServiceAnalytics(["signals-free.search.v1"]);
-    expect(analytics.totalCalls).toBe(1);
+    expect(analytics.totalCalls).toBe(2);
     expect(analytics.revenueRaw).toBe("0");
     expect(analytics.successRate30d).toBe(50);
+  });
+
+  it("still returns the free upstream result when completion persistence fails", async () => {
+    class FailingCompletionAttemptStore extends InMemoryMarketplaceStore {
+      private attemptWrites = 0;
+
+      override async recordProviderAttempt(
+        input: Parameters<InMemoryMarketplaceStore["recordProviderAttempt"]>[0]
+      ): Promise<Awaited<ReturnType<InMemoryMarketplaceStore["recordProviderAttempt"]>>> {
+        this.attemptWrites += 1;
+        if (this.attemptWrites > 1) {
+          throw new Error("Provider attempt persistence failed.");
+        }
+
+        return super.recordProviderAttempt(input);
+      }
+    }
+
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const providerWallet = await createTestWallet(PROVIDER_PRIVATE_KEY);
+    const store = new FailingCompletionAttemptStore();
+    const { app } = await createTestApp({ store });
+    const providerToken = await createSiteSession(app, providerWallet);
+
+    const profile = await request(app)
+      .post("/provider/me")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        displayName: "Signal Labs",
+        websiteUrl: "https://provider.example.com"
+      });
+
+    expect(profile.status).toBe(201);
+
+    const createdService = await request(app)
+      .post("/provider/services")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        slug: "signal-labs-free-persist",
+        apiNamespace: "signals-free-persist",
+        name: "Signal Labs Free Persist",
+        tagline: "Free signal route with strict persistence",
+        about: "Provider-authored free signal endpoints.",
+        categories: ["Research"],
+        promptIntro: 'I want to use the "Signal Labs Free Persist" service on Fast Marketplace.',
+        setupInstructions: ["Call the marketplace proxy route."],
+        websiteUrl: "https://provider.example.com",
+        payoutWallet: providerWallet.address
+      });
+
+    expect(createdService.status).toBe(201);
+    const serviceId = createdService.body.service.id as string;
+
+    const createdEndpoint = await request(app)
+      .post(`/provider/services/${serviceId}/endpoints`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        operation: "search",
+        title: "Search",
+        description: "Return a free signal snapshot.",
+        billingType: "free",
+        mode: "sync",
+        requestSchemaJson: {
+          type: "object",
+          properties: {
+            query: { type: "string", minLength: 1 }
+          },
+          required: ["query"],
+          additionalProperties: false
+        },
+        responseSchemaJson: {
+          type: "object",
+          properties: {
+            items: {
+              type: "array",
+              items: { type: "string" }
+            }
+          },
+          required: ["items"],
+          additionalProperties: false
+        },
+        requestExample: {
+          query: "FAST"
+        },
+        responseExample: {
+          items: ["alpha"]
+        },
+        upstreamBaseUrl: "https://provider.example.com",
+        upstreamPath: "/api/search",
+        upstreamAuthMode: "none"
+      });
+
+    expect(createdEndpoint.status).toBe(201);
+
+    const verificationChallenge = await request(app)
+      .post(`/provider/services/${serviceId}/verification-challenge`)
+      .set("Authorization", `Bearer ${providerToken}`);
+
+    expect(verificationChallenge.status).toBe(200);
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === verificationChallenge.body.expectedUrl) {
+        return new Response(verificationChallenge.body.token, { status: 200 });
+      }
+
+      if (url === "https://provider.example.com/api/search") {
+        return new Response(JSON.stringify({ items: ["alpha"] }), {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        });
+      }
+
+      return new Response("not found", { status: 404 });
+    });
+
+    const verified = await request(app)
+      .post(`/provider/services/${serviceId}/verify`)
+      .set("Authorization", `Bearer ${providerToken}`);
+
+    expect(verified.status).toBe(200);
+
+    const submitted = await request(app)
+      .post(`/provider/services/${serviceId}/submit`)
+      .set("Authorization", `Bearer ${providerToken}`);
+
+    expect(submitted.status).toBe(202);
+
+    const published = await request(app)
+      .post(`/internal/provider-services/${serviceId}/publish`)
+      .set("Authorization", "Bearer test-admin-token")
+      .send({
+        reviewerIdentity: "ops@test",
+        settlementMode: "verified_escrow"
+      });
+
+    expect(published.status).toBe(200);
+
+    const response = await request(app)
+      .post("/api/signals-free-persist/search")
+      .send({ query: "FAST" });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: ["alpha"] });
+
+    const analytics = await store.getServiceAnalytics(["signals-free-persist.search.v1"]);
+    expect(analytics.totalCalls).toBe(1);
+    expect(analytics.successRate30d).toBe(0);
   });
 
   it("publishes the submitted snapshot even if later draft edits are community-incompatible", async () => {

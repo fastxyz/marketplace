@@ -1,5 +1,5 @@
 import { buildServiceSummary } from "./catalog.js";
-import { routePriceLabel } from "./billing.js";
+import { requiresX402Payment, routePriceLabel } from "./billing.js";
 import {
   MARKETPLACE_NAME,
   MARKETPLACE_VERSION,
@@ -199,19 +199,28 @@ export function buildOpenApiDocument(input: {
   };
 
   for (const route of input.routes) {
-    const responses: Record<string, unknown> = {
-      "200": {
-        description: route.billing.type === "free" ? "Free sync response." : "Paid sync response.",
-        content: {
-          "application/json": {
-            schema: route.responseSchemaJson
+    const responses: Record<string, unknown> = route.mode === "sync"
+      ? {
+          "200": {
+            description: route.billing.type === "free" ? "Free sync response." : "Paid sync response.",
+            content: {
+              "application/json": {
+                schema: route.responseSchemaJson
+              }
+            }
           }
         }
-      },
-      "202": {
-        description: route.billing.type === "free" ? "Free async job accepted." : "Paid async job accepted."
-      }
-    };
+      : {
+          "202": {
+            description: route.billing.type === "free" ? "Free async job accepted." : "Paid async job accepted."
+          }
+        };
+
+    if (route.mode === "sync" && requiresX402Payment(route)) {
+      responses["202"] = {
+        description: "Paid request accepted and still processing."
+      };
+    }
 
     const parameters: Array<Record<string, unknown>> = [];
 

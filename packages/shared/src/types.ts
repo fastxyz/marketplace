@@ -587,7 +587,7 @@ export interface ProviderAttemptRecord {
   requestId: string | null;
   responseStatusCode: number | null;
   phase: "execute" | "poll" | "refund";
-  status: "succeeded" | "failed";
+  status: "pending" | "succeeded" | "failed";
   requestPayload: unknown;
   responsePayload: unknown;
   errorMessage: string | null;
@@ -793,7 +793,7 @@ export interface MarketplaceStore {
     requestId?: string | null;
     responseStatusCode?: number | null;
     phase: "execute" | "poll" | "refund";
-    status: "succeeded" | "failed";
+    status: "pending" | "succeeded" | "failed";
     requestPayload?: unknown;
     responsePayload?: unknown;
     errorMessage?: string;

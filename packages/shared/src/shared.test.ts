@@ -140,6 +140,21 @@ describe("shared marketplace helpers", () => {
     expect(document.paths["/api/mock/async-report"]).toBeDefined();
     expect(document.paths["/api/tavily/search"]).toBeDefined();
     expect(document.paths["/catalog/services"]).toBeDefined();
+
+    const asyncPath = document.paths["/api/mock/async-report"] as {
+      post?: {
+        responses?: Record<string, unknown>;
+      };
+    };
+    const syncPaidPath = document.paths["/api/mock/quick-insight"] as {
+      post?: {
+        responses?: Record<string, unknown>;
+      };
+    };
+    expect(asyncPath.post?.responses?.["202"]).toBeDefined();
+    expect(asyncPath.post?.responses?.["200"]).toBeUndefined();
+    expect(syncPaidPath.post?.responses?.["200"]).toBeDefined();
+    expect(syncPaidPath.post?.responses?.["202"]).toBeDefined();
   });
 
   it("describes free routes without x402 headers or token pricing", () => {
@@ -177,6 +192,7 @@ describe("shared marketplace helpers", () => {
     };
 
     expect(freePath.post?.responses?.["402"]).toBeUndefined();
+    expect(freePath.post?.responses?.["202"]).toBeUndefined();
     expect(freePath.post?.parameters).toEqual([]);
 
     const detail = buildServiceDetail({
@@ -432,10 +448,53 @@ describe("shared marketplace helpers", () => {
       responsePayload: { error: "upstream failed" }
     });
 
+    const pendingAttempt = await store.recordProviderAttempt({
+      routeId: "mock.quick-insight.v1",
+      requestId: "free_request_catalog_3",
+      phase: "execute",
+      status: "pending",
+      requestPayload: { symbol: "LATE" }
+    });
+    const completedAttempt = await store.recordProviderAttempt({
+      routeId: "mock.quick-insight.v1",
+      requestId: "free_request_catalog_3",
+      responseStatusCode: 200,
+      phase: "execute",
+      status: "succeeded",
+      requestPayload: { symbol: "LATE" },
+      responsePayload: { ok: true }
+    });
+    await store.recordProviderAttempt({
+      routeId: "mock.quick-insight.v1",
+      requestId: "free_request_catalog_4",
+      phase: "execute",
+      status: "pending",
+      requestPayload: { symbol: "PENDING" }
+    });
+
+    const internalAttempts = (store as unknown as {
+      attempts: Array<{ id: string; createdAt: string }>;
+    }).attempts;
+    const sharedCreatedAt = completedAttempt.createdAt;
+    const stalePending = internalAttempts.find((attempt) => attempt.id === pendingAttempt.id);
+    const resolvedAttempt = internalAttempts.find((attempt) => attempt.id === completedAttempt.id);
+    if (!stalePending || !resolvedAttempt) {
+      throw new Error("Expected recorded provider attempts.");
+    }
+    stalePending.createdAt = sharedCreatedAt;
+    resolvedAttempt.createdAt = sharedCreatedAt;
+    (store as unknown as {
+      attempts: Array<{ id: string; createdAt: string }>;
+    }).attempts = [
+      resolvedAttempt,
+      stalePending,
+      ...internalAttempts.filter((attempt) => attempt.id !== pendingAttempt.id && attempt.id !== completedAttempt.id)
+    ];
+
     const analytics = await store.getServiceAnalytics(["mock.quick-insight.v1", "mock.async-report.v1"]);
-    expect(analytics.totalCalls).toBe(3);
+    expect(analytics.totalCalls).toBe(6);
     expect(analytics.revenueRaw).toBe("60000");
-    expect(analytics.successRate30d).toBe(75);
+    expect(analytics.successRate30d).toBe(80);
 
     const created = await store.createSuggestion({
       type: "endpoint",

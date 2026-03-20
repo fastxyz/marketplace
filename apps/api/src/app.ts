@@ -1560,12 +1560,27 @@ async function handleFreeRoute(input: {
     return input.res.status(500).json({ error: "Free routes currently support sync HTTP execution only." });
   }
 
+  const requestBody = input.req.body ?? {};
   const requestId = randomUUID();
+  try {
+    await input.store.recordProviderAttempt({
+      routeId: input.route.routeId,
+      requestId,
+      phase: "execute",
+      status: "pending",
+      requestPayload: requestBody
+    });
+  } catch (error) {
+    return input.res.status(500).json({
+      error: error instanceof Error ? error.message : "Free route execution persistence failed."
+    });
+  }
+
   let executeResult: Awaited<ReturnType<typeof executeHttpRoute>>;
   try {
     executeResult = await executeHttpRoute({
       route: input.route,
-      input: input.req.body ?? {},
+      input: requestBody,
       buyerWallet: null,
       requestId,
       paymentId: null,
@@ -1579,7 +1594,7 @@ async function handleFreeRoute(input: {
       responseStatusCode: 500,
       phase: "execute",
       status: "failed",
-      requestPayload: input.req.body ?? {},
+      requestPayload: requestBody,
       errorMessage: error instanceof Error ? error.message : "Free route execution failed."
     });
 
@@ -1589,6 +1604,15 @@ async function handleFreeRoute(input: {
   }
 
   if (executeResult.kind !== "sync") {
+    await recordProviderAttemptSafely(input.store, {
+      routeId: input.route.routeId,
+      requestId,
+      responseStatusCode: 500,
+      phase: "execute",
+      status: "failed",
+      requestPayload: requestBody,
+      errorMessage: "Free routes must be sync."
+    });
     return input.res.status(500).json({ error: "Free routes must be sync." });
   }
 
@@ -1598,7 +1622,7 @@ async function handleFreeRoute(input: {
     responseStatusCode: executeResult.statusCode,
     phase: "execute",
     status: executeResult.statusCode >= 200 && executeResult.statusCode < 400 ? "succeeded" : "failed",
-    requestPayload: input.req.body ?? {},
+    requestPayload: requestBody,
     responsePayload: executeResult.body
   });
 
