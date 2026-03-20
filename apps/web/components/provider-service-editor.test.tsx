@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -33,7 +33,9 @@ vi.mock("@/lib/api", () => ({
   rotateProviderRuntimeKey: (...args: unknown[]) => rotateProviderRuntimeKey(...args)
 }));
 
-function buildServiceDetail() {
+function buildServiceDetail(overrides?: {
+  endpoints?: Array<Record<string, unknown>>;
+}) {
   return {
     service: {
       id: "service_1",
@@ -64,7 +66,7 @@ function buildServiceDetail() {
       createdAt: "2026-03-20T00:00:00.000Z",
       updatedAt: "2026-03-20T00:00:00.000Z"
     },
-    endpoints: [],
+    endpoints: overrides?.endpoints ?? [],
     verification: null,
     latestReview: null,
     latestPublishedVersionId: null
@@ -195,5 +197,134 @@ describe("ProviderServiceEditor", () => {
     expect(screen.getByDisplayValue("Search")).toBeTruthy();
     expect(screen.getByDisplayValue("https://api.provider.example.com")).toBeTruthy();
     expect(screen.getByDisplayValue("/search")).toBeTruthy();
+  });
+
+  it("creates a free endpoint draft through the editor", async () => {
+    const user = userEvent.setup();
+    fetchProviderService.mockResolvedValue(buildServiceDetail());
+    createProviderEndpoint.mockResolvedValue({});
+
+    render(
+      <ProviderServiceEditor
+        apiBaseUrl="https://api.marketplace.example.com"
+        deploymentNetwork="mainnet"
+        serviceId="service_1"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Endpoint drafts")).toBeTruthy();
+    });
+
+    const newEndpointHeading = screen.getAllByText("New endpoint").at(-1);
+    const newEndpointFormElement = newEndpointHeading?.closest("form") ?? null;
+    if (!newEndpointFormElement) {
+      throw new Error("New endpoint form not found.");
+    }
+    const newEndpointForm = within(newEndpointFormElement);
+
+    await user.type(newEndpointForm.getByLabelText(/operation slug/i), "search");
+    await user.selectOptions(newEndpointForm.getByLabelText(/billing/i), "free");
+    await user.type(newEndpointForm.getByLabelText(/^title$/i), "Search");
+    await user.type(newEndpointForm.getByLabelText(/^description$/i), "Search provider data.");
+    await user.type(newEndpointForm.getByLabelText(/upstream base url/i), "https://api.provider.example.com");
+    await user.type(newEndpointForm.getByLabelText(/upstream path/i), "/search");
+    fireEvent.change(newEndpointForm.getByLabelText(/request schema json/i), { target: { value: "{\"type\":\"object\"}" } });
+    fireEvent.change(newEndpointForm.getByLabelText(/response schema json/i), { target: { value: "{\"type\":\"object\"}" } });
+    fireEvent.change(newEndpointForm.getByLabelText(/request example json/i), { target: { value: "{}" } });
+    fireEvent.change(newEndpointForm.getByLabelText(/response example json/i), { target: { value: "{\"ok\":true}" } });
+    await user.click(newEndpointForm.getByRole("button", { name: /create endpoint/i }));
+
+    await waitFor(() => {
+      expect(createProviderEndpoint).toHaveBeenCalled();
+    });
+
+    const input = createProviderEndpoint.mock.calls[0]?.[3];
+    expect(input).toMatchObject({
+      operation: "search",
+      title: "Search",
+      description: "Search provider data.",
+      billingType: "free",
+      mode: "sync",
+      upstreamBaseUrl: "https://api.provider.example.com",
+      upstreamPath: "/search",
+      upstreamAuthMode: "none"
+    });
+    expect(input).not.toHaveProperty("price");
+  });
+
+  it("preserves free billing when saving an existing endpoint draft", async () => {
+    const user = userEvent.setup();
+    fetchProviderService.mockResolvedValue(buildServiceDetail({
+      endpoints: [
+        {
+          id: "endpoint_1",
+          serviceId: "service_1",
+          routeId: "signal-labs.search.v1",
+          operation: "search",
+          title: "Search",
+          description: "Search provider data.",
+          price: "Free",
+          billing: {
+            type: "free"
+          },
+          mode: "sync",
+          executorKind: "http",
+          requestSchemaJson: { type: "object" },
+          responseSchemaJson: { type: "object" },
+          requestExample: {},
+          responseExample: { ok: true },
+          usageNotes: null,
+          upstreamBaseUrl: "https://api.provider.example.com",
+          upstreamPath: "/search",
+          upstreamAuthMode: "none",
+          upstreamAuthHeaderName: null,
+          upstreamSecretRef: null,
+          hasUpstreamSecret: false,
+          payout: {
+            providerAccountId: "provider_1",
+            providerWallet: "fast1provider000000000000000000000000000000000000000000000000000000",
+            providerBps: 10_000
+          },
+          createdAt: "2026-03-20T00:00:00.000Z",
+          updatedAt: "2026-03-20T00:00:00.000Z"
+        }
+      ]
+    }));
+    updateProviderEndpoint.mockResolvedValue({});
+
+    render(
+      <ProviderServiceEditor
+        apiBaseUrl="https://api.marketplace.example.com"
+        deploymentNetwork="mainnet"
+        serviceId="service_1"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: /^save$/i }).length).toBeGreaterThan(0);
+    });
+
+    const saveButton = screen.getAllByRole("button", { name: /^save$/i }).at(-1);
+    if (!saveButton) {
+      throw new Error("Save button not found.");
+    }
+    await user.click(saveButton);
+
+    await waitFor(() => {
+      expect(updateProviderEndpoint).toHaveBeenCalled();
+    });
+
+    const input = updateProviderEndpoint.mock.calls[0]?.[4];
+    expect(input).toMatchObject({
+      operation: "search",
+      title: "Search",
+      description: "Search provider data.",
+      billingType: "free",
+      upstreamBaseUrl: "https://api.provider.example.com",
+      upstreamPath: "/search",
+      upstreamAuthMode: "none"
+    });
+    expect(input).not.toHaveProperty("price");
   });
 });

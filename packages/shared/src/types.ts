@@ -40,7 +40,7 @@ export interface PersistedPayoutSplit {
   providerAmount: string;
 }
 
-export type RouteBillingType = "fixed_x402" | "topup_x402_variable" | "prepaid_credit";
+export type RouteBillingType = "fixed_x402" | "topup_x402_variable" | "prepaid_credit" | "free";
 
 export interface FixedX402Billing {
   type: "fixed_x402";
@@ -57,7 +57,11 @@ export interface PrepaidCreditBilling {
   type: "prepaid_credit";
 }
 
-export type RouteBilling = FixedX402Billing | TopupX402VariableBilling | PrepaidCreditBilling;
+export interface FreeBilling {
+  type: "free";
+}
+
+export type RouteBilling = FixedX402Billing | TopupX402VariableBilling | PrepaidCreditBilling | FreeBilling;
 
 export interface MarketplaceRoute {
   routeId: string;
@@ -578,7 +582,10 @@ export interface JobRecord {
 
 export interface ProviderAttemptRecord {
   id: string;
-  jobToken: string;
+  jobToken: string | null;
+  routeId: string;
+  requestId: string | null;
+  responseStatusCode: number | null;
   phase: "execute" | "poll" | "refund";
   status: "succeeded" | "failed";
   requestPayload: unknown;
@@ -781,7 +788,10 @@ export interface MarketplaceStore {
   }): Promise<AccessGrantRecord>;
   getAccessGrant(resourceType: ResourceType, resourceId: string, wallet: string): Promise<AccessGrantRecord | null>;
   recordProviderAttempt(input: {
-    jobToken: string;
+    jobToken?: string | null;
+    routeId: string;
+    requestId?: string | null;
+    responseStatusCode?: number | null;
     phase: "execute" | "poll" | "refund";
     status: "succeeded" | "failed";
     requestPayload?: unknown;

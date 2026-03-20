@@ -192,6 +192,7 @@ function computeServiceAnalytics(input: {
   routeIds: string[];
   idempotencyRecords: IdempotencyRecord[];
   jobs: JobRecord[];
+  providerAttempts: ProviderAttemptRecord[];
 }): ServiceAnalytics {
   const routeIds = new Set(input.routeIds);
   const acceptedCalls = input.idempotencyRecords.filter((record) => {
@@ -206,6 +207,19 @@ function computeServiceAnalytics(input: {
     return record.responseStatusCode >= 200 && record.responseStatusCode < 400;
   });
   const jobs = input.jobs.filter((job) => routeIds.has(job.routeId));
+  const freeExecuteAttempts = input.providerAttempts.filter((attempt) => {
+    if (!routeIds.has(attempt.routeId) || attempt.jobToken || attempt.phase !== "execute") {
+      return false;
+    }
+
+    return attempt.responseStatusCode !== null;
+  });
+  const successfulFreeCalls = freeExecuteAttempts.filter((attempt) => {
+    return attempt.status === "succeeded"
+      && attempt.responseStatusCode !== null
+      && attempt.responseStatusCode >= 200
+      && attempt.responseStatusCode < 400;
+  });
   const windowStart = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000);
   const volumeMap = new Map<string, bigint>();
 
@@ -256,8 +270,25 @@ function computeServiceAnalytics(input: {
     }
   }
 
+  for (const attempt of freeExecuteAttempts) {
+    const createdAt = new Date(attempt.createdAt);
+    if (createdAt < windowStart) {
+      continue;
+    }
+
+    resolvedCalls30d += 1;
+    if (
+      attempt.status === "succeeded"
+      && attempt.responseStatusCode !== null
+      && attempt.responseStatusCode >= 200
+      && attempt.responseStatusCode < 400
+    ) {
+      successfulCalls30d += 1;
+    }
+  }
+
   return {
-    totalCalls: acceptedCalls.length,
+    totalCalls: acceptedCalls.length + successfulFreeCalls.length,
     revenueRaw: revenueRaw.toString(),
     successRate30d: resolvedCalls30d === 0 ? 0 : (successfulCalls30d / resolvedCalls30d) * 100,
     volume30d: Array.from(volumeMap.entries()).map(([date, amountRaw]) => ({
@@ -686,7 +717,10 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
   }
 
   async recordProviderAttempt(input: {
-    jobToken: string;
+    jobToken?: string | null;
+    routeId: string;
+    requestId?: string | null;
+    responseStatusCode?: number | null;
     phase: "execute" | "poll" | "refund";
     status: "succeeded" | "failed";
     requestPayload?: unknown;
@@ -695,7 +729,10 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
   }): Promise<ProviderAttemptRecord> {
     const record: ProviderAttemptRecord = {
       id: randomUUID(),
-      jobToken: input.jobToken,
+      jobToken: input.jobToken ?? null,
+      routeId: input.routeId,
+      requestId: input.requestId ?? null,
+      responseStatusCode: input.responseStatusCode ?? null,
       phase: input.phase,
       status: input.status,
       requestPayload: clone(input.requestPayload ?? null),
@@ -1565,7 +1602,8 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     return computeServiceAnalytics({
       routeIds,
       idempotencyRecords: Array.from(this.idempotencyByPaymentId.values()),
-      jobs: Array.from(this.jobsByToken.values())
+      jobs: Array.from(this.jobsByToken.values()),
+      providerAttempts: this.attempts
     });
   }
 
@@ -2596,7 +2634,10 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
 
       CREATE TABLE IF NOT EXISTS provider_attempts (
         id TEXT PRIMARY KEY,
-        job_token TEXT NOT NULL REFERENCES jobs(job_token),
+        job_token TEXT REFERENCES jobs(job_token),
+        route_id TEXT NOT NULL,
+        request_id TEXT,
+        response_status_code INTEGER,
         phase TEXT NOT NULL,
         status TEXT NOT NULL,
         request_payload JSONB,
@@ -2604,6 +2645,30 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         error_message TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      ALTER TABLE provider_attempts
+      ALTER COLUMN job_token DROP NOT NULL;
+
+      ALTER TABLE provider_attempts
+      ADD COLUMN IF NOT EXISTS route_id TEXT;
+
+      ALTER TABLE provider_attempts
+      ADD COLUMN IF NOT EXISTS request_id TEXT;
+
+      ALTER TABLE provider_attempts
+      ADD COLUMN IF NOT EXISTS response_status_code INTEGER;
+
+      UPDATE provider_attempts attempts
+      SET route_id = jobs.route_id
+      FROM jobs
+      WHERE attempts.route_id IS NULL
+        AND attempts.job_token = jobs.job_token;
+
+      ALTER TABLE provider_attempts
+      ALTER COLUMN route_id SET NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS provider_attempts_route_id_idx
+      ON provider_attempts(route_id);
 
       CREATE TABLE IF NOT EXISTS access_grants (
         id TEXT PRIMARY KEY,
@@ -3895,7 +3960,10 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
   }
 
   async recordProviderAttempt(input: {
-    jobToken: string;
+    jobToken?: string | null;
+    routeId: string;
+    requestId?: string | null;
+    responseStatusCode?: number | null;
     phase: "execute" | "poll" | "refund";
     status: "succeeded" | "failed";
     requestPayload?: unknown;
@@ -3904,13 +3972,18 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
   }): Promise<ProviderAttemptRecord> {
     const result = await this.pool.query(
       `
-      INSERT INTO provider_attempts (id, job_token, phase, status, request_payload, response_payload, error_message)
-      VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7)
+      INSERT INTO provider_attempts (
+        id, job_token, route_id, request_id, response_status_code, phase, status, request_payload, response_payload, error_message
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10)
       RETURNING *
       `,
       [
         randomUUID(),
-        input.jobToken,
+        input.jobToken ?? null,
+        input.routeId,
+        input.requestId ?? null,
+        input.responseStatusCode ?? null,
         input.phase,
         input.status,
         JSON.stringify(input.requestPayload ?? null),
@@ -5230,7 +5303,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
   }
 
   async getServiceAnalytics(routeIds: string[]): Promise<ServiceAnalytics> {
-    const [idempotencyResult, jobsResult] = await Promise.all([
+    const [idempotencyResult, jobsResult, attemptsResult] = await Promise.all([
       this.pool.query(
         `
         SELECT * FROM idempotency_records
@@ -5244,13 +5317,21 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         WHERE route_id = ANY($1::text[])
         `,
         [routeIds]
+      ),
+      this.pool.query(
+        `
+        SELECT * FROM provider_attempts
+        WHERE route_id = ANY($1::text[])
+        `,
+        [routeIds]
       )
     ]);
 
     return computeServiceAnalytics({
       routeIds,
       idempotencyRecords: idempotencyResult.rows.map(mapIdempotencyRow),
-      jobs: jobsResult.rows.map(mapJobRow)
+      jobs: jobsResult.rows.map(mapJobRow),
+      providerAttempts: attemptsResult.rows.map(mapAttemptRow)
     });
   }
 
@@ -6462,7 +6543,10 @@ function mapJobRow(row: Record<string, unknown>): JobRecord {
 function mapAttemptRow(row: Record<string, unknown>): ProviderAttemptRecord {
   return {
     id: row.id as string,
-    jobToken: row.job_token as string,
+    jobToken: (row.job_token as string | null) ?? null,
+    routeId: row.route_id as string,
+    requestId: (row.request_id as string | null) ?? null,
+    responseStatusCode: (row.response_status_code as number | null) ?? null,
     phase: row.phase as ProviderAttemptRecord["phase"],
     status: row.status as ProviderAttemptRecord["status"],
     requestPayload: row.request_payload,

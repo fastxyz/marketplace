@@ -15,6 +15,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
+function usesTokenPrice(billingType: ServiceDetail["endpoints"][number]["billingType"]): boolean {
+  return billingType === "fixed_x402" || billingType === "topup_x402_variable";
+}
+
+function formatSummaryPriceRange(priceRange: string): string {
+  return priceRange === "Free" ? priceRange : `${priceRange} per call`;
+}
+
 export function ServicePage({
   service,
   deploymentNetwork
@@ -43,7 +51,7 @@ export function ServicePage({
                     {service.summary.settlementLabel}
                   </Badge>
                   <span className="text-sm tracking-headline text-muted-foreground">
-                    {service.summary.priceRange} per call
+                    {formatSummaryPriceRange(service.summary.priceRange)}
                   </span>
                 </div>
                 <div className="space-y-4">
@@ -75,7 +83,7 @@ export function ServicePage({
             <Card variant="frosted">
               <CardHeader>
                 <Badge variant="eyebrow">Transaction volume</Badge>
-                <CardTitle className="text-3xl">Paid call flow over time</CardTitle>
+                <CardTitle className="text-3xl">Marketplace call flow over time</CardTitle>
                 <CardDescription>Thirty-day volume across live marketplace traffic.</CardDescription>
               </CardHeader>
               <CardContent>
@@ -152,7 +160,7 @@ export function ServicePage({
                           <div className="text-sm leading-7 text-muted-foreground">{endpoint.description}</div>
                         </div>
                         <div className="text-sm font-medium tracking-headline text-foreground">
-                          {endpoint.price} {endpoint.tokenSymbol}
+                          {endpoint.price}{usesTokenPrice(endpoint.billingType) ? ` ${endpoint.tokenSymbol}` : ""}
                         </div>
                       </div>
                     </AccordionTrigger>

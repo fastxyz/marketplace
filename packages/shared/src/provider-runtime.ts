@@ -21,7 +21,7 @@ export interface ProviderRuntimeKeyMaterial {
 }
 
 export interface MarketplaceIdentityPayload {
-  buyerWallet: string;
+  buyerWallet: string | null;
   serviceId: string;
   requestId: string;
   paymentId: string | null;
@@ -34,7 +34,7 @@ function hashValue(value: string): string {
 
 function signaturePayload(input: MarketplaceIdentityPayload): string {
   return [
-    input.buyerWallet,
+    input.buyerWallet ?? "",
     input.serviceId,
     input.requestId,
     input.paymentId ?? "",
@@ -84,7 +84,7 @@ export function decryptProviderRuntimeKey(input: {
 }
 
 export function buildMarketplaceIdentityHeaders(input: {
-  buyerWallet: string;
+  buyerWallet?: string | null;
   serviceId: string;
   requestId: string;
   paymentId?: string | null;
@@ -93,7 +93,7 @@ export function buildMarketplaceIdentityHeaders(input: {
 }): Record<string, string> {
   const timestamp = (input.now ?? new Date()).toISOString();
   const payload: MarketplaceIdentityPayload = {
-    buyerWallet: input.buyerWallet,
+    buyerWallet: input.buyerWallet ?? null,
     serviceId: input.serviceId,
     requestId: input.requestId,
     paymentId: input.paymentId ?? null,
@@ -102,7 +102,7 @@ export function buildMarketplaceIdentityHeaders(input: {
   const signature = createHmac("sha256", input.signingSecret).update(signaturePayload(payload)).digest("base64url");
 
   return {
-    [MARKETPLACE_IDENTITY_WALLET_HEADER]: payload.buyerWallet,
+    [MARKETPLACE_IDENTITY_WALLET_HEADER]: payload.buyerWallet ?? "",
     [MARKETPLACE_IDENTITY_SERVICE_HEADER]: payload.serviceId,
     [MARKETPLACE_IDENTITY_REQUEST_HEADER]: payload.requestId,
     [MARKETPLACE_IDENTITY_PAYMENT_HEADER]: payload.paymentId ?? "",
@@ -134,7 +134,7 @@ export function verifyMarketplaceIdentityHeaders(input: {
   };
 
   const payload: MarketplaceIdentityPayload = {
-    buyerWallet: read(MARKETPLACE_IDENTITY_WALLET_HEADER),
+    buyerWallet: readOptional(MARKETPLACE_IDENTITY_WALLET_HEADER) || null,
     serviceId: read(MARKETPLACE_IDENTITY_SERVICE_HEADER),
     requestId: read(MARKETPLACE_IDENTITY_REQUEST_HEADER),
     paymentId: readOptional(MARKETPLACE_IDENTITY_PAYMENT_HEADER) || null,

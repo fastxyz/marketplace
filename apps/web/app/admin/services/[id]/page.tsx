@@ -28,6 +28,8 @@ function formatBillingLabel(type: string): string {
   switch (type) {
     case "fixed_x402":
       return "fixed x402";
+    case "free":
+      return "free";
     case "topup_x402_variable":
       return "variable top-up";
     case "prepaid_credit":

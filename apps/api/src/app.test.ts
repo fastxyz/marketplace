@@ -1037,6 +1037,191 @@ describe("marketplace api", () => {
     expect(await store.listPendingProviderPayouts(10)).toHaveLength(0);
   });
 
+  it("supports provider onboarding, publish, and free execution for a self-serve service", async () => {
+    const providerWallet = await createTestWallet(PROVIDER_PRIVATE_KEY);
+    const { app, store } = await createTestApp();
+    const providerToken = await createSiteSession(app, providerWallet);
+
+    const profile = await request(app)
+      .post("/provider/me")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        displayName: "Signal Labs",
+        websiteUrl: "https://provider.example.com"
+      });
+
+    expect(profile.status).toBe(201);
+
+    const createdService = await request(app)
+      .post("/provider/services")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        slug: "signal-labs-free",
+        apiNamespace: "signals-free",
+        name: "Signal Labs Free",
+        tagline: "Free short-form market signals",
+        about: "Provider-authored free signal endpoints.",
+        categories: ["Research"],
+        promptIntro: 'I want to use the "Signal Labs Free" service on Fast Marketplace.',
+        setupInstructions: ["Call the marketplace proxy route."],
+        websiteUrl: "https://provider.example.com",
+        payoutWallet: providerWallet.address
+      });
+
+    expect(createdService.status).toBe(201);
+    const serviceId = createdService.body.service.id as string;
+
+    const runtimeKeyResponse = await request(app)
+      .post(`/provider/services/${serviceId}/runtime-key`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({});
+
+    expect(runtimeKeyResponse.status).toBe(201);
+    const runtimeKey = runtimeKeyResponse.body.plaintextKey as string;
+
+    const createdEndpoint = await request(app)
+      .post(`/provider/services/${serviceId}/endpoints`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        operation: "search",
+        title: "Search",
+        description: "Return a free signal snapshot.",
+        billingType: "free",
+        mode: "sync",
+        requestSchemaJson: {
+          type: "object",
+          properties: {
+            query: { type: "string", minLength: 1 }
+          },
+          required: ["query"],
+          additionalProperties: false
+        },
+        responseSchemaJson: {
+          type: "object",
+          properties: {
+            items: {
+              type: "array",
+              items: { type: "string" }
+            }
+          },
+          required: ["items"],
+          additionalProperties: false
+        },
+        requestExample: {
+          query: "FAST"
+        },
+        responseExample: {
+          items: ["alpha"]
+        },
+        upstreamBaseUrl: "https://provider.example.com",
+        upstreamPath: "/api/search",
+        upstreamAuthMode: "none"
+      });
+
+    expect(createdEndpoint.status).toBe(201);
+
+    const verificationChallenge = await request(app)
+      .post(`/provider/services/${serviceId}/verification-challenge`)
+      .set("Authorization", `Bearer ${providerToken}`);
+
+    expect(verificationChallenge.status).toBe(200);
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === verificationChallenge.body.expectedUrl) {
+        return new Response(verificationChallenge.body.token, { status: 200 });
+      }
+
+      if (url === "https://provider.example.com/api/search") {
+        const headers = Object.fromEntries(new Headers(init?.headers).entries());
+        const requestBody = JSON.parse(String(init?.body ?? "{}")) as { query?: string };
+        const identity = verifyMarketplaceIdentityHeaders({
+          headers,
+          signingSecret: runtimeKey
+        });
+
+        expect(headers["x-marketplace-buyer-wallet"] ?? "").toBe("");
+        expect(identity.buyerWallet).toBeNull();
+        expect(identity.paymentId).toBeNull();
+        expect(identity.serviceId).toBe(serviceId);
+        expect(headers["x-marketplace-payment-id"]).toBe("");
+
+        if (requestBody.query === "FAIL") {
+          return new Response(JSON.stringify({ error: "upstream failed" }), {
+            status: 502,
+            headers: {
+              "content-type": "application/json"
+            }
+          });
+        }
+
+        return new Response(JSON.stringify({ items: ["alpha"] }), {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        });
+      }
+
+      return new Response("not found", { status: 404 });
+    });
+
+    const verified = await request(app)
+      .post(`/provider/services/${serviceId}/verify`)
+      .set("Authorization", `Bearer ${providerToken}`);
+
+    expect(verified.status).toBe(200);
+
+    const submitted = await request(app)
+      .post(`/provider/services/${serviceId}/submit`)
+      .set("Authorization", `Bearer ${providerToken}`);
+
+    expect(submitted.status).toBe(202);
+
+    const published = await request(app)
+      .post(`/internal/provider-services/${serviceId}/publish`)
+      .set("Authorization", "Bearer test-admin-token")
+      .send({
+        reviewerIdentity: "ops@test",
+        settlementMode: "verified_escrow"
+      });
+
+    expect(published.status).toBe(200);
+
+    const publicDetail = await request(app).get("/catalog/services/signal-labs-free");
+    expect(publicDetail.status).toBe(200);
+    expect(publicDetail.body.endpoints[0].price).toBe("Free");
+
+    const openApi = await request(app).get("/openapi.json");
+    expect(openApi.status).toBe(200);
+    expect(openApi.body.paths["/api/signals-free/search"].post.responses["402"]).toBeUndefined();
+    expect(openApi.body.paths["/api/signals-free/search"].post.parameters).toEqual([]);
+
+    const response = await request(app)
+      .post("/api/signals-free/search")
+      .send({ query: "FAST" });
+    const failedResponse = await request(app)
+      .post("/api/signals-free/search")
+      .send({ query: "FAIL" });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: ["alpha"] });
+    expect(failedResponse.status).toBe(502);
+    expect(failedResponse.body).toEqual({ error: "upstream failed" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://provider.example.com/api/search",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ query: "FAST" })
+      })
+    );
+
+    const analytics = await store.getServiceAnalytics(["signals-free.search.v1"]);
+    expect(analytics.totalCalls).toBe(1);
+    expect(analytics.revenueRaw).toBe("0");
+    expect(analytics.successRate30d).toBe(50);
+  });
+
   it("publishes the submitted snapshot even if later draft edits are community-incompatible", async () => {
     const providerWallet = await createTestWallet(PROVIDER_PRIVATE_KEY);
     const { app } = await createTestApp();
@@ -1504,6 +1689,9 @@ describe("marketplace api", () => {
           headers,
           signingSecret: runtimeKey
         });
+        if (!identity.buyerWallet) {
+          throw new Error("Prepaid route execution must include a buyer wallet.");
+        }
 
         const reserveResponse = await request(app)
           .post("/provider/runtime/credits/reserve")

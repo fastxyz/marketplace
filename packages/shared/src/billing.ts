@@ -2,6 +2,7 @@ import { decimalToRawString, rawToDecimalString } from "./amounts.js";
 import type {
   CreateProviderEndpointDraftInput,
   FixedX402Billing,
+  FreeBilling,
   MarketplaceRoute,
   PrepaidCreditBilling,
   RouteBilling,
@@ -62,12 +63,18 @@ export function isPrepaidCreditBilling(route: MarketplaceRoute | { billing: { ty
   return route.billing.type === "prepaid_credit";
 }
 
+export function isFreeBilling(route: MarketplaceRoute | { billing: { type: string } }): route is MarketplaceRoute & {
+  billing: FreeBilling;
+} {
+  return route.billing.type === "free";
+}
+
 export function requiresWalletSession(route: MarketplaceRoute): boolean {
   return isPrepaidCreditBilling(route);
 }
 
 export function requiresX402Payment(route: MarketplaceRoute): boolean {
-  return !isPrepaidCreditBilling(route);
+  return isFixedX402Billing(route) || isTopupX402Billing(route);
 }
 
 export function quotedPriceString(route: MarketplaceRoute, input?: unknown): string {
@@ -97,6 +104,10 @@ export function routePriceLabel(route: MarketplaceRoute): string {
 
   if (isTopupX402Billing(route)) {
     return `$${route.billing.minAmount} - $${route.billing.maxAmount}`;
+  }
+
+  if (isFreeBilling(route)) {
+    return "Free";
   }
 
   return "Prepaid credit";
@@ -144,6 +155,12 @@ export function buildRouteBilling(input: {
     };
   }
 
+  if (input.billingType === "free") {
+    return {
+      type: "free"
+    };
+  }
+
   return {
     type: "prepaid_credit"
   };
@@ -156,6 +173,10 @@ export function priceLabelForBilling(billing: RouteBilling): string {
 
   if (billing.type === "topup_x402_variable") {
     return `$${billing.minAmount} - $${billing.maxAmount}`;
+  }
+
+  if (billing.type === "free") {
+    return "Free";
   }
 
   return "Prepaid credit";

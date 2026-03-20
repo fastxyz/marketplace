@@ -36,6 +36,7 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
     const pollResult = await provider.poll({ route, job });
     await options.store.recordProviderAttempt({
       jobToken: job.jobToken,
+      routeId: job.routeId,
       phase: "poll",
       status: pollResult.status === "failed" ? "failed" : "succeeded",
       requestPayload: {
@@ -82,6 +83,7 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
 
       await options.store.recordProviderAttempt({
         jobToken: job.jobToken,
+        routeId: job.routeId,
         phase: "refund",
         status: "succeeded",
         requestPayload: {
@@ -95,6 +97,7 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
       const message = error instanceof Error ? error.message : "Unknown refund failure.";
       await options.store.recordProviderAttempt({
         jobToken: job.jobToken,
+        routeId: job.routeId,
         phase: "refund",
         status: "failed",
         requestPayload: {

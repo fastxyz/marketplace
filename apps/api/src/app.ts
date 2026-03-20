@@ -139,7 +139,7 @@ const providerServiceCreateSchema = z.object({
 
 const providerServiceUpdateSchema = providerServiceCreateSchema.partial();
 
-const routeBillingTypeSchema = z.enum(["fixed_x402", "topup_x402_variable", "prepaid_credit"]);
+const routeBillingTypeSchema = z.enum(["fixed_x402", "topup_x402_variable", "prepaid_credit", "free"]);
 const decimalAmountSchema = z.string().regex(/^\d+(?:\.\d{1,6})?$/);
 
 const endpointSchemaInput = z.object({
@@ -1419,6 +1419,17 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
       });
     }
 
+    if (!requiresX402Payment(route)) {
+      return handleFreeRoute({
+        req,
+        res,
+        route,
+        store: options.store,
+        secretsKey,
+        tavilyApiKey: options.tavilyApiKey
+      });
+    }
+
     return handleX402Route({
       req,
       res,
@@ -1530,6 +1541,66 @@ async function handlePrepaidCreditRoute(input: {
   if (executeResult.kind !== "sync") {
     return input.res.status(500).json({ error: "Prepaid-credit routes must be sync." });
   }
+
+  return input.res
+    .status(executeResult.statusCode)
+    .set(executeResult.headers ?? {})
+    .json(executeResult.body);
+}
+
+async function handleFreeRoute(input: {
+  req: Request;
+  res: ExpressResponse;
+  route: PublishedEndpointVersionRecord;
+  store: MarketplaceStore;
+  secretsKey: string;
+  tavilyApiKey?: string;
+}) {
+  if (input.route.mode !== "sync" || input.route.executorKind !== "http") {
+    return input.res.status(500).json({ error: "Free routes currently support sync HTTP execution only." });
+  }
+
+  const requestId = randomUUID();
+  let executeResult: Awaited<ReturnType<typeof executeHttpRoute>>;
+  try {
+    executeResult = await executeHttpRoute({
+      route: input.route,
+      input: input.req.body ?? {},
+      buyerWallet: null,
+      requestId,
+      paymentId: null,
+      store: input.store,
+      secretsKey: input.secretsKey
+    });
+  } catch (error) {
+    await recordProviderAttemptSafely(input.store, {
+      routeId: input.route.routeId,
+      requestId,
+      responseStatusCode: 500,
+      phase: "execute",
+      status: "failed",
+      requestPayload: input.req.body ?? {},
+      errorMessage: error instanceof Error ? error.message : "Free route execution failed."
+    });
+
+    return input.res.status(500).json({
+      error: error instanceof Error ? error.message : "Free route execution failed."
+    });
+  }
+
+  if (executeResult.kind !== "sync") {
+    return input.res.status(500).json({ error: "Free routes must be sync." });
+  }
+
+  await recordProviderAttemptSafely(input.store, {
+    routeId: input.route.routeId,
+    requestId,
+    responseStatusCode: executeResult.statusCode,
+    phase: "execute",
+    status: executeResult.statusCode >= 200 && executeResult.statusCode < 400 ? "succeeded" : "failed",
+    requestPayload: input.req.body ?? {},
+    responsePayload: executeResult.body
+  });
 
   return input.res
     .status(executeResult.statusCode)
@@ -1926,19 +1997,28 @@ async function handleX402Route(input: {
     });
   }
 
+  await recordProviderAttemptSafely(input.store, {
+    jobToken: acceptedBody.jobToken,
+    routeId: input.route.routeId,
+    requestId,
+    phase: "execute",
+    status: "succeeded",
+    requestPayload: requestBody,
+    responsePayload: executeResult
+  });
+
+  return input.res.status(202).set(paymentResponseHeaders).json(acceptedBody);
+}
+
+async function recordProviderAttemptSafely(
+  store: MarketplaceStore,
+  attempt: Parameters<MarketplaceStore["recordProviderAttempt"]>[0]
+) {
   try {
-    await input.store.recordProviderAttempt({
-      jobToken: acceptedBody.jobToken,
-      phase: "execute",
-      status: "succeeded",
-      requestPayload: requestBody,
-      responsePayload: executeResult
-    });
+    await store.recordProviderAttempt(attempt);
   } catch (error) {
     console.error("Failed to record provider attempt:", error);
   }
-
-  return input.res.status(202).set(paymentResponseHeaders).json(acceptedBody);
 }
 
 async function executeMockRoute(
@@ -2004,7 +2084,7 @@ async function executeRoute(input: {
 async function executeHttpRoute(input: {
   route: MarketplaceRoute;
   input: unknown;
-  buyerWallet: string;
+  buyerWallet: string | null;
   requestId: string;
   paymentId: string | null;
   store: MarketplaceStore;
@@ -2052,6 +2132,14 @@ async function executeHttpRoute(input: {
       : null;
 
     if (runtimeKeyRecord) {
+      if (!input.buyerWallet && input.route.settlementMode === "community_direct") {
+        throw new Error("Buyer wallet is required for community settlement routes.");
+      }
+
+      if (!input.buyerWallet && isPrepaidCreditBilling(input.route)) {
+        throw new Error("Buyer wallet is required for prepaid-credit routes.");
+      }
+
       const signingSecret = decryptProviderRuntimeKey({
         ciphertext: runtimeKeyRecord.secretCiphertext,
         iv: runtimeKeyRecord.iv,
@@ -2074,12 +2162,23 @@ async function executeHttpRoute(input: {
     }
   }
 
+  return executeUpstreamHttpRequest({
+    upstreamBaseUrl: input.route.upstreamBaseUrl!,
+    upstreamPath: input.route.upstreamPath!
+  }, input.input, headers);
+}
+
+async function executeUpstreamHttpRequest(
+  route: { upstreamBaseUrl: string; upstreamPath: string },
+  requestBody: unknown,
+  headers: Record<string, string>
+) {
   let response: globalThis.Response;
   try {
-    response = await fetch(joinUrl(input.route.upstreamBaseUrl, input.route.upstreamPath), {
+    response = await fetch(joinUrl(route.upstreamBaseUrl, route.upstreamPath), {
       method: "POST",
       headers,
-      body: JSON.stringify(input.input)
+      body: JSON.stringify(requestBody)
     });
   } catch (error) {
     return {
@@ -2489,7 +2588,7 @@ async function validateProviderServiceForSettlement(input: {
         ok: false as const,
         statusCode: 400,
         error:
-          "Community services must use sync HTTP fixed_x402 endpoints only. Variable top-ups, prepaid credit, async, and marketplace executors require Verified escrow."
+          "Community services must use sync HTTP fixed_x402 endpoints only. Free routes, variable top-ups, prepaid credit, async, and marketplace executors require Verified escrow."
       };
     }
   }

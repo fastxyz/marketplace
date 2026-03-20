@@ -57,7 +57,8 @@ export function EndpointBrowserRunner({
   const connectorRef = React.useRef<BrowserConnectorLike | null>(null);
 
   const apiBaseUrl = React.useMemo(() => new URL(endpoint.proxyUrl).origin, [endpoint.proxyUrl]);
-  const isPaid = endpoint.price !== "$0";
+  const isFreeRoute = endpoint.billingType === "free";
+  const isPaid = !isFreeRoute;
 
   function runEndpoint() {
     startTransition(async () => {
@@ -65,6 +66,25 @@ export function EndpointBrowserRunner({
 
       try {
         const parsedBody = JSON.parse(requestBody) as unknown;
+
+        if (isFreeRoute) {
+          const response = await fetch(endpoint.proxyUrl, {
+            method: endpoint.method,
+            headers: {
+              "content-type": "application/json"
+            },
+            body: JSON.stringify(parsedBody)
+          });
+
+          const body = await safeJson(response);
+          setResult({
+            statusCode: response.status,
+            body
+          });
+          setJob(null);
+          return;
+        }
+
         const connector = await ensureConnector(deploymentNetwork, connectorRef);
         const payer = await connector.exportKeys();
         const paymentId = createPaymentIdentifier();
@@ -226,8 +246,9 @@ export function EndpointBrowserRunner({
 
       <div className="terminal-body space-y-5">
         <p className="max-w-3xl text-sm leading-7 text-white/70">
-          This sends the unpaid request first, signs a Fast payment only if the route returns `402`, and then retries
-          with the x402 proof directly from the browser wallet.
+          {isFreeRoute
+            ? "This sends the request directly from the browser. No Fast payment headers or wallet extension are required."
+            : "This sends the unpaid request first, signs a Fast payment only if the route returns `402`, and then retries with the x402 proof directly from the browser wallet."}
         </p>
 
         <div className="space-y-3">

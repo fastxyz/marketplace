@@ -199,6 +199,54 @@ export function buildOpenApiDocument(input: {
   };
 
   for (const route of input.routes) {
+    const responses: Record<string, unknown> = {
+      "200": {
+        description: route.billing.type === "free" ? "Free sync response." : "Paid sync response.",
+        content: {
+          "application/json": {
+            schema: route.responseSchemaJson
+          }
+        }
+      },
+      "202": {
+        description: route.billing.type === "free" ? "Free async job accepted." : "Paid async job accepted."
+      }
+    };
+
+    const parameters: Array<Record<string, unknown>> = [];
+
+    if (route.billing.type !== "free") {
+      responses["402"] = {
+        description: route.billing.type === "prepaid_credit" ? "Wallet session required." : "Payment required.",
+        headers: {
+          [PAYMENT_REQUIRED_HEADER]: {
+            schema: { type: "string" }
+          }
+        }
+      };
+
+      parameters.push(
+        {
+          in: "header",
+          name: PAYMENT_IDENTIFIER_HEADER,
+          required: route.billing.type !== "prepaid_credit",
+          schema: { type: "string" }
+        },
+        {
+          in: "header",
+          name: PAYMENT_SIGNATURE_HEADER,
+          required: false,
+          schema: { type: "string" }
+        },
+        {
+          in: "header",
+          name: PAYMENT_RESPONSE_HEADER,
+          required: false,
+          schema: { type: "string" }
+        }
+      );
+    }
+
     paths[`/api/${route.provider}/${route.operation}`] = {
       post: {
         summary: route.title,
@@ -211,47 +259,8 @@ export function buildOpenApiDocument(input: {
             }
           }
         },
-        responses: {
-          "200": {
-            description: "Paid sync response.",
-            content: {
-              "application/json": {
-                schema: route.responseSchemaJson
-              }
-            }
-          },
-          "202": {
-            description: "Paid async job accepted."
-          },
-          "402": {
-            description: route.billing.type === "prepaid_credit" ? "Wallet session required." : "Payment required.",
-            headers: {
-              [PAYMENT_REQUIRED_HEADER]: {
-                schema: { type: "string" }
-              }
-            }
-          }
-        },
-        parameters: [
-          {
-            in: "header",
-            name: PAYMENT_IDENTIFIER_HEADER,
-            required: route.billing.type !== "prepaid_credit",
-            schema: { type: "string" }
-          },
-          {
-            in: "header",
-            name: PAYMENT_SIGNATURE_HEADER,
-            required: false,
-            schema: { type: "string" }
-          },
-          {
-            in: "header",
-            name: PAYMENT_RESPONSE_HEADER,
-            required: false,
-            schema: { type: "string" }
-          }
-        ]
+        responses,
+        parameters
       }
     };
   }
@@ -278,14 +287,14 @@ export function buildLlmsTxt(input: {
   const lines = [
     `# ${MARKETPLACE_NAME}`,
     "",
-    "Fast-only x402 paid API marketplace.",
+    "Fast-only API marketplace with free, x402-paid, and prepaid-credit trigger routes.",
     "",
     `Base URL: ${baseUrl}`,
     `Fast network: ${network.displayName}`,
     `Settlement token: ${network.tokenSymbol}`,
     `Marketplace catalog: ${baseUrl}/catalog/services`,
-    "Payment protocol: x402 over HTTP",
-    `Payment headers: ${PAYMENT_REQUIRED_HEADER}, ${PAYMENT_SIGNATURE_HEADER}, ${PAYMENT_RESPONSE_HEADER}`,
+    "Payment protocol for paid trigger routes: x402 over HTTP",
+    `Payment headers for x402 routes: ${PAYMENT_REQUIRED_HEADER}, ${PAYMENT_SIGNATURE_HEADER}, ${PAYMENT_RESPONSE_HEADER}`,
     "Repeat retrieval auth: wallet challenge session",
     "Marketplace skill: serve from the public web app at /skill.md",
     "",

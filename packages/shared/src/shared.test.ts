@@ -142,6 +142,62 @@ describe("shared marketplace helpers", () => {
     expect(document.paths["/catalog/services"]).toBeDefined();
   });
 
+  it("describes free routes without x402 headers or token pricing", () => {
+    const seededService = listServiceDefinitions().find((candidate) => candidate.slug === "mock-research-signals");
+    const seededRoute = marketplaceRoutes.find((candidate) => candidate.routeId === "mock.quick-insight.v1");
+    if (!seededService || !seededRoute) {
+      throw new Error("Mock seeded service is missing.");
+    }
+
+    const freeRoute = {
+      ...seededRoute,
+      routeId: "mock.free-insight.v1",
+      operation: "free-insight",
+      billing: {
+        type: "free" as const
+      },
+      price: "Free"
+    };
+    const freeService = {
+      ...seededService,
+      slug: "mock-free-signals",
+      routeIds: [freeRoute.routeId]
+    };
+
+    const document = buildOpenApiDocument({
+      baseUrl: "https://api.marketplace.example.com",
+      services: [freeService],
+      routes: [freeRoute]
+    });
+    const freePath = document.paths["/api/mock/free-insight"] as {
+      post?: {
+        responses?: Record<string, unknown>;
+        parameters?: unknown[];
+      };
+    };
+
+    expect(freePath.post?.responses?.["402"]).toBeUndefined();
+    expect(freePath.post?.parameters).toEqual([]);
+
+    const detail = buildServiceDetail({
+      service: freeService,
+      endpoints: [freeRoute],
+      analytics: {
+        totalCalls: 0,
+        revenueRaw: "0",
+        successRate30d: 0,
+        volume30d: []
+      },
+      apiBaseUrl: "https://api.marketplace.example.com",
+      webBaseUrl: "https://marketplace.example.com"
+    });
+
+    expect(detail.summary.priceRange).toBe("Free");
+    expect(detail.useThisServicePrompt).toContain("(Free)");
+    expect(detail.useThisServicePrompt).not.toContain("(Free fastUSDC)");
+    expect(detail.useThisServicePrompt).toContain("No payment headers are required.");
+  });
+
   it("builds testnet routes when the deployment targets testnet", () => {
     const routes = buildMarketplaceRoutes(
       resolveMarketplaceNetworkConfig({
@@ -356,10 +412,30 @@ describe("shared marketplace helpers", () => {
       body: { error: "refunded" }
     });
 
+    await store.recordProviderAttempt({
+      routeId: "mock.quick-insight.v1",
+      requestId: "free_request_catalog_1",
+      responseStatusCode: 200,
+      phase: "execute",
+      status: "succeeded",
+      requestPayload: { symbol: "FAST" },
+      responsePayload: { ok: true }
+    });
+
+    await store.recordProviderAttempt({
+      routeId: "mock.quick-insight.v1",
+      requestId: "free_request_catalog_2",
+      responseStatusCode: 502,
+      phase: "execute",
+      status: "failed",
+      requestPayload: { symbol: "FAIL" },
+      responsePayload: { error: "upstream failed" }
+    });
+
     const analytics = await store.getServiceAnalytics(["mock.quick-insight.v1", "mock.async-report.v1"]);
-    expect(analytics.totalCalls).toBe(2);
+    expect(analytics.totalCalls).toBe(3);
     expect(analytics.revenueRaw).toBe("60000");
-    expect(analytics.successRate30d).toBe(100);
+    expect(analytics.successRate30d).toBe(75);
 
     const created = await store.createSuggestion({
       type: "endpoint",

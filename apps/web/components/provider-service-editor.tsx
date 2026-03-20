@@ -5,6 +5,7 @@ import type {
   CreateProviderEndpointDraftInput,
   MarketplaceDeploymentNetwork,
   OpenApiImportPreview,
+  RouteBillingType,
   UpdateProviderEndpointDraftInput
 } from "@marketplace/shared";
 
@@ -27,6 +28,24 @@ import {
   updateProviderService,
   verifyProviderService
 } from "@/lib/api";
+
+const SELECT_CLASS_NAME = "fast-select min-h-12";
+
+function usesFixedPrice(billingType: RouteBillingType): boolean {
+  return billingType === "fixed_x402";
+}
+
+function usesTopupRange(billingType: RouteBillingType): boolean {
+  return billingType === "topup_x402_variable";
+}
+
+function usesUpstreamConfig(billingType: RouteBillingType): boolean {
+  return billingType !== "topup_x402_variable";
+}
+
+function usesUpstreamSecret(authMode: EndpointFormState["upstreamAuthMode"]): boolean {
+  return authMode === "bearer" || authMode === "header";
+}
 
 export function ProviderServiceEditor({
   apiBaseUrl,
@@ -428,8 +447,8 @@ function ProviderServiceEditorInner({
               />
             </label>
             <div className="text-sm text-muted-foreground">
-              Import previews only. Load a candidate into the new endpoint form, then set price and any upstream secret before
-              creating the draft.
+              Import previews only. Load a candidate into the new endpoint form, then choose billing, set price if needed,
+              and add any upstream secret before creating the draft.
             </div>
             <div className="flex flex-wrap gap-3">
               <Button type="submit" variant="outline" disabled={pending}>
@@ -601,6 +620,21 @@ function EndpointDraftFields({
           />
         </label>
         <label className="grid gap-2 text-sm font-medium">
+          Billing
+          <select
+            value={state.billingType}
+            className={SELECT_CLASS_NAME}
+            onChange={(event) => onChange((current) => ({ ...current, billingType: event.target.value as RouteBillingType }))}
+          >
+            <option value="fixed_x402">Fixed x402</option>
+            <option value="free">Free</option>
+            <option value="prepaid_credit">Prepaid credit</option>
+            <option value="topup_x402_variable">Variable top-up</option>
+          </select>
+        </label>
+      </div>
+      {usesFixedPrice(state.billingType) ? (
+        <label className="grid gap-2 text-sm font-medium">
           Price
           <Input
             value={state.price}
@@ -609,7 +643,29 @@ function EndpointDraftFields({
             onChange={(event) => onChange((current) => ({ ...current, price: event.target.value }))}
           />
         </label>
-      </div>
+      ) : null}
+      {usesTopupRange(state.billingType) ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="grid gap-2 text-sm font-medium">
+            Minimum amount
+            <Input
+              value={state.minAmount}
+              placeholder="10"
+              required
+              onChange={(event) => onChange((current) => ({ ...current, minAmount: event.target.value }))}
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Maximum amount
+            <Input
+              value={state.maxAmount}
+              placeholder="100"
+              required
+              onChange={(event) => onChange((current) => ({ ...current, maxAmount: event.target.value }))}
+            />
+          </label>
+        </div>
+      ) : null}
       <div className="grid gap-4 md:grid-cols-2">
         <label className="grid gap-2 text-sm font-medium">
           Title
@@ -620,16 +676,18 @@ function EndpointDraftFields({
             onChange={(event) => onChange((current) => ({ ...current, title: event.target.value }))}
           />
         </label>
-        <label className="grid gap-2 text-sm font-medium">
-          Upstream base URL
-          <Input
-            value={state.upstreamBaseUrl}
-            type="url"
-            placeholder="https://api.example.com"
-            required
-            onChange={(event) => onChange((current) => ({ ...current, upstreamBaseUrl: event.target.value }))}
-          />
-        </label>
+        {usesUpstreamConfig(state.billingType) ? (
+          <label className="grid gap-2 text-sm font-medium">
+            Upstream base URL
+            <Input
+              value={state.upstreamBaseUrl}
+              type="url"
+              placeholder="https://api.example.com"
+              required
+              onChange={(event) => onChange((current) => ({ ...current, upstreamBaseUrl: event.target.value }))}
+            />
+          </label>
+        ) : null}
       </div>
       <label className="grid gap-2 text-sm font-medium">
         Description
@@ -640,49 +698,68 @@ function EndpointDraftFields({
           onChange={(event) => onChange((current) => ({ ...current, description: event.target.value }))}
         />
       </label>
-      <div className="grid gap-4 md:grid-cols-2">
-        <label className="grid gap-2 text-sm font-medium">
-          Upstream path
-          <Input
-            value={state.upstreamPath}
-            placeholder="/v1/quote"
-            required
-            onChange={(event) => onChange((current) => ({ ...current, upstreamPath: event.target.value }))}
-          />
-        </label>
-        <label className="grid gap-2 text-sm font-medium">
-          Auth mode
-          <Input
-            value={state.upstreamAuthMode}
-            placeholder="none"
-            required
-            onChange={(event) => onChange((current) => ({ ...current, upstreamAuthMode: event.target.value as EndpointFormState["upstreamAuthMode"] }))}
-          />
-        </label>
-      </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <label className="grid gap-2 text-sm font-medium">
-          Header name
-          <Input
-            value={state.upstreamAuthHeaderName}
-            placeholder="X-Provider-Key"
-            onChange={(event) => onChange((current) => ({ ...current, upstreamAuthHeaderName: event.target.value }))}
-          />
-        </label>
-        <label className="grid gap-2 text-sm font-medium">
-          Upstream secret
-          <Input
-            value={state.upstreamSecret}
-            placeholder="leave blank to keep current or paste a new secret"
-            onChange={(event) => onChange((current) => ({ ...current, upstreamSecret: event.target.value }))}
-          />
-        </label>
-      </div>
+      {usesUpstreamConfig(state.billingType) ? (
+        <>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="grid gap-2 text-sm font-medium">
+              Upstream path
+              <Input
+                value={state.upstreamPath}
+                placeholder="/v1/quote"
+                required
+                onChange={(event) => onChange((current) => ({ ...current, upstreamPath: event.target.value }))}
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              Auth mode
+              <select
+                value={state.upstreamAuthMode}
+                className={SELECT_CLASS_NAME}
+                onChange={(event) =>
+                  onChange((current) => ({
+                    ...current,
+                    upstreamAuthMode: event.target.value as EndpointFormState["upstreamAuthMode"]
+                  }))}
+              >
+                <option value="none">None</option>
+                <option value="bearer">Bearer</option>
+                <option value="header">Header</option>
+              </select>
+            </label>
+          </div>
+          {(state.upstreamAuthMode === "header" || usesUpstreamSecret(state.upstreamAuthMode)) ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              {state.upstreamAuthMode === "header" ? (
+                <label className="grid gap-2 text-sm font-medium">
+                  Header name
+                  <Input
+                    value={state.upstreamAuthHeaderName}
+                    placeholder="X-Provider-Key"
+                    onChange={(event) => onChange((current) => ({ ...current, upstreamAuthHeaderName: event.target.value }))}
+                  />
+                </label>
+              ) : (
+                <div />
+              )}
+              {usesUpstreamSecret(state.upstreamAuthMode) ? (
+                <label className="grid gap-2 text-sm font-medium">
+                  Upstream secret
+                  <Input
+                    value={state.upstreamSecret}
+                    placeholder="leave blank to keep current or paste a new secret"
+                    onChange={(event) => onChange((current) => ({ ...current, upstreamSecret: event.target.value }))}
+                  />
+                </label>
+              ) : null}
+            </div>
+          ) : null}
+        </>
+      ) : null}
       <label className="grid gap-2 text-sm font-medium">
         Usage notes
         <Textarea
           value={state.usageNotes}
-          placeholder="Send a symbol like FAST or BTC-USD. Paid calls return 402 first, then succeed after wallet payment."
+          placeholder="Explain auth, request requirements, or any payment flow the caller should expect."
           onChange={(event) => onChange((current) => ({ ...current, usageNotes: event.target.value }))}
         />
       </label>
@@ -734,7 +811,10 @@ interface EndpointFormState {
   operation: string;
   title: string;
   description: string;
+  billingType: RouteBillingType;
   price: string;
+  minAmount: string;
+  maxAmount: string;
   requestSchemaJson: string;
   responseSchemaJson: string;
   requestExample: string;
@@ -752,7 +832,10 @@ function defaultEndpointFormState(): EndpointFormState {
     operation: "",
     title: "",
     description: "",
+    billingType: "fixed_x402",
     price: "",
+    minAmount: "",
+    maxAmount: "",
     requestSchemaJson: "",
     responseSchemaJson: "",
     requestExample: "",
@@ -804,6 +887,12 @@ function endpointToFormState(endpoint: {
   operation: string;
   title: string;
   description: string;
+  billing: {
+    type: RouteBillingType;
+    price?: string;
+    minAmount?: string;
+    maxAmount?: string;
+  };
   price: string;
   requestSchemaJson: unknown;
   responseSchemaJson: unknown;
@@ -819,7 +908,10 @@ function endpointToFormState(endpoint: {
     operation: endpoint.operation,
     title: endpoint.title,
     description: endpoint.description,
-    price: endpoint.price,
+    billingType: endpoint.billing.type,
+    price: endpoint.billing.type === "fixed_x402" ? (endpoint.billing.price ?? endpoint.price) : "",
+    minAmount: endpoint.billing.type === "topup_x402_variable" ? (endpoint.billing.minAmount ?? "") : "",
+    maxAmount: endpoint.billing.type === "topup_x402_variable" ? (endpoint.billing.maxAmount ?? "") : "",
     requestSchemaJson: JSON.stringify(endpoint.requestSchemaJson, null, 2),
     responseSchemaJson: JSON.stringify(endpoint.responseSchemaJson, null, 2),
     requestExample: JSON.stringify(endpoint.requestExample, null, 2),
@@ -838,7 +930,10 @@ function openApiCandidateToFormState(candidate: OpenApiImportPreview["endpoints"
     operation: candidate.operation,
     title: candidate.title,
     description: candidate.description,
+    billingType: "fixed_x402",
     price: "",
+    minAmount: "",
+    maxAmount: "",
     requestSchemaJson: JSON.stringify(candidate.requestSchemaJson, null, 2),
     responseSchemaJson: JSON.stringify(candidate.responseSchemaJson, null, 2),
     requestExample: JSON.stringify(candidate.requestExample, null, 2),
@@ -853,43 +948,77 @@ function openApiCandidateToFormState(candidate: OpenApiImportPreview["endpoints"
 }
 
 function buildEndpointInput(state: EndpointFormState): CreateProviderEndpointDraftInput {
-  return {
+  const input: CreateProviderEndpointDraftInput = {
     operation: state.operation,
     title: state.title,
     description: state.description,
-    billingType: "fixed_x402",
-    price: state.price,
+    billingType: state.billingType,
     mode: "sync",
     requestSchemaJson: JSON.parse(state.requestSchemaJson),
     responseSchemaJson: JSON.parse(state.responseSchemaJson),
     requestExample: JSON.parse(state.requestExample),
     responseExample: JSON.parse(state.responseExample),
-    usageNotes: state.usageNotes || null,
-    upstreamBaseUrl: state.upstreamBaseUrl,
-    upstreamPath: state.upstreamPath,
-    upstreamAuthMode: state.upstreamAuthMode,
-    upstreamAuthHeaderName: state.upstreamAuthHeaderName || null,
-    upstreamSecret: state.upstreamSecret || null
+    usageNotes: state.usageNotes || null
   };
+
+  if (usesFixedPrice(state.billingType)) {
+    input.price = state.price;
+  }
+
+  if (usesTopupRange(state.billingType)) {
+    input.minAmount = state.minAmount || null;
+    input.maxAmount = state.maxAmount || null;
+    return input;
+  }
+
+  input.upstreamBaseUrl = state.upstreamBaseUrl;
+  input.upstreamPath = state.upstreamPath;
+  input.upstreamAuthMode = state.upstreamAuthMode;
+  input.upstreamAuthHeaderName = state.upstreamAuthMode === "header" ? (state.upstreamAuthHeaderName || null) : null;
+  input.upstreamSecret = usesUpstreamSecret(state.upstreamAuthMode) ? (state.upstreamSecret || null) : null;
+  return input;
 }
 
 function buildEndpointUpdateInput(state: EndpointFormState, hasSecret: boolean): UpdateProviderEndpointDraftInput {
-  return {
+  const clearUpstreamSecret =
+    hasSecret && (
+      state.billingType === "topup_x402_variable"
+      || !usesUpstreamSecret(state.upstreamAuthMode)
+    )
+      ? true
+      : undefined;
+
+  const input: UpdateProviderEndpointDraftInput = {
     operation: state.operation,
     title: state.title,
     description: state.description,
-    billingType: "fixed_x402",
-    price: state.price,
+    billingType: state.billingType,
     requestSchemaJson: JSON.parse(state.requestSchemaJson),
     responseSchemaJson: JSON.parse(state.responseSchemaJson),
     requestExample: JSON.parse(state.requestExample),
     responseExample: JSON.parse(state.responseExample),
     usageNotes: state.usageNotes || null,
-    upstreamBaseUrl: state.upstreamBaseUrl,
-    upstreamPath: state.upstreamPath,
-    upstreamAuthMode: state.upstreamAuthMode,
-    upstreamAuthHeaderName: state.upstreamAuthHeaderName || null,
-    upstreamSecret: state.upstreamSecret || undefined,
-    clearUpstreamSecret: hasSecret && state.upstreamSecret === "" && state.upstreamAuthMode === "none" ? true : undefined
+    clearUpstreamSecret
   };
+
+  if (usesFixedPrice(state.billingType)) {
+    input.price = state.price;
+  }
+
+  if (usesTopupRange(state.billingType)) {
+    input.minAmount = state.minAmount || null;
+    input.maxAmount = state.maxAmount || null;
+    input.upstreamBaseUrl = null;
+    input.upstreamPath = null;
+    input.upstreamAuthMode = null;
+    input.upstreamAuthHeaderName = null;
+    return input;
+  }
+
+  input.upstreamBaseUrl = state.upstreamBaseUrl;
+  input.upstreamPath = state.upstreamPath;
+  input.upstreamAuthMode = state.upstreamAuthMode;
+  input.upstreamAuthHeaderName = state.upstreamAuthMode === "header" ? (state.upstreamAuthHeaderName || null) : null;
+  input.upstreamSecret = usesUpstreamSecret(state.upstreamAuthMode) ? (state.upstreamSecret || undefined) : undefined;
+  return input;
 }

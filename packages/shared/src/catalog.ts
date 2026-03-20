@@ -1,5 +1,5 @@
 import { rawToDecimalString } from "./amounts.js";
-import { isFixedX402Billing, isPrepaidCreditBilling, isTopupX402Billing, quotedPriceRaw, routePriceLabel } from "./billing.js";
+import { isFixedX402Billing, isFreeBilling, isPrepaidCreditBilling, isTopupX402Billing, quotedPriceRaw, routePriceLabel } from "./billing.js";
 import { getDefaultMarketplaceNetworkConfig } from "./network.js";
 import { settlementModeDescription, settlementModeLabel } from "./settlement.js";
 import type {
@@ -21,6 +21,10 @@ function roundToSingleDecimal(value: number): number {
 
 function formatPriceLabelFromRaw(rawAmount: string, tokenSymbol = getDefaultMarketplaceNetworkConfig().tokenSymbol): string {
   return `$${rawToDecimalString(rawAmount, 6)} ${tokenSymbol}`;
+}
+
+function billingTypeUsesTokenPrice(billingType: ServiceCatalogEndpoint["billingType"]): boolean {
+  return billingType === "fixed_x402" || billingType === "topup_x402_variable";
 }
 
 export function formatRevenueLabel(rawAmount: string): string {
@@ -56,11 +60,14 @@ export function buildPriceRange(routes: MarketplaceRoute[]): string {
   if (routes.some(isTopupX402Billing)) {
     labels.push("Variable top-up");
   }
+  if (routes.some(isFreeBilling)) {
+    labels.push("Free");
+  }
   if (routes.some(isPrepaidCreditBilling)) {
     labels.push("Prepaid credit");
   }
 
-  return labels.join(" + ") || `$0 ${tokenSymbol}`;
+  return labels.join(" + ") || "Free";
 }
 
 export function buildServiceEndpoint(route: MarketplaceRoute, apiBaseUrl: string): ServiceCatalogEndpoint {
@@ -102,7 +109,7 @@ export function buildUseThisServicePrompt(input: {
   for (const endpoint of input.endpoints) {
     lines.push(
       "",
-      `### ${endpoint.title} (${endpoint.price}${endpoint.billingType === "prepaid_credit" ? "" : ` ${endpoint.tokenSymbol}`})`,
+      `### ${endpoint.title} (${endpoint.price}${billingTypeUsesTokenPrice(endpoint.billingType) ? ` ${endpoint.tokenSymbol}` : ""})`,
       `curl -X ${endpoint.method} "${endpoint.proxyUrl}" \\`,
       '  -H "Content-Type: application/json" \\',
       `  -d '${JSON.stringify(endpoint.requestExample, null, 2)}'`
@@ -124,6 +131,13 @@ export function buildUseThisServicePrompt(input: {
     lines.push(
       "",
       "For prepaid-credit endpoints: buy credit first, then invoke the route with a wallet session bearer token so the marketplace can debit your stored balance."
+    );
+  }
+
+  if (input.endpoints.some((endpoint) => endpoint.billingType === "free")) {
+    lines.push(
+      "",
+      "For free endpoints: send JSON directly to the marketplace route. No payment headers are required."
     );
   }
 
