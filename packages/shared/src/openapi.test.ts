@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseOpenApiImportDocument } from "./openapi.js";
 
 describe("parseOpenApiImportDocument", () => {
-  it("extracts POST operations, resolves local refs, and infers auth", () => {
+  it("extracts POST and safe GET operations, resolves local refs, and infers auth", () => {
     const preview = parseOpenApiImportDocument({
       documentUrl: "https://provider.example.com/openapi.json",
       document: {
@@ -93,12 +93,13 @@ describe("parseOpenApiImportDocument", () => {
 
     expect(preview.title).toBe("Provider API");
     expect(preview.version).toBe("1.2.3");
-    expect(preview.warnings).toContain("Skipped 1 non-POST operation because provider imports are POST-only in v1.");
-    expect(preview.endpoints).toHaveLength(1);
+    expect(preview.warnings).toEqual([]);
+    expect(preview.endpoints).toHaveLength(2);
 
     const endpoint = preview.endpoints[0];
     expect(endpoint).toMatchObject({
       operation: "create-search",
+      method: "POST",
       title: "Create search",
       description: "Run a provider search.",
       upstreamBaseUrl: "https://api.provider.example.com/v1",
@@ -122,6 +123,23 @@ describe("parseOpenApiImportDocument", () => {
       items: ["string"]
     });
     expect(endpoint.warnings).toContain("Add the upstream secret before creating this draft.");
+
+    const getEndpoint = preview.endpoints[1];
+    expect(getEndpoint).toMatchObject({
+      operation: "health",
+      method: "GET",
+      title: "Health",
+      upstreamBaseUrl: "https://api.provider.example.com/v1",
+      upstreamPath: "/health",
+      upstreamAuthMode: "bearer"
+    });
+    expect(getEndpoint.requestSchemaJson).toEqual({
+      type: "object",
+      properties: {},
+      additionalProperties: false
+    });
+    expect(getEndpoint.requestExample).toEqual({});
+    expect(getEndpoint.warnings).toContain("Add the upstream secret before creating this draft.");
   });
 
   it("ignores default responses when no explicit 2xx success schema exists", () => {

@@ -8,6 +8,7 @@ import {
   buildServiceDetail,
   buildOpenApiDocument,
   buildPayoutSplit,
+  coerceQueryInput,
   createChallenge,
   hashNormalizedRequest,
   listServiceDefinitions,
@@ -15,6 +16,7 @@ import {
   normalizeFastWalletAddress,
   normalizePaymentHeaders,
   resolveMarketplaceNetworkConfig,
+  serializeQueryInput,
   validateJsonSchema,
   verifyWalletChallenge
 } from "./index.js";
@@ -141,6 +143,61 @@ describe("shared marketplace helpers", () => {
     expect(first).toBe(second);
   });
 
+  it("serializes and coerces GET query input canonically", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        enabled: { type: "boolean" },
+        limit: { type: "integer" },
+        query: { type: "string" },
+        symbols: {
+          type: "array",
+          items: { type: "string" }
+        }
+      },
+      required: ["query"],
+      additionalProperties: false
+    } as const;
+
+    expect(
+      serializeQueryInput({
+        schema,
+        value: {
+          symbols: ["FAST", "BTC"],
+          query: "alpha",
+          limit: 5,
+          enabled: true
+        }
+      })
+    ).toBe("?enabled=true&limit=5&query=alpha&symbols=FAST&symbols=BTC");
+
+    const first = coerceQueryInput({
+      schema,
+      searchParams: new URLSearchParams("query=alpha&symbols=FAST&symbols=BTC&limit=5&enabled=true")
+    });
+    const second = coerceQueryInput({
+      schema,
+      searchParams: new URLSearchParams("symbols=FAST&enabled=true&limit=5&query=alpha&symbols=BTC")
+    });
+
+    expect(first).toEqual({
+      enabled: true,
+      limit: 5,
+      query: "alpha",
+      symbols: ["FAST", "BTC"]
+    });
+    expect(second).toEqual(first);
+
+    const route = {
+      ...marketplaceRoutes[0],
+      routeId: "mock.lookup.v1",
+      operation: "lookup",
+      method: "GET" as const,
+      requestSchemaJson: schema
+    };
+    expect(hashNormalizedRequest(route, first)).toBe(hashNormalizedRequest(route, second));
+  });
+
   it("normalizes a hex Fast payer into a canonical bech32 address", async () => {
     const testWallet = await createTestWallet();
     expect(normalizeFastWalletAddress(`0x${testWallet.publicKey}`)).toBe(testWallet.address);
@@ -188,6 +245,65 @@ describe("shared marketplace helpers", () => {
     expect(asyncPath.post?.responses?.["200"]).toBeUndefined();
     expect(syncPaidPath.post?.responses?.["200"]).toBeDefined();
     expect(syncPaidPath.post?.responses?.["202"]).toBeDefined();
+  });
+
+  it("builds GET route entries into the OpenAPI document as query parameters", () => {
+    const seededService = listServiceDefinitions().find((candidate) => candidate.slug === "mock-research-signals");
+    const seededRoute = marketplaceRoutes.find((candidate) => candidate.routeId === "mock.quick-insight.v1");
+    if (!seededService || !seededRoute) {
+      throw new Error("Mock seeded service is missing.");
+    }
+
+    const getRoute = {
+      ...seededRoute,
+      routeId: "mock.quote-get.v1",
+      operation: "quote-get",
+      method: "GET" as const,
+      billing: {
+        type: "free" as const
+      },
+      price: "Free",
+      requestSchemaJson: {
+        type: "object",
+        properties: {
+          includeMeta: { type: "boolean" },
+          symbol: { type: "string" }
+        },
+        required: ["symbol"],
+        additionalProperties: false
+      }
+    };
+    const service = {
+      ...seededService,
+      slug: "mock-get-signals",
+      routeIds: [getRoute.routeId]
+    };
+
+    const document = buildOpenApiDocument({
+      baseUrl: "https://api.marketplace.example.com",
+      services: [service],
+      routes: [getRoute]
+    });
+    const getPath = document.paths["/api/mock/quote-get"] as {
+      get?: {
+        parameters?: Array<{ name?: string; in?: string; required?: boolean }>;
+        requestBody?: unknown;
+      };
+    };
+
+    expect(getPath.get?.requestBody).toBeUndefined();
+    expect(getPath.get?.parameters).toEqual([
+      expect.objectContaining({
+        name: "includeMeta",
+        in: "query",
+        required: false
+      }),
+      expect.objectContaining({
+        name: "symbol",
+        in: "query",
+        required: true
+      })
+    ]);
   });
 
   it("describes free routes without x402 headers or token pricing", () => {
@@ -652,6 +768,7 @@ describe("shared marketplace helpers", () => {
     await store.createProviderEndpointDraft(created.service.id, wallet, {
       endpointType: "marketplace_proxy",
       operation: "quote",
+      method: "POST",
       title: "Quote",
       description: "Return a single quote snapshot.",
       billingType: "fixed_x402",
@@ -776,6 +893,7 @@ describe("shared marketplace helpers", () => {
     await store.createProviderEndpointDraft(created.service.id, wallet, {
       endpointType: "marketplace_proxy",
       operation: "quote",
+      method: "POST",
       title: "Quote",
       description: "Return a single quote snapshot.",
       billingType: "fixed_x402",
@@ -852,6 +970,7 @@ describe("shared marketplace helpers", () => {
     await store.createProviderEndpointDraft(created.service.id, wallet, {
       endpointType: "marketplace_proxy",
       operation: "quote",
+      method: "POST",
       title: "Quote",
       description: "Return a single quote snapshot.",
       billingType: "fixed_x402",
@@ -934,6 +1053,7 @@ describe("shared marketplace helpers", () => {
     const endpoint = await store.createProviderEndpointDraft(created.service.id, wallet, {
       endpointType: "marketplace_proxy",
       operation: "quote",
+      method: "POST",
       title: "Quote",
       description: "Return a single quote snapshot.",
       billingType: "fixed_x402",
@@ -1020,6 +1140,7 @@ describe("shared marketplace helpers", () => {
     const endpoint = await store.createProviderEndpointDraft(created.service.id, wallet, {
       endpointType: "marketplace_proxy",
       operation: "quote",
+      method: "POST",
       title: "Quote",
       description: "Return a single quote snapshot.",
       billingType: "fixed_x402",

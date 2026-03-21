@@ -11,11 +11,11 @@ import {
   LEGACY_PAYMENT_RESPONSE_HEADER,
   buildLlmsTxt,
   buildMarketplaceCatalog,
-  buildOpenApiDocument,
-  buildPaymentRequiredHeaders,
-  buildPaymentRequiredResponse,
-  buildPaymentRequirementForRoute,
-  buildPaymentResponseHeaders,
+    buildOpenApiDocument,
+    buildPaymentRequiredHeaders,
+    buildPaymentRequiredResponse,
+    buildPaymentRequirementForRoute,
+    buildPaymentResponseHeaders,
   buildPayoutSplit,
   buildServiceDetail,
   buildServiceSummary,
@@ -25,11 +25,14 @@ import {
   createProviderRuntimeKeyMaterial,
   createSessionToken,
   decimalToRawString,
-  decryptProviderRuntimeKey,
-  decryptSecret,
-  encryptSecret,
-  getDefaultMarketplaceNetworkConfig,
-  hashNormalizedRequest,
+    decryptProviderRuntimeKey,
+    decryptSecret,
+    encryptSecret,
+    coerceQueryInput,
+    getDefaultMarketplaceNetworkConfig,
+    getQuerySchemaProperties,
+    serializeQueryInput,
+    hashNormalizedRequest,
   isPrepaidCreditBilling,
   isTopupX402Billing,
   normalizeFastWalletAddress,
@@ -192,6 +195,7 @@ const marketplaceEndpointSchemaInput = z.object({
   price: z.string().regex(/^\$\d+(?:\.\d{1,6})?$/).optional().nullable(),
   minAmount: decimalAmountSchema.optional().nullable(),
   maxAmount: decimalAmountSchema.optional().nullable(),
+  method: z.enum(["GET", "POST"]),
   mode: z.literal("sync"),
   requestSchemaJson: z.record(z.string(), z.any()),
   responseSchemaJson: z.record(z.string(), z.any()),
@@ -1562,25 +1566,30 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
     return res.json(buildJobResponse(job, refund));
   });
 
-  app.post("/api/:provider/:operation", async (req, res) => {
+  const handleMarketplaceRoute = async (req: Request, res: ExpressResponse) => {
+    const provider = Array.isArray(req.params.provider) ? (req.params.provider[0] ?? "") : req.params.provider;
+    const operation = Array.isArray(req.params.operation) ? (req.params.operation[0] ?? "") : req.params.operation;
     const route = await options.store.findPublishedRoute(
-      req.params.provider,
-      req.params.operation,
+      provider,
+      operation,
       networkConfig.paymentNetwork
     );
     if (!route) {
       return res.status(404).json({ error: "Route not found." });
     }
 
-    try {
-      validateJsonSchema({
-        schema: route.requestSchemaJson,
-        value: req.body ?? {},
-        label: "Request body"
+    if (route.method !== req.method) {
+      return res.status(405).set("Allow", route.method).json({
+        error: `Route requires ${route.method}.`
       });
+    }
+
+    let requestInput: unknown;
+    try {
+      requestInput = normalizeMarketplaceRouteInput(req, route);
     } catch (error) {
       return res.status(400).json({
-        error: error instanceof Error ? error.message : "Request body validation failed."
+        error: error instanceof Error ? error.message : "Route input validation failed."
       });
     }
 
@@ -1589,6 +1598,7 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
         req,
         res,
         route,
+        requestInput,
         sessionSecret: options.sessionSecret,
         providers,
         store: options.store,
@@ -1601,6 +1611,7 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
         req,
         res,
         route,
+        requestInput,
         store: options.store,
         secretsKey
       });
@@ -1610,6 +1621,7 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
       req,
       res,
       route,
+      requestInput,
       payTo: options.payTo,
       facilitatorClient: options.facilitatorClient,
       refundService: options.refundService,
@@ -1617,7 +1629,10 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
       store: options.store,
       secretsKey
     });
-  });
+  };
+
+  app.get("/api/:provider/:operation", handleMarketplaceRoute);
+  app.post("/api/:provider/:operation", handleMarketplaceRoute);
 
   app.use((error: unknown, _req: Request, res: ExpressResponse, _next: unknown) => {
     res.status(500).json({
@@ -1640,10 +1655,30 @@ async function loadPublishedCatalog(store: MarketplaceStore): Promise<{
   return { services: serviceDetails, routes };
 }
 
+function normalizeMarketplaceRouteInput(req: Request, route: MarketplaceRoute): unknown {
+  if (route.method === "GET") {
+    const url = new URL(req.originalUrl, "http://localhost");
+    return coerceQueryInput({
+      schema: route.requestSchemaJson,
+      searchParams: url.searchParams,
+      label: "Query parameters"
+    });
+  }
+
+  const requestBody = req.body ?? {};
+  validateJsonSchema({
+    schema: route.requestSchemaJson,
+    value: requestBody,
+    label: "Request body"
+  });
+  return requestBody;
+}
+
 async function handlePrepaidCreditRoute(input: {
   req: Request;
   res: ExpressResponse;
   route: PublishedEndpointVersionRecord;
+  requestInput: unknown;
   sessionSecret: string;
   providers: ProviderRegistry;
   store: MarketplaceStore;
@@ -1660,7 +1695,7 @@ async function handlePrepaidCreditRoute(input: {
 
   const executeResult = await executeRoute({
     route: input.route,
-    input: input.req.body ?? {},
+    input: input.requestInput,
     buyerWallet: session.wallet,
     requestId: randomUUID(),
     paymentId: null,
@@ -1683,6 +1718,7 @@ async function handleFreeRoute(input: {
   req: Request;
   res: ExpressResponse;
   route: PublishedEndpointVersionRecord;
+  requestInput: unknown;
   store: MarketplaceStore;
   secretsKey: string;
 }) {
@@ -1690,7 +1726,7 @@ async function handleFreeRoute(input: {
     return input.res.status(500).json({ error: "Free routes currently support sync HTTP execution only." });
   }
 
-  const requestBody = input.req.body ?? {};
+  const requestBody = input.requestInput;
   const requestId = randomUUID();
   try {
     await input.store.recordProviderAttempt({
@@ -1766,6 +1802,7 @@ async function handleX402Route(input: {
   req: Request;
   res: ExpressResponse;
   route: PublishedEndpointVersionRecord;
+  requestInput: unknown;
   payTo: string;
   facilitatorClient: FacilitatorClient;
   refundService: RefundService;
@@ -1782,7 +1819,7 @@ async function handleX402Route(input: {
     });
   }
 
-  const requestBody = input.req.body ?? {};
+  const requestBody = input.requestInput;
   const paymentHeaders = normalizePaymentHeaders(
     input.req.headers as Record<string, string | string[] | undefined>
   );
@@ -2248,10 +2285,13 @@ async function executeHttpRoute(input: {
   }
 
   const headers: Record<string, string> = {
-    "content-type": "application/json",
     [MARKETPLACE_IDENTITY_REQUEST_HEADER]: input.requestId,
     [MARKETPLACE_IDENTITY_PAYMENT_HEADER]: input.paymentId ?? ""
   };
+
+  if (input.route.method === "POST") {
+    headers["content-type"] = "application/json";
+  }
 
   if (input.route.upstreamAuthMode !== "none") {
     if (!input.route.upstreamSecretRef) {
@@ -2312,23 +2352,42 @@ async function executeHttpRoute(input: {
   }
 
   return executeUpstreamHttpRequest({
+    method: input.route.method,
     upstreamBaseUrl: input.route.upstreamBaseUrl!,
-    upstreamPath: input.route.upstreamPath!
+    upstreamPath: input.route.upstreamPath!,
+    requestSchemaJson: input.route.requestSchemaJson
   }, input.input, headers);
 }
 
 async function executeUpstreamHttpRequest(
-  route: { upstreamBaseUrl: string; upstreamPath: string },
-  requestBody: unknown,
+  route: {
+    method: MarketplaceRoute["method"];
+    upstreamBaseUrl: string;
+    upstreamPath: string;
+    requestSchemaJson: MarketplaceRoute["requestSchemaJson"];
+  },
+  requestInput: unknown,
   headers: Record<string, string>
 ) {
   let response: globalThis.Response;
   try {
-    response = await fetch(joinUrl(route.upstreamBaseUrl, route.upstreamPath), {
-      method: "POST",
-      headers,
-      body: JSON.stringify(requestBody)
-    });
+    const url = route.method === "GET"
+      ? `${joinUrl(route.upstreamBaseUrl, route.upstreamPath)}${serializeQueryInput({
+          schema: route.requestSchemaJson,
+          value: requestInput,
+          label: "HTTP route request"
+        })}`
+      : joinUrl(route.upstreamBaseUrl, route.upstreamPath);
+    response = await fetch(url, route.method === "GET"
+      ? {
+          method: "GET",
+          headers
+        }
+      : {
+          method: "POST",
+          headers,
+          body: JSON.stringify(requestInput)
+        });
   } catch (error) {
     return {
       kind: "sync" as const,
@@ -2508,7 +2567,9 @@ async function validateProviderEndpointInput(input: {
   mode: "create" | "update";
   service: { websiteUrl: string | null };
   existingEndpoint: {
+    method: MarketplaceRoute["method"];
     billing: MarketplaceRoute["billing"];
+    requestSchemaJson: MarketplaceRoute["requestSchemaJson"];
     upstreamBaseUrl: string | null;
     upstreamPath: string | null;
     upstreamAuthMode: UpstreamAuthMode | null;
@@ -2525,6 +2586,11 @@ async function validateProviderEndpointInput(input: {
     return { ok: false, statusCode: 400, error: "billingType is required." };
   }
 
+  const nextMethod = (input.input.method ?? input.existingEndpoint?.method) as MarketplaceRoute["method"] | undefined;
+  if (!nextMethod) {
+    return { ok: false, statusCode: 400, error: "method is required." };
+  }
+
   const nextBaseUrl = input.input.upstreamBaseUrl ?? input.existingEndpoint?.upstreamBaseUrl ?? null;
   const nextPath = input.input.upstreamPath ?? input.existingEndpoint?.upstreamPath ?? null;
   const nextAuthMode = input.input.upstreamAuthMode ?? input.existingEndpoint?.upstreamAuthMode ?? null;
@@ -2534,6 +2600,7 @@ async function validateProviderEndpointInput(input: {
       : input.input.upstreamAuthHeaderName;
   const hasStoredSecret = Boolean(input.existingEndpoint?.upstreamSecretRef) && !("clearUpstreamSecret" in input.input && input.input.clearUpstreamSecret);
   const nextWebsiteUrl = input.service.websiteUrl;
+  const nextRequestSchemaJson = input.input.requestSchemaJson ?? input.existingEndpoint?.requestSchemaJson ?? {};
 
   if (!nextWebsiteUrl) {
     return { ok: false, statusCode: 400, error: "websiteUrl is required before managing endpoints." };
@@ -2546,6 +2613,9 @@ async function validateProviderEndpointInput(input: {
   }
 
   if (billingType === "topup_x402_variable") {
+    if (nextMethod !== "POST") {
+      return { ok: false, statusCode: 400, error: "Marketplace top-up routes must use method=POST." };
+    }
     if (!input.input.minAmount || !input.input.maxAmount) {
       return { ok: false, statusCode: 400, error: "minAmount and maxAmount are required when billingType=topup_x402_variable." };
     }
@@ -2568,8 +2638,11 @@ async function validateProviderEndpointInput(input: {
   }
 
   try {
+    if (nextMethod === "GET") {
+      getQuerySchemaProperties(nextRequestSchemaJson);
+    }
     validateJsonSchema({
-      schema: input.input.requestSchemaJson ?? {},
+      schema: nextRequestSchemaJson,
       value: input.input.requestExample,
       label: "requestExample"
     });
@@ -2584,6 +2657,10 @@ async function validateProviderEndpointInput(input: {
       statusCode: 400,
       error: error instanceof Error ? error.message : "Invalid endpoint schema."
     };
+  }
+
+  if (nextMethod === "GET" && nextPath?.includes("{")) {
+    return { ok: false, statusCode: 400, error: "GET marketplace routes do not support path parameters in upstreamPath." };
   }
 
   if (billingType !== "topup_x402_variable") {

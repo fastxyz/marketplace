@@ -9,6 +9,7 @@ import { CopyButton } from "@/components/copy-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { serializeBrowserQueryInput } from "@/lib/get-query";
 import {
   createJobAccessToken,
   createPaymentIdentifier,
@@ -60,21 +61,42 @@ export function EndpointBrowserRunner({
   const isFreeRoute = endpoint.billingType === "free";
   const isPaid = !isFreeRoute;
 
+  function buildInvocation(input: unknown): { url: string; init: RequestInit } {
+    if (endpoint.method === "GET") {
+      return {
+        url: `${endpoint.proxyUrl}${serializeBrowserQueryInput({
+          schema: endpoint.requestSchemaJson,
+          value: input,
+          label: `${endpoint.routeId} GET input`
+        })}`,
+        init: {
+          method: "GET"
+        }
+      };
+    }
+
+    return {
+      url: endpoint.proxyUrl,
+      init: {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify(input)
+      }
+    };
+  }
+
   function runEndpoint() {
     startTransition(async () => {
       setError(null);
 
       try {
         const parsedBody = JSON.parse(requestBody) as unknown;
+        const invocation = buildInvocation(parsedBody);
 
         if (isFreeRoute) {
-          const response = await fetch(endpoint.proxyUrl, {
-            method: endpoint.method,
-            headers: {
-              "content-type": "application/json"
-            },
-            body: JSON.stringify(parsedBody)
-          });
+          const response = await fetch(invocation.url, invocation.init);
 
           const body = await safeJson(response);
           setResult({
@@ -89,13 +111,12 @@ export function EndpointBrowserRunner({
         const payer = await connector.exportKeys();
         const paymentId = createPaymentIdentifier();
 
-        const unpaidResponse = await fetch(endpoint.proxyUrl, {
-          method: endpoint.method,
+        const unpaidResponse = await fetch(invocation.url, {
+          ...invocation.init,
           headers: {
-            "content-type": "application/json",
+            ...(invocation.init.headers as Record<string, string> | undefined),
             "PAYMENT-IDENTIFIER": paymentId
-          },
-          body: JSON.stringify(parsedBody)
+          }
         });
 
         if (unpaidResponse.status !== 402) {
@@ -134,14 +155,13 @@ export function EndpointBrowserRunner({
           certificate: payment.certificate
         });
 
-        const paidResponse = await fetch(endpoint.proxyUrl, {
-          method: endpoint.method,
+        const paidResponse = await fetch(invocation.url, {
+          ...invocation.init,
           headers: {
-            "content-type": "application/json",
+            ...(invocation.init.headers as Record<string, string> | undefined),
             "PAYMENT-IDENTIFIER": paymentId,
             "PAYMENT-SIGNATURE": paymentPayload
-          },
-          body: JSON.stringify(parsedBody)
+          }
         });
 
         const body = await safeJson(paidResponse);

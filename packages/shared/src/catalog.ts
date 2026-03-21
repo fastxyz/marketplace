@@ -1,6 +1,7 @@
 import { rawToDecimalString } from "./amounts.js";
 import { isFixedX402Billing, isFreeBilling, isPrepaidCreditBilling, isTopupX402Billing, quotedPriceRaw, routePriceLabel } from "./billing.js";
 import { getDefaultMarketplaceNetworkConfig } from "./network.js";
+import { serializeQueryInput } from "./request-input.js";
 import { settlementModeDescription, settlementModeLabel } from "./settlement.js";
 import type {
   ExternalRegistryServiceSummary,
@@ -104,13 +105,32 @@ export function buildMarketplaceServiceEndpoint(
     billingType: route.billing.type,
     tokenSymbol,
     mode: route.mode,
-    method: "POST",
+    method: route.method,
     path,
     proxyUrl: joinUrl(apiBaseUrl, path),
+    requestSchemaJson: route.requestSchemaJson,
+    responseSchemaJson: route.responseSchemaJson,
     requestExample: route.requestExample,
     responseExample: route.responseExample,
     usageNotes: route.usageNotes
   };
+}
+
+function buildMarketplaceCurlLines(endpoint: MarketplaceServiceCatalogEndpoint): string[] {
+  if (endpoint.method === "GET") {
+    const queryString = serializeQueryInput({
+      schema: endpoint.requestSchemaJson,
+      value: endpoint.requestExample,
+      label: `${endpoint.routeId} request example`
+    });
+    return [`curl -X GET "${endpoint.proxyUrl}${queryString}"`];
+  }
+
+  return [
+    `curl -X ${endpoint.method} "${endpoint.proxyUrl}" \\`,
+    '  -H "Content-Type: application/json" \\',
+    `  -d '${JSON.stringify(endpoint.requestExample, null, 2)}'`
+  ];
 }
 
 export function buildExternalServiceEndpoint(
@@ -150,9 +170,7 @@ function buildMarketplaceUseThisServicePrompt(input: {
     lines.push(
       "",
       `### ${endpoint.title} (${endpoint.price}${billingTypeUsesTokenPrice(endpoint.billingType) ? ` ${endpoint.tokenSymbol}` : ""})`,
-      `curl -X ${endpoint.method} "${endpoint.proxyUrl}" \\`,
-      '  -H "Content-Type: application/json" \\',
-      `  -d '${JSON.stringify(endpoint.requestExample, null, 2)}'`
+      ...buildMarketplaceCurlLines(endpoint)
     );
 
     if (endpoint.usageNotes) {
@@ -177,7 +195,7 @@ function buildMarketplaceUseThisServicePrompt(input: {
   if (input.endpoints.some((endpoint) => endpoint.billingType === "free")) {
     lines.push(
       "",
-      "For free endpoints: send JSON directly to the marketplace route. No payment headers are required."
+      "For free endpoints: call the marketplace route directly with the published method and request example. No payment headers are required."
     );
   }
 

@@ -14,6 +14,9 @@ import {
   normalizeFastWalletAddress,
   rawToDecimalString,
   resolveMarketplaceNetworkConfig,
+  serializeQueryInput,
+  type HttpMethod,
+  type JsonSchema,
   type MarketplaceDeploymentNetwork
 } from "@marketplace/shared";
 
@@ -59,6 +62,13 @@ export interface CliDependencies {
   now(): Date;
   print(message: string): void;
   error(message: string): void;
+}
+
+interface PublishedRouteCatalogEntry {
+  provider: string;
+  operation: string;
+  method: HttpMethod;
+  requestSchemaJson: JsonSchema;
 }
 
 const DEFAULT_CONFIG_PATH = "~/.fast-marketplace/config.json";
@@ -249,20 +259,20 @@ export async function invokePaidRoute(
   const loaded = await loadWallet(input);
   const config = await readCliConfig(input.configPath);
   const network = resolveCliNetwork(input.network, config.defaultNetwork, input.rpcUrl);
-  const endpoint = `${input.apiUrl.replace(/\/$/, "")}/api/${input.provider}/${input.operation}`;
   const routeKey = `${input.provider}.${input.operation}`;
   const paymentId = createOpaqueToken("payment");
-  const bodyString = JSON.stringify(input.body);
+  const route = await resolvePublishedRoute(input.apiUrl, input.provider, input.operation, deps);
+  const requestTarget = buildInvocationTarget({
+    apiUrl: input.apiUrl,
+    provider: input.provider,
+    operation: input.operation,
+    method: route.method,
+    requestSchemaJson: route.requestSchemaJson,
+    body: input.body
+  });
   const headers = buildClientHeaders(config, paymentId);
 
-  const preflight = await deps.fetchImpl(endpoint, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...headers
-    },
-    body: bodyString
-  });
+  const preflight = await deps.fetchImpl(requestTarget.url, buildInvocationInit(route.method, headers, requestTarget.body));
 
   if (preflight.status === 401 || preflight.status === 403) {
     const routeId = `${input.provider}.${input.operation}.v1`;
@@ -279,14 +289,12 @@ export async function invokePaidRoute(
       deps
     );
 
-    const response = await deps.fetchImpl(endpoint, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
+    const response = await deps.fetchImpl(
+      requestTarget.url,
+      buildInvocationInit(route.method, {
         authorization: `Bearer ${session.accessToken}`
-      },
-      body: bodyString
-    });
+      }, requestTarget.body)
+    );
 
     return {
       statusCode: response.status,
@@ -328,11 +336,10 @@ export async function invokePaidRoute(
   let result;
   try {
     result = await x402Pay({
-      url: endpoint,
-      method: "POST",
-      body: bodyString,
+      url: requestTarget.url,
+      method: route.method,
+      ...(requestTarget.body ? { body: requestTarget.body } : {}),
       headers: {
-        "content-type": "application/json",
         ...headers
       },
       wallet: loaded.paymentWallet,
@@ -347,6 +354,85 @@ export async function invokePaidRoute(
   }
 
   return result;
+}
+
+async function resolvePublishedRoute(
+  apiUrl: string,
+  provider: string,
+  operation: string,
+  deps: CliDependencies
+): Promise<PublishedRouteCatalogEntry> {
+  const response = await deps.fetchImpl(`${apiUrl.replace(/\/$/, "")}/.well-known/marketplace.json`);
+  if (!response.ok) {
+    throw new Error(`Marketplace catalog request failed with status ${response.status}`);
+  }
+
+  const body = await safeJson(response) as {
+    routes?: Array<{
+      provider?: string;
+      operation?: string;
+      method?: string;
+      requestSchemaJson?: JsonSchema;
+    }>;
+  };
+  const route = body.routes?.find((candidate) => candidate.provider === provider && candidate.operation === operation);
+  if (!route || (route.method !== "GET" && route.method !== "POST") || !route.requestSchemaJson) {
+    throw new Error(`Published route metadata not found for ${provider}.${operation}.`);
+  }
+
+  return {
+    provider,
+    operation,
+    method: route.method,
+    requestSchemaJson: route.requestSchemaJson
+  };
+}
+
+function buildInvocationTarget(input: {
+  apiUrl: string;
+  provider: string;
+  operation: string;
+  method: HttpMethod;
+  requestSchemaJson: JsonSchema;
+  body: unknown;
+}): { url: string; body?: string } {
+  const baseUrl = `${input.apiUrl.replace(/\/$/, "")}/api/${input.provider}/${input.operation}`;
+  if (input.method === "GET") {
+    return {
+      url: `${baseUrl}${serializeQueryInput({
+        schema: input.requestSchemaJson,
+        value: input.body,
+        label: `${input.provider}.${input.operation} GET input`
+      })}`
+    };
+  }
+
+  return {
+    url: baseUrl,
+    body: JSON.stringify(input.body)
+  };
+}
+
+function buildInvocationInit(
+  method: HttpMethod,
+  headers: Record<string, string>,
+  body?: string
+): RequestInit {
+  if (method === "GET") {
+    return {
+      method,
+      headers
+    };
+  }
+
+  return {
+    method,
+    headers: {
+      "content-type": "application/json",
+      ...headers
+    },
+    body
+  };
 }
 
 export async function fetchJobResult(

@@ -25,6 +25,51 @@ function jsonResponse(status: number, body: unknown, headers?: Record<string, st
 }
 
 describe("marketplace cli", () => {
+  const mockCatalogResponse = jsonResponse(200, {
+    routes: [
+      {
+        provider: "mock",
+        operation: "quick-insight",
+        method: "POST",
+        requestSchemaJson: {
+          type: "object",
+          properties: {
+            query: { type: "string" }
+          },
+          required: ["query"],
+          additionalProperties: false
+        }
+      },
+      {
+        provider: "orders",
+        operation: "place-order",
+        method: "POST",
+        requestSchemaJson: {
+          type: "object",
+          properties: {
+            item: { type: "string" }
+          },
+          required: ["item"],
+          additionalProperties: false
+        }
+      },
+      {
+        provider: "weather",
+        operation: "lookup",
+        method: "GET",
+        requestSchemaJson: {
+          type: "object",
+          properties: {
+            city: { type: "string" },
+            day: { type: "integer" }
+          },
+          required: ["city", "day"],
+          additionalProperties: false
+        }
+      }
+    ]
+  });
+
   it("initializes and loads a local wallet keyfile", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "marketplace-cli-wallet-"));
     const keyfilePath = join(tempDir, "wallet.json");
@@ -48,15 +93,20 @@ describe("marketplace cli", () => {
       maxPerCall: "0.01"
     });
 
-    const fetchImpl = vi.fn(async () =>
-      jsonResponse(402, {
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/.well-known/marketplace.json")) {
+        return mockCatalogResponse;
+      }
+
+      return jsonResponse(402, {
         accepts: [
           {
             maxAmountRequired: "0.05"
           }
         ]
-      })
-    );
+      });
+    });
 
     await expect(
       invokePaidRoute(
@@ -87,6 +137,10 @@ describe("marketplace cli", () => {
 
     const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
+
+      if (url.endsWith("/.well-known/marketplace.json")) {
+        return mockCatalogResponse;
+      }
 
       if (url.includes("/api/mock/quick-insight")) {
         const headers = new Headers(init?.headers);
@@ -163,6 +217,96 @@ describe("marketplace cli", () => {
     expect(config.spendLedger?.spentRaw).toBe("50000");
   });
 
+  it("invokes a paid GET route with canonical query params", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "marketplace-cli-invoke-get-"));
+    const keyfilePath = join(tempDir, "wallet.json");
+    const configPath = join(tempDir, "config.json");
+    await initializeWallet({ keyfilePath, configPath });
+
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+
+      if (url.endsWith("/.well-known/marketplace.json")) {
+        return mockCatalogResponse;
+      }
+
+      if (url.includes("/api/weather/lookup?city=Paris&day=1")) {
+        const headers = new Headers(init?.headers);
+        expect(init?.method).toBe("GET");
+        expect(init?.body).toBeUndefined();
+
+        if (!headers.get("X-PAYMENT")) {
+          return jsonResponse(402, {
+            x402Version: 1,
+            accepts: [
+              {
+                scheme: "exact",
+                network: "fast-mainnet",
+                maxAmountRequired: "0.05",
+                payTo: "fast19cjwajufyuqv883ydlvrp8xrhxejuvfe40pxq5dsrv675zgh89sqg9txs8",
+                asset: "0xb4cf1b9e227bb6a21b959338895dfb39b8d2a96dfa1ce5dd633561c193124cb5"
+              }
+            ]
+          });
+        }
+
+        return jsonResponse(200, {
+          city: "Paris",
+          forecast: "sunny"
+        });
+      }
+
+      const body = JSON.parse(String(init?.body ?? "{}")) as { method?: string };
+      if (body.method === "proxy_getAccountInfo") {
+        return jsonResponse(200, {
+          result: {
+            next_nonce: 1
+          }
+        });
+      }
+
+      if (body.method === "proxy_submitTransaction") {
+        return jsonResponse(200, {
+          result: {
+            Success: {
+              envelope: {
+                transaction: {}
+              },
+              signatures: [1]
+            }
+          }
+        });
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const result = await invokePaidRoute(
+      {
+        apiUrl: "http://localhost:3000",
+        provider: "weather",
+        operation: "lookup",
+        body: { day: 1, city: "Paris" },
+        keyfilePath,
+        configPath
+      },
+      {
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        confirm: async () => true,
+        now: () => new Date("2026-03-18T00:00:00.000Z"),
+        print: () => {},
+        error: () => {}
+      }
+    );
+
+    expect("success" in result && result.success).toBe(true);
+    expect(result.statusCode).toBe(200);
+    expect(result.body).toEqual({
+      city: "Paris",
+      forecast: "sunny"
+    });
+  });
+
   it("retrieves a job through the wallet-challenge flow", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "marketplace-cli-job-"));
     const keyfilePath = join(tempDir, "wallet.json");
@@ -236,6 +380,10 @@ describe("marketplace cli", () => {
 
     const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
+
+      if (url.endsWith("/.well-known/marketplace.json")) {
+        return mockCatalogResponse;
+      }
 
       if (url.endsWith("/api/orders/place-order") && !new Headers(init?.headers).get("authorization")) {
         return jsonResponse(401, { error: "Missing bearer token." });

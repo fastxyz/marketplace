@@ -9,6 +9,7 @@ import {
   PAYMENT_SIGNATURE_HEADER
 } from "./constants.js";
 import { getDefaultMarketplaceNetworkConfig } from "./network.js";
+import { getQuerySchemaProperties } from "./request-input.js";
 import { settlementModeDescription, settlementModeLabel } from "./settlement.js";
 import type {
   ExternalRegistryServiceSummary,
@@ -29,6 +30,21 @@ function isMarketplaceCatalogService(input: PublishedCatalogService): boolean {
 
 function isExternalCatalogService(input: PublishedCatalogService): boolean {
   return input.service.serviceType === "external_registry";
+}
+
+function buildOpenApiQueryParameters(route: MarketplaceRoute): Array<Record<string, unknown>> {
+  return getQuerySchemaProperties(route.requestSchemaJson).map((descriptor) => ({
+    in: "query",
+    name: descriptor.name,
+    required: descriptor.required,
+    schema: descriptor.schema,
+    ...(descriptor.isArray
+      ? {
+          style: "form",
+          explode: true
+        }
+      : {})
+  }));
 }
 
 export function buildOpenApiDocument(input: {
@@ -275,21 +291,30 @@ export function buildOpenApiDocument(input: {
       );
     }
 
-    paths[`/api/${route.provider}/${route.operation}`] = {
-      post: {
-        summary: route.title,
-        description: route.description,
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: route.requestSchemaJson
-            }
+    if (route.method === "GET") {
+      parameters.unshift(...buildOpenApiQueryParameters(route));
+    }
+
+    const operation: Record<string, unknown> = {
+      summary: route.title,
+      description: route.description,
+      responses,
+      parameters
+    };
+
+    if (route.method === "POST") {
+      operation.requestBody = {
+        required: true,
+        content: {
+          "application/json": {
+            schema: route.requestSchemaJson
           }
-        },
-        responses,
-        parameters
-      }
+        }
+      };
+    }
+
+    paths[`/api/${route.provider}/${route.operation}`] = {
+      [route.method.toLowerCase()]: operation
     };
   }
 
@@ -404,7 +429,7 @@ export function buildLlmsTxt(input: {
 
   for (const route of input.routes) {
     lines.push(
-      `- POST /api/${route.provider}/${route.operation}`,
+      `- ${route.method} /api/${route.provider}/${route.operation}`,
       `  routeId: ${route.routeId}`,
       `  mode: ${route.mode}`,
       `  network: ${route.network}`,
@@ -517,14 +542,16 @@ export function buildMarketplaceCatalog(input: {
       routeId: route.routeId,
       provider: route.provider,
       operation: route.operation,
-      method: "POST",
+      method: route.method,
       path: `/api/${route.provider}/${route.operation}`,
       mode: route.mode,
       settlementMode: route.settlementMode,
       network: route.network,
       billingType: route.billing.type,
       price: routePriceLabel(route),
-      description: route.description
+      description: route.description,
+      requestSchemaJson: route.requestSchemaJson,
+      responseSchemaJson: route.responseSchemaJson
     }))
   };
 }
