@@ -1252,6 +1252,145 @@ describe("marketplace api", () => {
     );
   });
 
+  it("supports free GET execution for a self-serve service", async () => {
+    const providerWallet = await createTestWallet(PROVIDER_PRIVATE_KEY);
+    const { app, store } = await createTestApp();
+    const providerToken = await createSiteSession(app, providerWallet);
+
+    await request(app)
+      .post("/provider/me")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        displayName: "Signal Labs",
+        websiteUrl: "https://provider.example.com"
+      });
+
+    const createdService = await request(app)
+      .post("/provider/services")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        serviceType: "marketplace_proxy",
+        slug: "signal-labs-free-get",
+        apiNamespace: "signals-free-get",
+        name: "Signal Labs Free GET",
+        tagline: "Query-first free signals",
+        about: "Provider-authored signal endpoints.",
+        categories: ["Research"],
+        promptIntro: 'I want to use the "Signal Labs Free GET" service on Fast Marketplace.',
+        setupInstructions: ["Use a funded Fast wallet."],
+        websiteUrl: "https://provider.example.com",
+        payoutWallet: providerWallet.address
+      });
+
+    expect(createdService.status).toBe(201);
+    const serviceId = createdService.body.service.id as string;
+
+    const createdEndpoint = await request(app)
+      .post(`/provider/services/${serviceId}/endpoints`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        endpointType: "marketplace_proxy",
+        operation: "search",
+        method: "GET",
+        title: "Search",
+        description: "Return a free signal snapshot.",
+        billingType: "free",
+        mode: "sync",
+        requestSchemaJson: {
+          type: "object",
+          properties: {
+            query: { type: "string" }
+          },
+          required: ["query"],
+          additionalProperties: false
+        },
+        responseSchemaJson: {
+          type: "object",
+          properties: {
+            items: {
+              type: "array",
+              items: { type: "string" }
+            }
+          },
+          required: ["items"],
+          additionalProperties: false
+        },
+        requestExample: { query: "FAST" },
+        responseExample: { items: ["alpha"] },
+        upstreamBaseUrl: "https://provider.example.com",
+        upstreamPath: "/api/search",
+        upstreamAuthMode: "none"
+      });
+
+    expect(createdEndpoint.status).toBe(201);
+
+    const verificationChallenge = await request(app)
+      .post(`/provider/services/${serviceId}/verification-challenge`)
+      .set("Authorization", `Bearer ${providerToken}`);
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === verificationChallenge.body.expectedUrl) {
+        return new Response(verificationChallenge.body.token, { status: 200 });
+      }
+
+      if (url === "https://provider.example.com/api/search?query=FAST") {
+        expect(init?.method).toBe("GET");
+        expect(init?.body).toBeUndefined();
+        return new Response(JSON.stringify({ items: ["alpha"] }), {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        });
+      }
+
+      return new Response("not found", { status: 404 });
+    });
+
+    expect(
+      await request(app)
+        .post(`/provider/services/${serviceId}/verify`)
+        .set("Authorization", `Bearer ${providerToken}`)
+    ).toMatchObject({ status: 200 });
+    expect(
+      await request(app)
+        .post(`/provider/services/${serviceId}/submit`)
+        .set("Authorization", `Bearer ${providerToken}`)
+    ).toMatchObject({ status: 202 });
+    expect(
+      await request(app)
+        .post(`/internal/provider-services/${serviceId}/publish`)
+        .set("Authorization", "Bearer test-admin-token")
+        .send({
+          reviewerIdentity: "ops@test",
+          settlementMode: "verified_escrow"
+        })
+    ).toMatchObject({ status: 200 });
+
+    const openApi = await request(app).get("/openapi.json");
+    expect(openApi.status).toBe(200);
+    expect(openApi.body.paths["/api/signals-free-get/search"].get.requestBody).toBeUndefined();
+    expect(openApi.body.paths["/api/signals-free-get/search"].get.responses["402"]).toBeUndefined();
+
+    const response = await request(app)
+      .get("/api/signals-free-get/search")
+      .query({ query: "FAST" });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: ["alpha"] });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://provider.example.com/api/search?query=FAST",
+      expect.objectContaining({
+        method: "GET"
+      })
+    );
+
+    const analytics = await store.getServiceAnalytics(["signals-free-get.search.v1"]);
+    expect(analytics.totalCalls).toBe(1);
+    expect(analytics.revenueRaw).toBe("0");
+  });
+
   it("supports prepaid-credit GET execution with wallet-session auth", async () => {
     const providerWallet = await createTestWallet(PROVIDER_PRIVATE_KEY);
     const { app, buyer, store } = await createTestApp();

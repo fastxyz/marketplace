@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   InMemoryMarketplaceStore,
+  PostgresMarketplaceStore,
   buildPriceRange,
   buildMarketplaceRoutes,
   buildServiceDetail,
@@ -1193,5 +1194,291 @@ describe("shared marketplace helpers", () => {
     const published = await store.getPublishedServiceBySlug("signal-labs-wallet-sync");
     expect(published?.service.payoutWallet).toBe(replacementWallet);
     expect(expectMarketplaceCatalogEndpoint(published?.endpoints[0]).payout.providerWallet).toBe(replacementWallet);
+  });
+
+  it("persists marketplace route methods through the Postgres store", async () => {
+    const wallet = "fast1provider000000000000000000000000000000000000000000000000000000";
+    const accountId = "acct_postgres";
+    const serviceId = "service_postgres";
+    const now = TEST_TIMESTAMP;
+    const queries: Array<{ sql: string; params: unknown[] }> = [];
+    const draftRows: Record<string, unknown>[] = [];
+    const publishedRows: Record<string, unknown>[] = [
+      {
+        endpoint_version_id: "endpoint_version_get",
+        service_id: serviceId,
+        service_version_id: "service_version_postgres",
+        endpoint_draft_id: "draft_quote_get",
+        route_id: "signals-postgres.quote-get.v1",
+        provider: "signals-postgres",
+        operation: "quote-get",
+        version: "v1",
+        method: "GET",
+        settlement_mode: "verified_escrow",
+        mode: "sync",
+        network: "fast-mainnet",
+        price: "Free",
+        billing: { type: "free" },
+        title: "Quote GET",
+        description: "Return a single quote snapshot.",
+        payout: { providerAccountId: accountId, providerWallet: wallet, providerBps: 10_000 },
+        request_example: { symbol: "FAST" },
+        response_example: { symbol: "FAST" },
+        usage_notes: null,
+        request_schema_json: {
+          type: "object",
+          properties: {
+            symbol: { type: "string" }
+          },
+          required: ["symbol"],
+          additionalProperties: false
+        },
+        response_schema_json: {
+          type: "object",
+          properties: {
+            symbol: { type: "string" }
+          },
+          required: ["symbol"],
+          additionalProperties: false
+        },
+        executor_kind: "http",
+        upstream_base_url: "https://provider.example.com",
+        upstream_path: "/api/quote",
+        upstream_auth_mode: "none",
+        upstream_auth_header_name: null,
+        upstream_secret_ref: null,
+        created_at: now,
+        updated_at: now
+      },
+      {
+        endpoint_version_id: "endpoint_version_post",
+        service_id: serviceId,
+        service_version_id: "service_version_postgres",
+        endpoint_draft_id: "draft_quote_post",
+        route_id: "signals-postgres.quote-post.v1",
+        provider: "signals-postgres",
+        operation: "quote-post",
+        version: "v1",
+        method: null,
+        settlement_mode: "verified_escrow",
+        mode: "sync",
+        network: "fast-mainnet",
+        price: "$0.25",
+        billing: { type: "fixed_x402" },
+        title: "Quote POST",
+        description: "Return a single quote snapshot.",
+        payout: { providerAccountId: accountId, providerWallet: wallet, providerBps: 10_000 },
+        request_example: { symbol: "FAST" },
+        response_example: { symbol: "FAST" },
+        usage_notes: null,
+        request_schema_json: {
+          type: "object",
+          properties: {
+            symbol: { type: "string" }
+          },
+          required: ["symbol"],
+          additionalProperties: false
+        },
+        response_schema_json: {
+          type: "object",
+          properties: {
+            symbol: { type: "string" }
+          },
+          required: ["symbol"],
+          additionalProperties: false
+        },
+        executor_kind: "http",
+        upstream_base_url: "https://provider.example.com",
+        upstream_path: "/api/quote",
+        upstream_auth_mode: "none",
+        upstream_auth_header_name: null,
+        upstream_secret_ref: null,
+        created_at: now,
+        updated_at: now
+      }
+    ];
+
+    const store = new PostgresMarketplaceStore({
+      query: async (sql: string, params: unknown[] = []) => {
+        queries.push({ sql, params });
+
+        if (sql.includes("SELECT * FROM provider_services WHERE id = $1")) {
+          return {
+            rowCount: 1,
+            rows: [
+              {
+                id: serviceId,
+                provider_account_id: accountId,
+                service_type: "marketplace_proxy",
+                settlement_mode: "verified_escrow",
+                slug: "signal-labs-postgres",
+                api_namespace: "signals-postgres",
+                name: "Signal Labs Postgres",
+                tagline: "Persistence coverage",
+                about: "Provider-authored signal endpoints.",
+                categories: ["Research"],
+                prompt_intro: 'I want to use the "Signal Labs Postgres" service on Fast Marketplace.',
+                setup_instructions: ["Use a funded Fast wallet."],
+                website_url: "https://provider.example.com",
+                payout_wallet: wallet,
+                featured: false,
+                status: "draft",
+                created_at: now,
+                updated_at: now
+              }
+            ]
+          };
+        }
+
+        if (sql.includes("SELECT * FROM provider_accounts WHERE id = $1")) {
+          return {
+            rowCount: 1,
+            rows: [
+              {
+                id: accountId,
+                owner_wallet: wallet,
+                display_name: "Signal Labs",
+                website_url: "https://provider.example.com",
+                bio: null,
+                contact_email: null,
+                created_at: now,
+                updated_at: now
+              }
+            ]
+          };
+        }
+
+        if (sql.includes("SELECT * FROM provider_endpoint_drafts") && sql.includes("WHERE service_id = $1")) {
+          return {
+            rowCount: draftRows.length,
+            rows: draftRows
+          };
+        }
+
+        if (sql.includes("SELECT * FROM provider_external_endpoint_drafts")) {
+          return { rowCount: 0, rows: [] };
+        }
+
+        if (sql.includes("SELECT * FROM provider_verifications")) {
+          return { rowCount: 0, rows: [] };
+        }
+
+        if (sql.includes("SELECT * FROM provider_reviews")) {
+          return { rowCount: 0, rows: [] };
+        }
+
+        if (sql.includes("INSERT INTO provider_endpoint_drafts")) {
+          const row = {
+            id: params[0] as string,
+            service_id: params[1] as string,
+            route_id: params[2] as string,
+            operation: params[3] as string,
+            method: params[4] as string,
+            title: params[5] as string,
+            description: params[6] as string,
+            price: params[7] as string,
+            billing: JSON.parse(params[8] as string),
+            mode: params[9] as string,
+            request_schema_json: JSON.parse(params[10] as string),
+            response_schema_json: JSON.parse(params[11] as string),
+            request_example: JSON.parse(params[12] as string),
+            response_example: JSON.parse(params[13] as string),
+            usage_notes: params[14] as string | null,
+            executor_kind: params[15] as string,
+            upstream_base_url: params[16] as string | null,
+            upstream_path: params[17] as string | null,
+            upstream_auth_mode: params[18] as string | null,
+            upstream_auth_header_name: params[19] as string | null,
+            upstream_secret_ref: params[20] as string | null,
+            payout: JSON.parse(params[21] as string),
+            created_at: now,
+            updated_at: now
+          };
+          draftRows.push(row);
+          return { rowCount: 1, rows: [row] };
+        }
+
+        if (sql.includes("SELECT e.*") && sql.includes("JOIN published_endpoint_versions e")) {
+          const match = publishedRows.find(
+            (row) => row.provider === params[0] && row.operation === params[1] && row.network === params[2]
+          );
+          return {
+            rowCount: match ? 1 : 0,
+            rows: match ? [match] : []
+          };
+        }
+
+        return { rowCount: 0, rows: [] };
+      }
+    } as never);
+
+    const created = await store.createProviderEndpointDraft(serviceId, wallet, {
+      endpointType: "marketplace_proxy",
+      operation: "quote-get",
+      method: "GET",
+      title: "Quote GET",
+      description: "Return a single quote snapshot.",
+      billingType: "free",
+      mode: "sync",
+      requestSchemaJson: {
+        type: "object",
+        properties: {
+          symbol: { type: "string" }
+        },
+        required: ["symbol"],
+        additionalProperties: false
+      },
+      responseSchemaJson: {
+        type: "object",
+        properties: {
+          symbol: { type: "string" }
+        },
+        required: ["symbol"],
+        additionalProperties: false
+      },
+      requestExample: { symbol: "FAST" },
+      responseExample: { symbol: "FAST" },
+      upstreamBaseUrl: "https://provider.example.com",
+      upstreamPath: "/api/quote",
+      upstreamAuthMode: "none"
+    });
+
+    expect(created.method).toBe("GET");
+    const insert = queries.find((entry) => entry.sql.includes("INSERT INTO provider_endpoint_drafts"));
+    expect(insert?.params[4]).toBe("GET");
+
+    const detail = await store.getProviderServiceForOwner(serviceId, wallet);
+    expect(expectMarketplaceCatalogEndpoint(detail?.endpoints[0]).method).toBe("GET");
+
+    const publishedGet = await store.findPublishedRoute("signals-postgres", "quote-get", "fast-mainnet");
+    const publishedPost = await store.findPublishedRoute("signals-postgres", "quote-post", "fast-mainnet");
+
+    expect(publishedGet?.method).toBe("GET");
+    expect(publishedPost?.method).toBe("POST");
+  });
+
+  it("adds Postgres method defaults and backfill migrations for marketplace routes", async () => {
+    const queries: string[] = [];
+    const query = async (sql: string) => {
+      queries.push(sql);
+      return { rowCount: 0, rows: [] };
+    };
+    const store = new PostgresMarketplaceStore({
+      query,
+      connect: async () => ({
+        query,
+        release() {}
+      })
+    } as never);
+
+    await store.ensureSchema();
+
+    const schemaSql = queries.join("\n");
+    expect(schemaSql).toContain("method TEXT NOT NULL DEFAULT 'POST'");
+    expect(schemaSql).toContain("ALTER TABLE provider_endpoint_drafts");
+    expect(schemaSql).toContain("ADD COLUMN IF NOT EXISTS method TEXT NOT NULL DEFAULT 'POST'");
+    expect(schemaSql).toContain("ALTER TABLE published_endpoint_versions");
+    expect(schemaSql).toMatch(/UPDATE provider_endpoint_drafts[\s\S]*SET method = 'POST'[\s\S]*WHERE method IS NULL/);
+    expect(schemaSql).toMatch(/UPDATE published_endpoint_versions[\s\S]*SET method = 'POST'[\s\S]*WHERE method IS NULL/);
   });
 });

@@ -3,13 +3,13 @@
 import React from "react";
 import { LoaderCircle, RefreshCcw, TriangleAlert, Wallet } from "lucide-react";
 import type { MarketplaceServiceCatalogEndpoint } from "@marketplace/shared";
+import { serializeQueryInput } from "@marketplace/shared/browser-request-input";
 import type { WebDeploymentNetwork } from "@/lib/network";
 
 import { CopyButton } from "@/components/copy-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { serializeBrowserQueryInput } from "@/lib/get-query";
 import {
   createJobAccessToken,
   createPaymentIdentifier,
@@ -64,7 +64,7 @@ export function EndpointBrowserRunner({
   function buildInvocation(input: unknown): { url: string; init: RequestInit } {
     if (endpoint.method === "GET") {
       return {
-        url: `${endpoint.proxyUrl}${serializeBrowserQueryInput({
+        url: `${endpoint.proxyUrl}${serializeQueryInput({
           schema: endpoint.requestSchemaJson,
           value: input,
           label: `${endpoint.routeId} GET input`

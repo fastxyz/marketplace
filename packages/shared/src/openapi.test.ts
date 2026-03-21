@@ -271,4 +271,94 @@ describe("parseOpenApiImportDocument", () => {
     expect(endpoint.upstreamAuthMode).toBe("none");
     expect(endpoint.warnings).toContain("Multiple alternative auth schemes were declared. Review auth settings manually.");
   });
+
+  it("skips unsupported GET operations with path params, headers, and request bodies", () => {
+    const preview = parseOpenApiImportDocument({
+      documentUrl: "https://provider.example.com/openapi.json",
+      document: {
+        openapi: "3.0.3",
+        paths: {
+          "/signals/{id}": {
+            get: {
+              parameters: [
+                {
+                  name: "id",
+                  in: "path",
+                  required: true,
+                  schema: {
+                    type: "string"
+                  }
+                }
+              ],
+              responses: {
+                "200": {
+                  content: {
+                    "application/json": {
+                      schema: {
+                        type: "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "/health": {
+            get: {
+              requestBody: {
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "object"
+                    }
+                  }
+                }
+              },
+              responses: {
+                "200": {
+                  content: {
+                    "application/json": {
+                      schema: {
+                        type: "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "/search": {
+            get: {
+              parameters: [
+                {
+                  name: "X-Trace",
+                  in: "header",
+                  schema: {
+                    type: "string"
+                  }
+                }
+              ],
+              responses: {
+                "200": {
+                  content: {
+                    "application/json": {
+                      schema: {
+                        type: "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    expect(preview.endpoints).toEqual([]);
+    expect(preview.warnings).toContain("Skipped GET /signals/{id}: path parameters are not supported for imported GET routes.");
+    expect(preview.warnings).toContain("Skipped GET /health: GET request bodies are not supported.");
+    expect(preview.warnings).toContain("Skipped GET /search: only query parameters are supported for imported GET routes.");
+    expect(preview.warnings).toContain("No importable POST or safe GET operations were found in this document.");
+  });
 });
