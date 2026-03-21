@@ -1,9 +1,11 @@
 import type {
+  HttpMethod,
   JsonSchema,
   OpenApiImportCandidate,
   OpenApiImportPreview,
   UpstreamAuthMode
 } from "./types.js";
+import { getQuerySchemaProperties } from "./request-input.js";
 
 const HTTP_METHODS = new Set(["get", "put", "post", "delete", "options", "head", "patch", "trace"]);
 const DEFAULT_REQUEST_SCHEMA: JsonSchema = {
@@ -30,7 +32,7 @@ export function parseOpenApiImportDocument(input: {
   const warnings: string[] = [];
   const endpoints: OpenApiImportCandidate[] = [];
   const seenOperations = new Set<string>();
-  let skippedNonPost = 0;
+  let skippedUnsupported = 0;
 
   for (const [path, rawPathItem] of Object.entries(paths)) {
     if (typeof path !== "string" || !path.startsWith("/")) {
@@ -39,31 +41,46 @@ export function parseOpenApiImportDocument(input: {
     }
 
     const pathItem = expectObject(resolveOpenApiNode(root, rawPathItem), `OpenAPI path ${path}`);
-    skippedNonPost += countNonPostOperations(pathItem);
+    skippedUnsupported += countUnsupportedImportOperations(pathItem);
 
-    if (!("post" in pathItem)) {
-      continue;
+    if ("post" in pathItem) {
+      endpoints.push(
+        buildImportCandidate({
+          method: "POST",
+          root,
+          documentUrl: input.documentUrl,
+          path,
+          pathItem,
+          operationValue: pathItem.post,
+          seenOperations
+        })
+      );
     }
 
-    endpoints.push(
-      buildImportCandidate({
+    if ("get" in pathItem) {
+      const candidate = buildSafeGetImportCandidate({
         root,
         documentUrl: input.documentUrl,
         path,
         pathItem,
         seenOperations
-      })
-    );
+      });
+      if ("reason" in candidate) {
+        warnings.push(`Skipped GET ${path}: ${candidate.reason}`);
+      } else {
+        endpoints.push(candidate);
+      }
+    }
   }
 
-  if (skippedNonPost > 0) {
+  if (skippedUnsupported > 0) {
     warnings.push(
-      `Skipped ${skippedNonPost} non-POST operation${skippedNonPost === 1 ? "" : "s"} because provider imports are POST-only in v1.`
+      `Skipped ${skippedUnsupported} unsupported operation${skippedUnsupported === 1 ? "" : "s"} because imports only support POST and flat-query GET routes.`
     );
   }
 
   if (endpoints.length === 0) {
-    warnings.push("No importable POST operations were found in this document.");
+    warnings.push("No importable POST or safe GET operations were found in this document.");
   }
 
   return {
@@ -76,15 +93,17 @@ export function parseOpenApiImportDocument(input: {
 }
 
 function buildImportCandidate(input: {
+  method: HttpMethod;
   root: Record<string, unknown>;
   documentUrl: string;
   path: string;
   pathItem: Record<string, unknown>;
+  operationValue: unknown;
   seenOperations: Set<string>;
 }): OpenApiImportCandidate {
   const operation = expectObject(
-    resolveOpenApiNode(input.root, input.pathItem.post),
-    `OpenAPI operation POST ${input.path}`
+    resolveOpenApiNode(input.root, input.operationValue),
+    `OpenAPI operation ${input.method} ${input.path}`
   );
   const warnings: string[] = [];
   const upstreamBaseUrl = resolveServerUrl({
@@ -93,7 +112,9 @@ function buildImportCandidate(input: {
     operation,
     pathItem: input.pathItem
   });
-  const request = extractRequestPayload(input.root, operation);
+  const request = input.method === "GET"
+    ? extractGetRequestPayload(input.root, input.pathItem, operation)
+    : extractRequestPayload(input.root, operation);
   const response = extractResponsePayload(input.root, operation);
   const auth = inferUpstreamAuthMode(input.root, operation);
   const operationSlug = dedupeOperationSlug(
@@ -103,11 +124,11 @@ function buildImportCandidate(input: {
 
   warnings.push(...request.warnings, ...response.warnings, ...auth.warnings);
 
-  if (input.path.includes("{")) {
+  if (input.method === "POST" && input.path.includes("{")) {
     warnings.push("Path parameters are not mapped automatically. Review upstreamPath before saving.");
   }
 
-  if (hasNonHeaderParameters(input.root, input.pathItem, operation)) {
+  if (input.method === "POST" && hasNonHeaderParameters(input.root, input.pathItem, operation)) {
     warnings.push("Query, path, and cookie parameters are not mapped automatically from the marketplace JSON body.");
   }
 
@@ -117,11 +138,12 @@ function buildImportCandidate(input: {
 
   return {
     operation: operationSlug,
+    method: input.method,
     title: readOptionalString(operation, "summary") ?? titleCaseFromSlug(operationSlug),
     description:
       readOptionalString(operation, "description")
       ?? readOptionalString(operation, "summary")
-      ?? `Imported from POST ${input.path}.`,
+      ?? `Imported from ${input.method} ${input.path}.`,
     requestSchemaJson: request.schema,
     responseSchemaJson: response.schema,
     requestExample: request.example,
@@ -135,15 +157,137 @@ function buildImportCandidate(input: {
   };
 }
 
-function countNonPostOperations(pathItem: Record<string, unknown>): number {
+function buildSafeGetImportCandidate(input: {
+  root: Record<string, unknown>;
+  documentUrl: string;
+  path: string;
+  pathItem: Record<string, unknown>;
+  seenOperations: Set<string>;
+}): OpenApiImportCandidate | { reason: string } {
+  if (input.path.includes("{")) {
+    return { reason: "path parameters are not supported for imported GET routes." };
+  }
+
+  const operation = expectObject(
+    resolveOpenApiNode(input.root, input.pathItem.get),
+    `OpenAPI operation GET ${input.path}`
+  );
+
+  if (operation.requestBody !== undefined) {
+    return { reason: "GET request bodies are not supported." };
+  }
+
+  const parameterValues = [...collectParameters(input.pathItem), ...collectParameters(operation)];
+  for (const parameterValue of parameterValues) {
+    const parameter = expectObject(resolveOpenApiNode(input.root, parameterValue), "OpenAPI parameter");
+    const location = readOptionalString(parameter, "in");
+    if (location === "path" || location === "cookie" || location === "header") {
+      return { reason: "only query parameters are supported for imported GET routes." };
+    }
+
+    if (location === "query") {
+      const style = readOptionalString(parameter, "style");
+      if (style && style !== "form") {
+        return { reason: "only form-style query parameters are supported for imported GET routes." };
+      }
+
+      const schema = parameter.schema
+        ? normalizeJsonSchema(input.root, parameter.schema)
+        : structuredClone(DEFAULT_REQUEST_SCHEMA);
+
+      if (parameter.explode === false && !supportsNonExplodedScalarQueryParameter(schema)) {
+        return { reason: "only exploded query parameters are supported for imported GET routes." };
+      }
+    }
+  }
+
+  try {
+    return buildImportCandidate({
+      method: "GET",
+      root: input.root,
+      documentUrl: input.documentUrl,
+      path: input.path,
+      pathItem: input.pathItem,
+      operationValue: input.pathItem.get,
+      seenOperations: input.seenOperations
+    });
+  } catch (error) {
+    return {
+      reason: error instanceof Error ? error.message : "query parameters could not be mapped safely."
+    };
+  }
+}
+
+function supportsNonExplodedScalarQueryParameter(schema: JsonSchema): boolean {
+  return (
+    schema.type === "string"
+    || schema.type === "number"
+    || schema.type === "integer"
+    || schema.type === "boolean"
+  );
+}
+
+function countUnsupportedImportOperations(pathItem: Record<string, unknown>): number {
   let count = 0;
   for (const key of Object.keys(pathItem)) {
-    if (HTTP_METHODS.has(key) && key !== "post") {
+    if (HTTP_METHODS.has(key) && key !== "post" && key !== "get") {
       count += 1;
     }
   }
 
   return count;
+}
+
+function extractGetRequestPayload(
+  root: Record<string, unknown>,
+  pathItem: Record<string, unknown>,
+  operation: Record<string, unknown>
+): {
+  schema: JsonSchema;
+  example: unknown;
+  warnings: string[];
+} {
+  const parameterValues = [...collectParameters(pathItem), ...collectParameters(operation)];
+  const properties: Record<string, unknown> = {};
+  const required: string[] = [];
+
+  for (const parameterValue of parameterValues) {
+    const parameter = expectObject(resolveOpenApiNode(root, parameterValue), "OpenAPI parameter");
+    const location = readOptionalString(parameter, "in");
+    if (location !== "query") {
+      throw new Error("only query parameters are supported.");
+    }
+
+    const name = readOptionalString(parameter, "name");
+    if (!name) {
+      throw new Error("query parameters must declare a name.");
+    }
+
+    const schema = parameter.schema
+      ? normalizeJsonSchema(root, parameter.schema)
+      : structuredClone(DEFAULT_REQUEST_SCHEMA);
+    properties[name] = schema;
+    if (parameter.required === true) {
+      required.push(name);
+    }
+  }
+
+  const schema: JsonSchema = {
+    type: "object",
+    properties,
+    additionalProperties: false
+  };
+  if (required.length > 0) {
+    schema.required = required;
+  }
+
+  getQuerySchemaProperties(schema);
+
+  return {
+    schema,
+    example: exampleFromSchema(schema) ?? {},
+    warnings: []
+  };
 }
 
 function extractRequestPayload(root: Record<string, unknown>, operation: Record<string, unknown>): {

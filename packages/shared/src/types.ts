@@ -21,7 +21,8 @@ export type ProviderReviewStatus = "pending_review" | "changes_requested" | "pub
 export type SettlementMode = "community_direct" | "verified_escrow";
 export type ProviderServiceType = "marketplace_proxy" | "external_registry";
 export type ServiceEndpointType = ProviderServiceType;
-export type ExternalEndpointMethod = "GET" | "POST";
+export type HttpMethod = "GET" | "POST";
+export type ExternalEndpointMethod = HttpMethod;
 
 export interface RoutePayoutConfig {
   providerAccountId: string;
@@ -71,6 +72,7 @@ export interface MarketplaceRoute {
   provider: string;
   operation: string;
   version: string;
+  method: HttpMethod;
   settlementMode: SettlementMode;
   mode: RouteMode;
   network: MarketplacePaymentNetwork;
@@ -243,9 +245,11 @@ export interface MarketplaceServiceCatalogEndpoint {
   billingType: RouteBillingType;
   tokenSymbol: MarketplaceTokenSymbol;
   mode: RouteMode;
-  method: "POST";
+  method: HttpMethod;
   path: string;
   proxyUrl: string;
+  requestSchemaJson: JsonSchema;
+  responseSchemaJson: JsonSchema;
   requestExample: unknown;
   responseExample: unknown;
   usageNotes?: string;
@@ -386,6 +390,7 @@ export interface MarketplaceProviderEndpointDraftRecord {
   serviceId: string;
   routeId: string;
   operation: string;
+  method: HttpMethod;
   title: string;
   description: string;
   price: string;
@@ -515,6 +520,7 @@ export interface UpdateProviderServiceInput {
 export interface CreateMarketplaceProviderEndpointDraftInput {
   endpointType: "marketplace_proxy";
   operation: string;
+  method: HttpMethod;
   title: string;
   description: string;
   price?: string;
@@ -554,6 +560,7 @@ export type CreateProviderEndpointDraftInput =
 export interface UpdateMarketplaceProviderEndpointDraftInput {
   endpointType: "marketplace_proxy";
   operation?: string;
+  method?: HttpMethod;
   title?: string;
   description?: string;
   price?: string;
@@ -596,6 +603,7 @@ export interface OpenApiImportRequest {
 
 export interface OpenApiImportCandidate {
   operation: string;
+  method: HttpMethod;
   title: string;
   description: string;
   requestSchemaJson: JsonSchema;

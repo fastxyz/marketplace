@@ -754,6 +754,7 @@ describe("marketplace api", () => {
       .send({
         endpointType: "marketplace_proxy",
         operation: "quote",
+        method: "POST",
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
@@ -953,6 +954,7 @@ describe("marketplace api", () => {
       .send({
         endpointType: "marketplace_proxy",
         operation: "search",
+        method: "POST",
         title: "Search",
         description: "Return a free signal snapshot.",
         billingType: "free",
@@ -1090,6 +1092,682 @@ describe("marketplace api", () => {
     expect(analytics.totalCalls).toBe(2);
     expect(analytics.revenueRaw).toBe("0");
     expect(analytics.successRate30d).toBe(50);
+  });
+
+  it("supports fixed-price GET routes with x402 preflight and wrong-method 405", async () => {
+    const providerWallet = await createTestWallet(PROVIDER_PRIVATE_KEY);
+    const { app } = await createTestApp();
+    const providerToken = await createSiteSession(app, providerWallet);
+
+    await request(app)
+      .post("/provider/me")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        displayName: "Signal Labs",
+        websiteUrl: "https://provider.example.com"
+      });
+
+    const createdService = await request(app)
+      .post("/provider/services")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        serviceType: "marketplace_proxy",
+        slug: "signal-labs-get",
+        apiNamespace: "signals-get",
+        name: "Signal Labs GET",
+        tagline: "Query-first market signals",
+        about: "Provider-authored signal endpoints.",
+        categories: ["Research"],
+        promptIntro: 'I want to use the "Signal Labs GET" service on Fast Marketplace.',
+        setupInstructions: ["Use a funded Fast wallet."],
+        websiteUrl: "https://provider.example.com",
+        payoutWallet: providerWallet.address
+      });
+
+    expect(createdService.status).toBe(201);
+    const serviceId = createdService.body.service.id as string;
+
+    const createdEndpoint = await request(app)
+      .post(`/provider/services/${serviceId}/endpoints`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        endpointType: "marketplace_proxy",
+        operation: "quote",
+        method: "GET",
+        title: "Quote",
+        description: "Return a single quote snapshot.",
+        billingType: "fixed_x402",
+        price: "$0.25",
+        mode: "sync",
+        requestSchemaJson: {
+          type: "object",
+          properties: {
+            symbol: { type: "string" }
+          },
+          required: ["symbol"],
+          additionalProperties: false
+        },
+        responseSchemaJson: {
+          type: "object",
+          properties: {
+            symbol: { type: "string" },
+            price: { type: "number" }
+          },
+          required: ["symbol", "price"],
+          additionalProperties: false
+        },
+        requestExample: { symbol: "FAST" },
+        responseExample: { symbol: "FAST", price: 42.5 },
+        upstreamBaseUrl: "https://provider.example.com",
+        upstreamPath: "/api/quote",
+        upstreamAuthMode: "none"
+      });
+
+    expect(createdEndpoint.status).toBe(201);
+
+    const verificationChallenge = await request(app)
+      .post(`/provider/services/${serviceId}/verification-challenge`)
+      .set("Authorization", `Bearer ${providerToken}`);
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === verificationChallenge.body.expectedUrl) {
+        return new Response(verificationChallenge.body.token, { status: 200 });
+      }
+
+      if (url === "https://provider.example.com/api/quote?symbol=FAST") {
+        expect(init?.method).toBe("GET");
+        expect(init?.body).toBeUndefined();
+        return new Response(JSON.stringify({ symbol: "FAST", price: 42.5 }), {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        });
+      }
+
+      return new Response("not found", { status: 404 });
+    });
+
+    expect(
+      await request(app)
+        .post(`/provider/services/${serviceId}/verify`)
+        .set("Authorization", `Bearer ${providerToken}`)
+    ).toMatchObject({ status: 200 });
+
+    expect(
+      await request(app)
+        .post(`/provider/services/${serviceId}/submit`)
+        .set("Authorization", `Bearer ${providerToken}`)
+    ).toMatchObject({ status: 202 });
+
+    expect(
+      await request(app)
+        .post(`/internal/provider-services/${serviceId}/publish`)
+        .set("Authorization", "Bearer test-admin-token")
+        .send({
+          reviewerIdentity: "ops@test",
+          settlementMode: "verified_escrow"
+        })
+    ).toMatchObject({ status: 200 });
+
+    const openApi = await request(app).get("/openapi.json");
+    expect(openApi.status).toBe(200);
+    expect(openApi.body.paths["/api/signals-get/quote"].get.requestBody).toBeUndefined();
+    expect(openApi.body.paths["/api/signals-get/quote"].get.parameters).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: "symbol",
+        in: "query",
+        required: true
+      })
+    ]));
+    expect(openApi.body.paths["/api/signals-get/quote"].post).toBeUndefined();
+
+    const wrongMethod = await request(app)
+      .post("/api/signals-get/quote")
+      .send({ symbol: "FAST" });
+
+    expect(wrongMethod.status).toBe(405);
+    expect(wrongMethod.headers.allow).toBe("GET");
+
+    const unpaid = await request(app)
+      .get("/api/signals-get/quote")
+      .query({ symbol: "FAST" });
+
+    expect(unpaid.status).toBe(402);
+
+    const paid = await request(app)
+      .get("/api/signals-get/quote")
+      .query({ symbol: "FAST" })
+      .set("X-PAYMENT", Buffer.from(JSON.stringify({ paid: true })).toString("base64"))
+      .set("PAYMENT-IDENTIFIER", "payment_provider_get_1");
+
+    expect(paid.status).toBe(200);
+    expect(paid.body).toEqual({ symbol: "FAST", price: 42.5 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://provider.example.com/api/quote?symbol=FAST",
+      expect.objectContaining({
+        method: "GET"
+      })
+    );
+  });
+
+  it("supports free GET execution for a self-serve service", async () => {
+    const providerWallet = await createTestWallet(PROVIDER_PRIVATE_KEY);
+    const { app, store } = await createTestApp();
+    const providerToken = await createSiteSession(app, providerWallet);
+
+    await request(app)
+      .post("/provider/me")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        displayName: "Signal Labs",
+        websiteUrl: "https://provider.example.com"
+      });
+
+    const createdService = await request(app)
+      .post("/provider/services")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        serviceType: "marketplace_proxy",
+        slug: "signal-labs-free-get",
+        apiNamespace: "signals-free-get",
+        name: "Signal Labs Free GET",
+        tagline: "Query-first free signals",
+        about: "Provider-authored signal endpoints.",
+        categories: ["Research"],
+        promptIntro: 'I want to use the "Signal Labs Free GET" service on Fast Marketplace.',
+        setupInstructions: ["Use a funded Fast wallet."],
+        websiteUrl: "https://provider.example.com",
+        payoutWallet: providerWallet.address
+      });
+
+    expect(createdService.status).toBe(201);
+    const serviceId = createdService.body.service.id as string;
+
+    const createdEndpoint = await request(app)
+      .post(`/provider/services/${serviceId}/endpoints`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        endpointType: "marketplace_proxy",
+        operation: "search",
+        method: "GET",
+        title: "Search",
+        description: "Return a free signal snapshot.",
+        billingType: "free",
+        mode: "sync",
+        requestSchemaJson: {
+          type: "object",
+          properties: {
+            query: { type: "string" }
+          },
+          required: ["query"],
+          additionalProperties: false
+        },
+        responseSchemaJson: {
+          type: "object",
+          properties: {
+            items: {
+              type: "array",
+              items: { type: "string" }
+            }
+          },
+          required: ["items"],
+          additionalProperties: false
+        },
+        requestExample: { query: "FAST" },
+        responseExample: { items: ["alpha"] },
+        upstreamBaseUrl: "https://provider.example.com",
+        upstreamPath: "/api/search",
+        upstreamAuthMode: "none"
+      });
+
+    expect(createdEndpoint.status).toBe(201);
+
+    const verificationChallenge = await request(app)
+      .post(`/provider/services/${serviceId}/verification-challenge`)
+      .set("Authorization", `Bearer ${providerToken}`);
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === verificationChallenge.body.expectedUrl) {
+        return new Response(verificationChallenge.body.token, { status: 200 });
+      }
+
+      if (url === "https://provider.example.com/api/search?query=FAST") {
+        expect(init?.method).toBe("GET");
+        expect(init?.body).toBeUndefined();
+        return new Response(JSON.stringify({ items: ["alpha"] }), {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        });
+      }
+
+      return new Response("not found", { status: 404 });
+    });
+
+    expect(
+      await request(app)
+        .post(`/provider/services/${serviceId}/verify`)
+        .set("Authorization", `Bearer ${providerToken}`)
+    ).toMatchObject({ status: 200 });
+    expect(
+      await request(app)
+        .post(`/provider/services/${serviceId}/submit`)
+        .set("Authorization", `Bearer ${providerToken}`)
+    ).toMatchObject({ status: 202 });
+    expect(
+      await request(app)
+        .post(`/internal/provider-services/${serviceId}/publish`)
+        .set("Authorization", "Bearer test-admin-token")
+        .send({
+          reviewerIdentity: "ops@test",
+          settlementMode: "verified_escrow"
+        })
+    ).toMatchObject({ status: 200 });
+
+    const openApi = await request(app).get("/openapi.json");
+    expect(openApi.status).toBe(200);
+    expect(openApi.body.paths["/api/signals-free-get/search"].get.requestBody).toBeUndefined();
+    expect(openApi.body.paths["/api/signals-free-get/search"].get.responses["402"]).toBeUndefined();
+
+    const response = await request(app)
+      .get("/api/signals-free-get/search")
+      .query({ query: "FAST" });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: ["alpha"] });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://provider.example.com/api/search?query=FAST",
+      expect.objectContaining({
+        method: "GET"
+      })
+    );
+
+    const analytics = await store.getServiceAnalytics(["signals-free-get.search.v1"]);
+    expect(analytics.totalCalls).toBe(1);
+    expect(analytics.revenueRaw).toBe("0");
+  });
+
+  it("supports prepaid-credit GET execution with wallet-session auth", async () => {
+    const providerWallet = await createTestWallet(PROVIDER_PRIVATE_KEY);
+    const { app, buyer, store } = await createTestApp();
+    const providerToken = await createSiteSession(app, providerWallet);
+
+    await request(app)
+      .post("/provider/me")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        displayName: "Order Desk",
+        websiteUrl: "https://orders.example.com"
+      });
+
+    const createdService = await request(app)
+      .post("/provider/services")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        serviceType: "marketplace_proxy",
+        slug: "order-desk-get",
+        apiNamespace: "orders-get",
+        name: "Order Desk GET",
+        tagline: "Prepaid GET orders",
+        about: "Provider-authored order routes.",
+        categories: ["Shopping"],
+        promptIntro: "Use this order desk.",
+        setupInstructions: ["Use a funded Fast wallet."],
+        websiteUrl: "https://orders.example.com",
+        payoutWallet: providerWallet.address
+      });
+
+    expect(createdService.status).toBe(201);
+    const serviceId = createdService.body.service.id as string;
+
+    const runtimeKeyResponse = await request(app)
+      .post(`/provider/services/${serviceId}/runtime-key`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({});
+
+    expect(runtimeKeyResponse.status).toBe(201);
+    const runtimeKey = runtimeKeyResponse.body.plaintextKey as string;
+
+    const topupEndpoint = await request(app)
+      .post(`/provider/services/${serviceId}/endpoints`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        endpointType: "marketplace_proxy",
+        operation: "topup",
+        method: "POST",
+        title: "Top Up",
+        description: "Add prepaid marketplace credit.",
+        billingType: "topup_x402_variable",
+        minAmount: "10",
+        maxAmount: "100",
+        mode: "sync",
+        requestSchemaJson: {
+          type: "object",
+          properties: {
+            amount: { type: "string" }
+          },
+          required: ["amount"],
+          additionalProperties: false
+        },
+        responseSchemaJson: {
+          type: "object",
+          properties: {
+            topupAmount: { type: "string" }
+          },
+          required: ["topupAmount"],
+          additionalProperties: true
+        },
+        requestExample: {
+          amount: "25"
+        },
+        responseExample: {
+          topupAmount: "25"
+        }
+      });
+
+    expect(topupEndpoint.status).toBe(201);
+
+    const prepaidEndpoint = await request(app)
+      .post(`/provider/services/${serviceId}/endpoints`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        endpointType: "marketplace_proxy",
+        operation: "place-order",
+        method: "GET",
+        title: "Place Order",
+        description: "Place an order against prepaid credit.",
+        billingType: "prepaid_credit",
+        mode: "sync",
+        requestSchemaJson: {
+          type: "object",
+          properties: {
+            item: { type: "string" },
+            quantity: { type: "integer" }
+          },
+          required: ["item", "quantity"],
+          additionalProperties: false
+        },
+        responseSchemaJson: {
+          type: "object",
+          properties: {
+            orderId: { type: "string" }
+          },
+          required: ["orderId"],
+          additionalProperties: false
+        },
+        requestExample: {
+          item: "notebook",
+          quantity: 2
+        },
+        responseExample: {
+          orderId: "ord_123"
+        },
+        upstreamBaseUrl: "https://orders.example.com",
+        upstreamPath: "/api/place-order",
+        upstreamAuthMode: "none"
+      });
+
+    expect(prepaidEndpoint.status).toBe(201);
+
+    const verificationChallenge = await request(app)
+      .post(`/provider/services/${serviceId}/verification-challenge`)
+      .set("Authorization", `Bearer ${providerToken}`);
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (fetchInput, init) => {
+      const url = String(fetchInput);
+      if (url === verificationChallenge.body.expectedUrl) {
+        return new Response(verificationChallenge.body.token, { status: 200 });
+      }
+
+      if (url === "https://orders.example.com/api/place-order?item=notebook&quantity=2") {
+        const headers = Object.fromEntries(new Headers(init?.headers).entries());
+        const identity = verifyMarketplaceIdentityHeaders({
+          headers,
+          signingSecret: runtimeKey
+        });
+        if (!identity.buyerWallet) {
+          throw new Error("Prepaid route execution must include a buyer wallet.");
+        }
+
+        const reserveResponse = await request(app)
+          .post("/provider/runtime/credits/reserve")
+          .set("Authorization", `Bearer ${runtimeKey}`)
+          .send({
+            buyerWallet: identity.buyerWallet,
+            amount: "12.5",
+            idempotencyKey: `reserve_${identity.requestId}`,
+            providerReference: "order-get-123"
+          });
+
+        if (reserveResponse.status !== 200) {
+          return new Response(JSON.stringify(reserveResponse.body), {
+            status: reserveResponse.status,
+            headers: {
+              "content-type": "application/json"
+            }
+          });
+        }
+
+        const captureResponse = await request(app)
+          .post(`/provider/runtime/credits/${reserveResponse.body.reservation.id}/capture`)
+          .set("Authorization", `Bearer ${runtimeKey}`)
+          .send({
+            amount: "12.5"
+          });
+
+        if (captureResponse.status !== 200) {
+          return new Response(JSON.stringify(captureResponse.body), {
+            status: captureResponse.status,
+            headers: {
+              "content-type": "application/json"
+            }
+          });
+        }
+
+        expect(init?.method).toBe("GET");
+        expect(init?.body).toBeUndefined();
+
+        return new Response(JSON.stringify({ orderId: "ord_123" }), {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        });
+      }
+
+      return new Response("not found", { status: 404 });
+    });
+
+    expect(
+      await request(app)
+        .post(`/provider/services/${serviceId}/verify`)
+        .set("Authorization", `Bearer ${providerToken}`)
+    ).toMatchObject({ status: 200 });
+    expect(
+      await request(app)
+        .post(`/provider/services/${serviceId}/submit`)
+        .set("Authorization", `Bearer ${providerToken}`)
+    ).toMatchObject({ status: 202 });
+    expect(
+      await request(app)
+        .post(`/internal/provider-services/${serviceId}/publish`)
+        .set("Authorization", "Bearer test-admin-token")
+        .send({
+          reviewerIdentity: "ops@test",
+          settlementMode: "verified_escrow"
+        })
+    ).toMatchObject({ status: 200 });
+
+    const toppedUp = await request(app)
+      .post("/api/orders-get/topup")
+      .set("X-PAYMENT", Buffer.from(JSON.stringify({ paid: true })).toString("base64"))
+      .set("PAYMENT-IDENTIFIER", "payment_orders_get_topup_1")
+      .send({ amount: "25" });
+
+    expect(toppedUp.status).toBe(200);
+
+    const unauthorized = await request(app)
+      .get("/api/orders-get/place-order")
+      .query({ item: "notebook", quantity: 2 });
+
+    expect(unauthorized.status).toBe(401);
+
+    const challenge = await request(app)
+      .post("/auth/challenge")
+      .send({
+        wallet: buyer.address,
+        resourceType: "api",
+        resourceId: "orders-get.place-order.v1"
+      });
+
+    expect(challenge.status).toBe(200);
+
+    const signed = await buyer.wallet.sign({ message: challenge.body.message });
+    const apiSession = await request(app)
+      .post("/auth/session")
+      .send({
+        wallet: buyer.address,
+        resourceType: "api",
+        resourceId: "orders-get.place-order.v1",
+        nonce: challenge.body.nonce,
+        expiresAt: challenge.body.expiresAt,
+        signature: signed.signature
+      });
+
+    expect(apiSession.status).toBe(200);
+
+    const prepaid = await request(app)
+      .get("/api/orders-get/place-order")
+      .query({ item: "notebook", quantity: 2 })
+      .set("Authorization", `Bearer ${apiSession.body.accessToken}`);
+
+    expect(prepaid.status).toBe(200);
+    expect(prepaid.body).toEqual({ orderId: "ord_123" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://orders.example.com/api/place-order?item=notebook&quantity=2",
+      expect.objectContaining({
+        method: "GET"
+      })
+    );
+
+    const creditAccount = await store.getCreditAccount(serviceId, buyer.address, "fastUSDC");
+    expect(creditAccount?.availableAmount).toBe("12500000");
+    expect(creditAccount?.reservedAmount).toBe("0");
+  });
+
+  it("rejects invalid GET endpoint drafts for topups and nested request schemas", async () => {
+    const providerWallet = await createTestWallet(PROVIDER_PRIVATE_KEY);
+    const { app } = await createTestApp();
+    const providerToken = await createSiteSession(app, providerWallet);
+
+    await request(app)
+      .post("/provider/me")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        displayName: "Signal Labs",
+        websiteUrl: "https://provider.example.com"
+      });
+
+    const createdService = await request(app)
+      .post("/provider/services")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        serviceType: "marketplace_proxy",
+        slug: "signal-labs-get-validation",
+        apiNamespace: "signals-get-validation",
+        name: "Signal Labs GET Validation",
+        tagline: "Validation coverage",
+        about: "Provider-authored signal endpoints.",
+        categories: ["Research"],
+        promptIntro: "Prompt intro",
+        setupInstructions: ["Use a funded Fast wallet."],
+        websiteUrl: "https://provider.example.com",
+        payoutWallet: providerWallet.address
+      });
+
+    expect(createdService.status).toBe(201);
+
+    const invalidTopup = await request(app)
+      .post(`/provider/services/${createdService.body.service.id}/endpoints`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        endpointType: "marketplace_proxy",
+        operation: "topup",
+        method: "GET",
+        title: "Top Up",
+        description: "Invalid GET topup.",
+        billingType: "topup_x402_variable",
+        minAmount: "10",
+        maxAmount: "100",
+        mode: "sync",
+        requestSchemaJson: {
+          type: "object",
+          properties: {
+            amount: { type: "string" }
+          },
+          required: ["amount"],
+          additionalProperties: false
+        },
+        responseSchemaJson: {
+          type: "object",
+          properties: {
+            ok: { type: "boolean" }
+          },
+          required: ["ok"],
+          additionalProperties: false
+        },
+        requestExample: { amount: "25" },
+        responseExample: { ok: true }
+      });
+
+    expect(invalidTopup.status).toBe(400);
+    expect(invalidTopup.body.error).toContain("method=POST");
+
+    const invalidNested = await request(app)
+      .post(`/provider/services/${createdService.body.service.id}/endpoints`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        endpointType: "marketplace_proxy",
+        operation: "search",
+        method: "GET",
+        title: "Search",
+        description: "Invalid nested GET input.",
+        billingType: "free",
+        mode: "sync",
+        requestSchemaJson: {
+          type: "object",
+          properties: {
+            filters: {
+              type: "object",
+              properties: {
+                symbol: { type: "string" }
+              },
+              additionalProperties: false
+            }
+          },
+          additionalProperties: false
+        },
+        responseSchemaJson: {
+          type: "object",
+          properties: {
+            ok: { type: "boolean" }
+          },
+          required: ["ok"],
+          additionalProperties: false
+        },
+        requestExample: { filters: { symbol: "FAST" } },
+        responseExample: { ok: true },
+        upstreamBaseUrl: "https://provider.example.com",
+        upstreamPath: "/api/search",
+        upstreamAuthMode: "none"
+      });
+
+    expect(invalidNested.status).toBe(400);
+    expect(invalidNested.body.error).toContain('GET property "filters"');
   });
 
   it("publishes discovery-only external registry services without executable marketplace routes", async () => {
@@ -1310,6 +1988,7 @@ describe("marketplace api", () => {
       .send({
         endpointType: "marketplace_proxy",
         operation: "quote",
+        method: "POST",
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
@@ -1445,6 +2124,7 @@ describe("marketplace api", () => {
       .send({
         endpointType: "marketplace_proxy",
         operation: "quote",
+        method: "POST",
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
@@ -1528,6 +2208,7 @@ describe("marketplace api", () => {
       .send({
         endpointType: "marketplace_proxy",
         operation: "quote",
+        method: "POST",
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
@@ -1648,6 +2329,7 @@ describe("marketplace api", () => {
       .send({
         endpointType: "marketplace_proxy",
         operation: "quote",
+        method: "POST",
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
@@ -1786,6 +2468,7 @@ describe("marketplace api", () => {
       .send({
         endpointType: "marketplace_proxy",
         operation: "search",
+        method: "POST",
         title: "Search",
         description: "Return a free signal snapshot.",
         billingType: "free",
@@ -1926,6 +2609,7 @@ describe("marketplace api", () => {
       .send({
         endpointType: "marketplace_proxy",
         operation: "quote",
+        method: "POST",
         title: "Get Quote",
         description: "Returns the latest signal quote.",
         billingType: "fixed_x402",
@@ -1985,6 +2669,7 @@ describe("marketplace api", () => {
       .send({
         endpointType: "marketplace_proxy",
         operation: "topup",
+        method: "POST",
         title: "Top Up",
         description: "Funds marketplace-managed balance for later spending.",
         billingType: "topup_x402_variable",
@@ -2084,6 +2769,7 @@ describe("marketplace api", () => {
       .send({
         endpointType: "marketplace_proxy",
         operation: "quote",
+        method: "POST",
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
@@ -2268,6 +2954,7 @@ describe("marketplace api", () => {
       .send({
         endpointType: "marketplace_proxy",
         operation: "topup",
+        method: "POST",
         title: "Top Up",
         description: "Add prepaid marketplace credit.",
         billingType: "topup_x402_variable",
@@ -2306,6 +2993,7 @@ describe("marketplace api", () => {
       .send({
         endpointType: "marketplace_proxy",
         operation: "place-order",
+        method: "POST",
         title: "Place Order",
         description: "Place an order against prepaid credit.",
         billingType: "prepaid_credit",
@@ -2537,6 +3225,7 @@ describe("marketplace api", () => {
       .send({
         endpointType: "marketplace_proxy",
         operation: "quote",
+        method: "POST",
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
@@ -2638,6 +3327,7 @@ describe("marketplace api", () => {
       .send({
         endpointType: "marketplace_proxy",
         operation: "quote",
+        method: "POST",
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
@@ -2826,6 +3516,7 @@ describe("marketplace api", () => {
       .send({
         endpointType: "marketplace_proxy",
         operation: "quote",
+        method: "POST",
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
@@ -2862,6 +3553,7 @@ describe("marketplace api", () => {
       .send({
         endpointType: "marketplace_proxy",
         operation: "quote",
+        method: "POST",
         title: "Quote duplicate",
         description: "Duplicate operation.",
         billingType: "fixed_x402",
@@ -3007,16 +3699,23 @@ describe("marketplace api", () => {
       })
     );
     expect(response.body.title).toBe("Provider API");
-    expect(response.body.endpoints).toHaveLength(1);
+    expect(response.body.endpoints).toHaveLength(2);
     expect(response.body.endpoints[0]).toMatchObject({
       operation: "search-signals",
+      method: "POST",
       title: "Search signals",
       upstreamBaseUrl: "https://api.provider.example.com",
       upstreamPath: "/search",
       upstreamAuthMode: "none"
     });
-    expect(response.body.warnings).toContain(
-      "Skipped 1 non-POST operation because provider imports are POST-only in v1."
-    );
+    expect(response.body.endpoints[1]).toMatchObject({
+      operation: "health",
+      method: "GET",
+      title: "Health",
+      upstreamBaseUrl: "https://api.provider.example.com",
+      upstreamPath: "/health",
+      upstreamAuthMode: "none"
+    });
+    expect(response.body.warnings).toEqual([]);
   });
 });

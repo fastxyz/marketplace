@@ -59,6 +59,22 @@ describe("ServicePage", () => {
               method: "POST",
               path: "/api/mock/quick-insight",
               proxyUrl: "https://api.marketplace.example.com/api/mock/quick-insight",
+              requestSchemaJson: {
+                type: "object",
+                properties: {
+                  query: { type: "string" }
+                },
+                required: ["query"],
+                additionalProperties: false
+              },
+              responseSchemaJson: {
+                type: "object",
+                properties: {
+                  summary: { type: "string" }
+                },
+                required: ["summary"],
+                additionalProperties: false
+              },
               requestExample: { query: "alpha" },
               responseExample: { summary: "alpha" },
               usageNotes: "Low-latency single request."

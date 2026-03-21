@@ -3,6 +3,7 @@
 import React from "react";
 import { LoaderCircle, RefreshCcw, TriangleAlert, Wallet } from "lucide-react";
 import type { MarketplaceServiceCatalogEndpoint } from "@marketplace/shared";
+import { serializeQueryInput } from "@marketplace/shared/browser-request-input";
 import type { WebDeploymentNetwork } from "@/lib/network";
 
 import { CopyButton } from "@/components/copy-button";
@@ -10,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  createApiAccessToken,
   createJobAccessToken,
   createPaymentIdentifier,
   encodeBrowserPaymentPayload,
@@ -58,7 +60,49 @@ export function EndpointBrowserRunner({
 
   const apiBaseUrl = React.useMemo(() => new URL(endpoint.proxyUrl).origin, [endpoint.proxyUrl]);
   const isFreeRoute = endpoint.billingType === "free";
-  const isPaid = !isFreeRoute;
+  const usesWalletSession = endpoint.billingType === "prepaid_credit";
+  const usesX402 = endpoint.billingType === "fixed_x402" || endpoint.billingType === "topup_x402_variable";
+  const runnerTitle = isFreeRoute
+    ? "Run this endpoint in the browser"
+    : usesWalletSession
+    ? "Authorize and run this endpoint with your Fast wallet"
+    : "Pay and run this endpoint with the Fast extension";
+  const runnerDescription = isFreeRoute
+    ? "This sends the request directly from the browser. No Fast payment headers or wallet extension are required."
+    : usesWalletSession
+    ? "This signs a route-scoped wallet session challenge in the browser and invokes the endpoint with a bearer token. No x402 payment flow is used for prepaid-credit routes."
+    : "This sends the unpaid request first, signs a Fast payment only if the route returns `402`, and then retries with the x402 proof directly from the browser wallet.";
+  const runLabel = isFreeRoute
+    ? "Run in browser"
+    : usesWalletSession
+    ? "Authorize and run in browser"
+    : "Pay and run in browser";
+
+  function buildInvocation(input: unknown): { url: string; init: RequestInit } {
+    if (endpoint.method === "GET") {
+      return {
+        url: `${endpoint.proxyUrl}${serializeQueryInput({
+          schema: endpoint.requestSchemaJson,
+          value: input,
+          label: `${endpoint.routeId} GET input`
+        })}`,
+        init: {
+          method: "GET"
+        }
+      };
+    }
+
+    return {
+      url: endpoint.proxyUrl,
+      init: {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify(input)
+      }
+    };
+  }
 
   function runEndpoint() {
     startTransition(async () => {
@@ -66,15 +110,10 @@ export function EndpointBrowserRunner({
 
       try {
         const parsedBody = JSON.parse(requestBody) as unknown;
+        const invocation = buildInvocation(parsedBody);
 
         if (isFreeRoute) {
-          const response = await fetch(endpoint.proxyUrl, {
-            method: endpoint.method,
-            headers: {
-              "content-type": "application/json"
-            },
-            body: JSON.stringify(parsedBody)
-          });
+          const response = await fetch(invocation.url, invocation.init);
 
           const body = await safeJson(response);
           setResult({
@@ -87,15 +126,40 @@ export function EndpointBrowserRunner({
 
         const connector = await ensureConnector(deploymentNetwork, connectorRef);
         const payer = await connector.exportKeys();
+
+        if (usesWalletSession) {
+          const accessToken = await createApiAccessToken({
+            apiBaseUrl,
+            wallet: payer.address,
+            routeId: endpoint.routeId,
+            connector
+          });
+
+          const response = await fetch(invocation.url, {
+            ...invocation.init,
+            headers: {
+              ...(invocation.init.headers as Record<string, string> | undefined),
+              Authorization: `Bearer ${accessToken}`
+            }
+          });
+
+          const body = await safeJson(response);
+          setResult({
+            statusCode: response.status,
+            body
+          });
+          setJob(null);
+          return;
+        }
+
         const paymentId = createPaymentIdentifier();
 
-        const unpaidResponse = await fetch(endpoint.proxyUrl, {
-          method: endpoint.method,
+        const unpaidResponse = await fetch(invocation.url, {
+          ...invocation.init,
           headers: {
-            "content-type": "application/json",
+            ...(invocation.init.headers as Record<string, string> | undefined),
             "PAYMENT-IDENTIFIER": paymentId
-          },
-          body: JSON.stringify(parsedBody)
+          }
         });
 
         if (unpaidResponse.status !== 402) {
@@ -134,14 +198,13 @@ export function EndpointBrowserRunner({
           certificate: payment.certificate
         });
 
-        const paidResponse = await fetch(endpoint.proxyUrl, {
-          method: endpoint.method,
+        const paidResponse = await fetch(invocation.url, {
+          ...invocation.init,
           headers: {
-            "content-type": "application/json",
+            ...(invocation.init.headers as Record<string, string> | undefined),
             "PAYMENT-IDENTIFIER": paymentId,
             "PAYMENT-SIGNATURE": paymentPayload
-          },
-          body: JSON.stringify(parsedBody)
+          }
         });
 
         const body = await safeJson(paidResponse);
@@ -234,9 +297,7 @@ export function EndpointBrowserRunner({
             <span className="terminal-light-amber" />
             <span className="terminal-light-green" />
           </div>
-          <div className="terminal-title">
-            {isPaid ? "Pay and run this endpoint with the Fast extension" : "Run this endpoint in the browser"}
-          </div>
+          <div className="terminal-title">{runnerTitle}</div>
         </div>
         <Badge variant="outline" className="gap-2">
           <Wallet className="h-3.5 w-3.5" />
@@ -245,11 +306,7 @@ export function EndpointBrowserRunner({
       </div>
 
       <div className="terminal-body space-y-5">
-        <p className="max-w-3xl text-sm leading-7 text-white/70">
-          {isFreeRoute
-            ? "This sends the request directly from the browser. No Fast payment headers or wallet extension are required."
-            : "This sends the unpaid request first, signs a Fast payment only if the route returns `402`, and then retries with the x402 proof directly from the browser wallet."}
-        </p>
+        <p className="max-w-3xl text-sm leading-7 text-white/70">{runnerDescription}</p>
 
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
@@ -262,7 +319,7 @@ export function EndpointBrowserRunner({
         <div className="flex flex-wrap gap-3">
           <Button type="button" onClick={runEndpoint} disabled={pending}>
             {pending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
-            {isPaid ? "Pay and run in browser" : "Run in browser"}
+            {runLabel}
           </Button>
           {job ? (
             <Button type="button" variant="secondary" onClick={refreshJob} disabled={pending}>

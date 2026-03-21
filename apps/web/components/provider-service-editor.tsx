@@ -4,6 +4,7 @@ import React from "react";
 import type {
   CreateExternalProviderEndpointDraftInput,
   CreateMarketplaceProviderEndpointDraftInput,
+  HttpMethod,
   MarketplaceDeploymentNetwork,
   OpenApiImportPreview,
   ProviderEndpointDraftRecord,
@@ -44,6 +45,10 @@ function usesTopupRange(billingType: RouteBillingType): boolean {
 
 function usesUpstreamConfig(billingType: RouteBillingType): boolean {
   return billingType !== "topup_x402_variable";
+}
+
+function supportsGetMethod(billingType: RouteBillingType): boolean {
+  return billingType === "fixed_x402" || billingType === "free" || billingType === "prepaid_credit";
 }
 
 function usesUpstreamSecret(authMode: EndpointFormState["upstreamAuthMode"]): boolean {
@@ -231,7 +236,7 @@ function ProviderServiceEditorInner({
         setOpenApiPreview(preview);
         setMessage(
           preview.endpoints.length === 0
-            ? "OpenAPI import loaded, but no importable POST operations were found."
+            ? "OpenAPI import loaded, but no importable POST or safe GET operations were found."
             : `OpenAPI import loaded ${preview.endpoints.length} candidate endpoint${preview.endpoints.length === 1 ? "" : "s"}.`
         );
       } catch (nextError) {
@@ -455,12 +460,12 @@ function ProviderServiceEditorInner({
 
       <Card variant="frosted">
         <CardHeader>
-          <CardTitle className="text-3xl">Endpoint drafts</CardTitle>
-          <CardDescription>
-            {detail.service.serviceType === "marketplace_proxy"
-              ? "Provider-authored endpoints are POST JSON and sync-only in v1."
+            <CardTitle className="text-3xl">Endpoint drafts</CardTitle>
+            <CardDescription>
+              {detail.service.serviceType === "marketplace_proxy"
+              ? "Provider-authored endpoints are sync-only. GET works for free, fixed-x402, and prepaid-credit routes; top-ups stay POST-only."
               : "Discovery-only services publish direct provider endpoint metadata."}
-          </CardDescription>
+            </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6">
           {detail.service.serviceType === "marketplace_proxy" ? (
@@ -532,7 +537,7 @@ function ProviderServiceEditorInner({
                           <div>
                             <div className="font-medium text-foreground">{candidate.title}</div>
                             <div className="text-xs text-muted-foreground">
-                              {candidate.operation} · POST {candidate.upstreamPath}
+                              {candidate.operation} · {candidate.method} {candidate.upstreamPath}
                             </div>
                           </div>
                           <Button type="button" variant="outline" onClick={() => setNewEndpoint(openApiCandidateToFormState(candidate))}>
@@ -648,7 +653,7 @@ function EndpointDraftCard({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-lg font-medium tracking-headline">{endpoint.title}</div>
-          <div className="text-xs text-muted-foreground">{endpoint.operation}</div>
+          <div className="text-xs text-muted-foreground">{endpoint.method} · {endpoint.operation}</div>
         </div>
         <div className="flex gap-2">
           <Button type="submit" variant="outline" disabled={pending}>
@@ -776,7 +781,14 @@ function EndpointDraftFields({
           <select
             value={state.billingType}
             className={SELECT_CLASS_NAME}
-            onChange={(event) => onChange((current) => ({ ...current, billingType: event.target.value as RouteBillingType }))}
+            onChange={(event) => onChange((current) => {
+              const nextBilling = event.target.value as RouteBillingType;
+              return {
+                ...current,
+                billingType: nextBilling,
+                method: supportsGetMethod(nextBilling) ? current.method : "POST"
+              };
+            })}
           >
             <option value="fixed_x402">Fixed x402</option>
             <option value="free">Free</option>
@@ -785,6 +797,17 @@ function EndpointDraftFields({
           </select>
         </label>
       </div>
+      <label className="grid gap-2 text-sm font-medium">
+        Method
+        <select
+          value={state.method}
+          className={SELECT_CLASS_NAME}
+          onChange={(event) => onChange((current) => ({ ...current, method: event.target.value as HttpMethod }))}
+        >
+          {supportsGetMethod(state.billingType) ? <option value="GET">GET</option> : null}
+          <option value="POST">POST</option>
+        </select>
+      </label>
       {usesFixedPrice(state.billingType) ? (
         <label className="grid gap-2 text-sm font-medium">
           Price
@@ -961,6 +984,7 @@ function EndpointDraftFields({
 
 interface EndpointFormState {
   operation: string;
+  method: HttpMethod;
   title: string;
   description: string;
   billingType: RouteBillingType;
@@ -982,6 +1006,7 @@ interface EndpointFormState {
 function defaultEndpointFormState(): EndpointFormState {
   return {
     operation: "",
+    method: "POST",
     title: "",
     description: "",
     billingType: "fixed_x402",
@@ -1038,6 +1063,7 @@ const RESPONSE_EXAMPLE_PLACEHOLDER = `{
 function endpointToFormState(endpoint: MarketplaceDraftEndpoint): EndpointFormState {
   return {
     operation: endpoint.operation,
+    method: endpoint.method,
     title: endpoint.title,
     description: endpoint.description,
     billingType: endpoint.billing.type,
@@ -1060,6 +1086,7 @@ function endpointToFormState(endpoint: MarketplaceDraftEndpoint): EndpointFormSt
 function openApiCandidateToFormState(candidate: OpenApiImportPreview["endpoints"][number]): EndpointFormState {
   return {
     operation: candidate.operation,
+    method: candidate.method,
     title: candidate.title,
     description: candidate.description,
     billingType: "fixed_x402",
@@ -1083,6 +1110,7 @@ function buildEndpointInput(state: EndpointFormState): CreateMarketplaceProvider
   const input: CreateMarketplaceProviderEndpointDraftInput = {
     endpointType: "marketplace_proxy",
     operation: state.operation,
+    method: state.method,
     title: state.title,
     description: state.description,
     billingType: state.billingType,
@@ -1124,6 +1152,7 @@ function buildEndpointUpdateInput(state: EndpointFormState, hasSecret: boolean):
   const input: UpdateMarketplaceProviderEndpointDraftInput = {
     endpointType: "marketplace_proxy",
     operation: state.operation,
+    method: state.method,
     title: state.title,
     description: state.description,
     billingType: state.billingType,

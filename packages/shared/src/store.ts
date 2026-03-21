@@ -235,6 +235,7 @@ function mapPublishedEndpointVersionToProviderDraft(
     serviceId: endpoint.serviceId,
     routeId: endpoint.routeId,
     operation: endpoint.operation,
+    method: endpoint.method,
     title: endpoint.title,
     description: endpoint.description,
     price: endpoint.price,
@@ -2087,6 +2088,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       serviceId,
       routeId: buildRouteId(apiNamespace, input.operation),
       operation: input.operation,
+      method: input.method,
       title: input.title,
       description: input.description,
       price: billing.price,
@@ -2209,6 +2211,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       ...existing,
       routeId: buildRouteId(apiNamespace, nextOperation),
       operation: nextOperation,
+      method: input.method ?? existing.method,
       title: input.title ?? existing.title,
       description: input.description ?? existing.description,
       price: billing.price,
@@ -2362,6 +2365,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       provider: detail.service.apiNamespace ?? "unknown",
       operation: endpoint.operation,
       version: versionTag,
+      method: endpoint.method,
       settlementMode: detail.service.settlementMode ?? "verified_escrow",
       mode: endpoint.mode,
       network: network.paymentNetwork,
@@ -3119,6 +3123,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         service_id TEXT NOT NULL REFERENCES provider_services(id) ON DELETE CASCADE,
         route_id TEXT NOT NULL,
         operation TEXT NOT NULL,
+        method TEXT NOT NULL DEFAULT 'POST',
         title TEXT NOT NULL,
         description TEXT NOT NULL,
         price TEXT NOT NULL,
@@ -3205,6 +3210,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         provider TEXT NOT NULL,
         operation TEXT NOT NULL,
         version TEXT NOT NULL,
+        method TEXT NOT NULL DEFAULT 'POST',
         settlement_mode TEXT NOT NULL DEFAULT 'verified_escrow',
         mode TEXT NOT NULL,
         network TEXT NOT NULL,
@@ -3422,6 +3428,9 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       ALTER TABLE provider_endpoint_drafts
       ADD COLUMN IF NOT EXISTS billing JSONB NOT NULL DEFAULT '{}'::jsonb;
 
+      ALTER TABLE provider_endpoint_drafts
+      ADD COLUMN IF NOT EXISTS method TEXT NOT NULL DEFAULT 'POST';
+
       ALTER TABLE provider_services
       ADD COLUMN IF NOT EXISTS service_type TEXT NOT NULL DEFAULT 'marketplace_proxy';
 
@@ -3436,6 +3445,9 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
 
       ALTER TABLE published_endpoint_versions
       ADD COLUMN IF NOT EXISTS settlement_mode TEXT;
+
+      ALTER TABLE published_endpoint_versions
+      ADD COLUMN IF NOT EXISTS method TEXT NOT NULL DEFAULT 'POST';
 
       ALTER TABLE published_endpoint_versions
       ADD COLUMN IF NOT EXISTS billing JSONB NOT NULL DEFAULT '{}'::jsonb;
@@ -3531,9 +3543,17 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       SET billing = jsonb_build_object('type', 'fixed_x402', 'price', price)
       WHERE billing = '{}'::jsonb;
 
+      UPDATE provider_endpoint_drafts
+      SET method = 'POST'
+      WHERE method IS NULL;
+
       UPDATE published_endpoint_versions
       SET billing = jsonb_build_object('type', 'fixed_x402', 'price', price)
       WHERE billing = '{}'::jsonb;
+
+      UPDATE published_endpoint_versions
+      SET method = 'POST'
+      WHERE method IS NULL;
 
       ALTER TABLE refunds
       ALTER COLUMN job_token DROP NOT NULL;
@@ -3593,6 +3613,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       ["provider_services", "latest_review_id"],
       ["provider_endpoint_drafts", "route_id"],
       ["provider_endpoint_drafts", "operation"],
+      ["provider_endpoint_drafts", "method"],
       ["provider_endpoint_drafts", "title"],
       ["provider_endpoint_drafts", "description"],
       ["provider_endpoint_drafts", "price"],
@@ -3635,6 +3656,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       ["published_endpoint_versions", "provider"],
       ["published_endpoint_versions", "operation"],
       ["published_endpoint_versions", "version"],
+      ["published_endpoint_versions", "method"],
       ["published_endpoint_versions", "settlement_mode"],
       ["published_endpoint_versions", "mode"],
       ["published_endpoint_versions", "network"],
@@ -3845,16 +3867,17 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         await client.query(
           `
           INSERT INTO provider_endpoint_drafts (
-            id, service_id, route_id, operation, title, description, price, billing, mode, request_schema_json, response_schema_json,
+            id, service_id, route_id, operation, method, title, description, price, billing, mode, request_schema_json, response_schema_json,
             request_example, response_example, usage_notes, executor_kind, upstream_base_url, upstream_path,
             upstream_auth_mode, upstream_auth_header_name, upstream_secret_ref, payout, created_at, updated_at
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14, $15, $16, $17,
-            $18, $19, $20, $21::jsonb, $22, $23
+            $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15, $16, $17, $18,
+            $19, $20, $21, $22::jsonb, $23, $24
           )
           ON CONFLICT (id) DO UPDATE SET
             route_id = EXCLUDED.route_id,
             operation = EXCLUDED.operation,
+            method = EXCLUDED.method,
             title = EXCLUDED.title,
             description = EXCLUDED.description,
             price = EXCLUDED.price,
@@ -3879,6 +3902,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
             endpoint.serviceId,
             endpoint.routeId,
             endpoint.operation,
+            endpoint.method,
             endpoint.title,
             endpoint.description,
             endpoint.price,
@@ -3964,18 +3988,19 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
           `
           INSERT INTO published_endpoint_versions (
             endpoint_version_id, service_id, service_version_id, endpoint_draft_id, route_id, provider, operation,
-            version, settlement_mode, mode, network, price, billing, title, description, payout, request_example, response_example, usage_notes,
+            version, method, settlement_mode, mode, network, price, billing, title, description, payout, request_example, response_example, usage_notes,
             request_schema_json, response_schema_json, executor_kind, upstream_base_url, upstream_path, upstream_auth_mode,
             upstream_auth_header_name, upstream_secret_ref, created_at, updated_at
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16::jsonb, $17::jsonb, $18::jsonb, $19,
-            $20::jsonb, $21::jsonb, $22, $23, $24, $25, $26, $27, $28, $29
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16, $17::jsonb, $18::jsonb, $19::jsonb, $20,
+            $21::jsonb, $22::jsonb, $23, $24, $25, $26, $27, $28, $29, $30
           )
           ON CONFLICT (endpoint_version_id) DO UPDATE SET
             route_id = EXCLUDED.route_id,
             provider = EXCLUDED.provider,
             operation = EXCLUDED.operation,
             version = EXCLUDED.version,
+            method = EXCLUDED.method,
             settlement_mode = EXCLUDED.settlement_mode,
             mode = EXCLUDED.mode,
             network = EXCLUDED.network,
@@ -4006,6 +4031,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
             endpoint.provider,
             endpoint.operation,
             endpoint.version,
+            endpoint.method,
             endpoint.settlementMode,
             endpoint.mode,
             endpoint.network,
@@ -6165,12 +6191,12 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     const result = await this.pool.query(
       `
       INSERT INTO provider_endpoint_drafts (
-        id, service_id, route_id, operation, title, description, price, billing, mode, request_schema_json, response_schema_json,
+        id, service_id, route_id, operation, method, title, description, price, billing, mode, request_schema_json, response_schema_json,
         request_example, response_example, usage_notes, executor_kind, upstream_base_url, upstream_path,
         upstream_auth_mode, upstream_auth_header_name, upstream_secret_ref, payout
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14, $15, $16, $17,
-        $18, $19, $20, $21::jsonb
+        $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15, $16, $17, $18,
+        $19, $20, $21, $22::jsonb
       )
       RETURNING *
       `,
@@ -6179,6 +6205,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         serviceId,
         buildRouteId(apiNamespace, input.operation),
         input.operation,
+        input.method,
         input.title,
         input.description,
         billing.price,
@@ -6342,22 +6369,23 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       SET
         route_id = $3,
         operation = $4,
-        title = $5,
-        description = $6,
-        price = $7,
-        billing = $8::jsonb,
-        request_schema_json = $9::jsonb,
-        response_schema_json = $10::jsonb,
-        request_example = $11::jsonb,
-        response_example = $12::jsonb,
-        usage_notes = $13,
-        executor_kind = $14,
-        upstream_base_url = $15,
-        upstream_path = $16,
-        upstream_auth_mode = $17,
-        upstream_auth_header_name = $18,
-        upstream_secret_ref = $19,
-        payout = $20::jsonb,
+        method = $5,
+        title = $6,
+        description = $7,
+        price = $8,
+        billing = $9::jsonb,
+        request_schema_json = $10::jsonb,
+        response_schema_json = $11::jsonb,
+        request_example = $12::jsonb,
+        response_example = $13::jsonb,
+        usage_notes = $14,
+        executor_kind = $15,
+        upstream_base_url = $16,
+        upstream_path = $17,
+        upstream_auth_mode = $18,
+        upstream_auth_header_name = $19,
+        upstream_secret_ref = $20,
+        payout = $21::jsonb,
         updated_at = NOW()
       WHERE id = $1 AND service_id = $2
       RETURNING *
@@ -6367,6 +6395,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         serviceId,
         buildRouteId(apiNamespace, operation),
         operation,
+        input.method ?? existing.method,
         input.title ?? existing.title,
         input.description ?? existing.description,
         billing.price,
@@ -6531,12 +6560,12 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
           `
           INSERT INTO published_endpoint_versions (
             endpoint_version_id, service_id, service_version_id, endpoint_draft_id, route_id, provider, operation,
-            version, settlement_mode, mode, network, price, billing, title, description, payout, request_example, response_example, usage_notes,
+            version, method, settlement_mode, mode, network, price, billing, title, description, payout, request_example, response_example, usage_notes,
             request_schema_json, response_schema_json, executor_kind, upstream_base_url, upstream_path,
             upstream_auth_mode, upstream_auth_header_name, upstream_secret_ref
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16::jsonb, $17::jsonb, $18::jsonb, $19,
-            $20::jsonb, $21::jsonb, $22, $23, $24, $25, $26, $27
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16, $17::jsonb, $18::jsonb, $19::jsonb, $20,
+            $21::jsonb, $22::jsonb, $23, $24, $25, $26, $27, $28
           )
           `,
           [
@@ -6548,6 +6577,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
             detail.service.apiNamespace,
             endpoint.operation,
             versionTag,
+            endpoint.method,
             detail.service.settlementMode,
             endpoint.mode,
             network.paymentNetwork,
@@ -7354,6 +7384,7 @@ function mapProviderEndpointDraftRow(row: Record<string, unknown>): MarketplaceP
     serviceId: row.service_id as string,
     routeId: row.route_id as string,
     operation: row.operation as string,
+    method: ((row.method as MarketplaceProviderEndpointDraftRecord["method"] | null) ?? "POST"),
     title: row.title as string,
     description: row.description as string,
     price: row.price as string,
@@ -7480,6 +7511,7 @@ function mapPublishedEndpointVersionRow(row: Record<string, unknown>): Published
     provider: row.provider as string,
     operation: row.operation as string,
     version: row.version as string,
+    method: ((row.method as PublishedEndpointVersionRecord["method"] | null) ?? "POST"),
     settlementMode: normalizeSettlementMode(row.settlement_mode as SettlementMode | null | undefined),
     mode: row.mode as PublishedEndpointVersionRecord["mode"],
     network: row.network as PublishedEndpointVersionRecord["network"],

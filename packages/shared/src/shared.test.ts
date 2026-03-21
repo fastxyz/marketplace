@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   InMemoryMarketplaceStore,
+  PostgresMarketplaceStore,
   buildPriceRange,
   buildMarketplaceRoutes,
   buildServiceDetail,
   buildOpenApiDocument,
   buildPayoutSplit,
+  coerceQueryInput,
   createChallenge,
   hashNormalizedRequest,
   listServiceDefinitions,
@@ -15,6 +17,7 @@ import {
   normalizeFastWalletAddress,
   normalizePaymentHeaders,
   resolveMarketplaceNetworkConfig,
+  serializeQueryInput,
   validateJsonSchema,
   verifyWalletChallenge
 } from "./index.js";
@@ -141,6 +144,61 @@ describe("shared marketplace helpers", () => {
     expect(first).toBe(second);
   });
 
+  it("serializes and coerces GET query input canonically", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        enabled: { type: "boolean" },
+        limit: { type: "integer" },
+        query: { type: "string" },
+        symbols: {
+          type: "array",
+          items: { type: "string" }
+        }
+      },
+      required: ["query"],
+      additionalProperties: false
+    } as const;
+
+    expect(
+      serializeQueryInput({
+        schema,
+        value: {
+          symbols: ["FAST", "BTC"],
+          query: "alpha",
+          limit: 5,
+          enabled: true
+        }
+      })
+    ).toBe("?enabled=true&limit=5&query=alpha&symbols=FAST&symbols=BTC");
+
+    const first = coerceQueryInput({
+      schema,
+      searchParams: new URLSearchParams("query=alpha&symbols=FAST&symbols=BTC&limit=5&enabled=true")
+    });
+    const second = coerceQueryInput({
+      schema,
+      searchParams: new URLSearchParams("symbols=FAST&enabled=true&limit=5&query=alpha&symbols=BTC")
+    });
+
+    expect(first).toEqual({
+      enabled: true,
+      limit: 5,
+      query: "alpha",
+      symbols: ["FAST", "BTC"]
+    });
+    expect(second).toEqual(first);
+
+    const route = {
+      ...marketplaceRoutes[0],
+      routeId: "mock.lookup.v1",
+      operation: "lookup",
+      method: "GET" as const,
+      requestSchemaJson: schema
+    };
+    expect(hashNormalizedRequest(route, first)).toBe(hashNormalizedRequest(route, second));
+  });
+
   it("normalizes a hex Fast payer into a canonical bech32 address", async () => {
     const testWallet = await createTestWallet();
     expect(normalizeFastWalletAddress(`0x${testWallet.publicKey}`)).toBe(testWallet.address);
@@ -188,6 +246,65 @@ describe("shared marketplace helpers", () => {
     expect(asyncPath.post?.responses?.["200"]).toBeUndefined();
     expect(syncPaidPath.post?.responses?.["200"]).toBeDefined();
     expect(syncPaidPath.post?.responses?.["202"]).toBeDefined();
+  });
+
+  it("builds GET route entries into the OpenAPI document as query parameters", () => {
+    const seededService = listServiceDefinitions().find((candidate) => candidate.slug === "mock-research-signals");
+    const seededRoute = marketplaceRoutes.find((candidate) => candidate.routeId === "mock.quick-insight.v1");
+    if (!seededService || !seededRoute) {
+      throw new Error("Mock seeded service is missing.");
+    }
+
+    const getRoute = {
+      ...seededRoute,
+      routeId: "mock.quote-get.v1",
+      operation: "quote-get",
+      method: "GET" as const,
+      billing: {
+        type: "free" as const
+      },
+      price: "Free",
+      requestSchemaJson: {
+        type: "object",
+        properties: {
+          includeMeta: { type: "boolean" },
+          symbol: { type: "string" }
+        },
+        required: ["symbol"],
+        additionalProperties: false
+      }
+    };
+    const service = {
+      ...seededService,
+      slug: "mock-get-signals",
+      routeIds: [getRoute.routeId]
+    };
+
+    const document = buildOpenApiDocument({
+      baseUrl: "https://api.marketplace.example.com",
+      services: [service],
+      routes: [getRoute]
+    });
+    const getPath = document.paths["/api/mock/quote-get"] as {
+      get?: {
+        parameters?: Array<{ name?: string; in?: string; required?: boolean }>;
+        requestBody?: unknown;
+      };
+    };
+
+    expect(getPath.get?.requestBody).toBeUndefined();
+    expect(getPath.get?.parameters).toEqual([
+      expect.objectContaining({
+        name: "includeMeta",
+        in: "query",
+        required: false
+      }),
+      expect.objectContaining({
+        name: "symbol",
+        in: "query",
+        required: true
+      })
+    ]);
   });
 
   it("describes free routes without x402 headers or token pricing", () => {
@@ -245,6 +362,52 @@ describe("shared marketplace helpers", () => {
     expect(detail.useThisServicePrompt).toContain("(Free)");
     expect(detail.useThisServicePrompt).not.toContain("(Free fastUSDC)");
     expect(detail.useThisServicePrompt).toContain("No payment headers are required.");
+  });
+
+  it("describes prepaid-credit routes with bearer auth instead of x402 headers", () => {
+    const seededService = listServiceDefinitions().find((candidate) => candidate.slug === "mock-research-signals");
+    const seededRoute = marketplaceRoutes.find((candidate) => candidate.routeId === "mock.quick-insight.v1");
+    if (!seededService || !seededRoute) {
+      throw new Error("Mock seeded service is missing.");
+    }
+
+    const prepaidRoute = {
+      ...seededRoute,
+      routeId: "mock.prepaid-insight.v1",
+      operation: "prepaid-insight",
+      billing: {
+        type: "prepaid_credit" as const
+      },
+      price: "Prepaid credit"
+    };
+    const prepaidService = {
+      ...seededService,
+      slug: "mock-prepaid-signals",
+      routeIds: [prepaidRoute.routeId]
+    };
+
+    const document = buildOpenApiDocument({
+      baseUrl: "https://api.marketplace.example.com",
+      services: [prepaidService],
+      routes: [prepaidRoute]
+    });
+    const prepaidPath = document.paths["/api/mock/prepaid-insight"] as {
+      post?: {
+        responses?: Record<string, unknown>;
+        parameters?: Array<{ name?: string; in?: string; required?: boolean }>;
+      };
+    };
+
+    expect(prepaidPath.post?.responses?.["401"]).toBeDefined();
+    expect(prepaidPath.post?.responses?.["403"]).toBeDefined();
+    expect(prepaidPath.post?.responses?.["402"]).toBeUndefined();
+    expect(prepaidPath.post?.parameters).toEqual([
+      expect.objectContaining({
+        name: "Authorization",
+        in: "header",
+        required: true
+      })
+    ]);
   });
 
   it("builds testnet routes when the deployment targets testnet", () => {
@@ -652,6 +815,7 @@ describe("shared marketplace helpers", () => {
     await store.createProviderEndpointDraft(created.service.id, wallet, {
       endpointType: "marketplace_proxy",
       operation: "quote",
+      method: "POST",
       title: "Quote",
       description: "Return a single quote snapshot.",
       billingType: "fixed_x402",
@@ -776,6 +940,7 @@ describe("shared marketplace helpers", () => {
     await store.createProviderEndpointDraft(created.service.id, wallet, {
       endpointType: "marketplace_proxy",
       operation: "quote",
+      method: "POST",
       title: "Quote",
       description: "Return a single quote snapshot.",
       billingType: "fixed_x402",
@@ -852,6 +1017,7 @@ describe("shared marketplace helpers", () => {
     await store.createProviderEndpointDraft(created.service.id, wallet, {
       endpointType: "marketplace_proxy",
       operation: "quote",
+      method: "POST",
       title: "Quote",
       description: "Return a single quote snapshot.",
       billingType: "fixed_x402",
@@ -934,6 +1100,7 @@ describe("shared marketplace helpers", () => {
     const endpoint = await store.createProviderEndpointDraft(created.service.id, wallet, {
       endpointType: "marketplace_proxy",
       operation: "quote",
+      method: "POST",
       title: "Quote",
       description: "Return a single quote snapshot.",
       billingType: "fixed_x402",
@@ -1020,6 +1187,7 @@ describe("shared marketplace helpers", () => {
     const endpoint = await store.createProviderEndpointDraft(created.service.id, wallet, {
       endpointType: "marketplace_proxy",
       operation: "quote",
+      method: "POST",
       title: "Quote",
       description: "Return a single quote snapshot.",
       billingType: "fixed_x402",
@@ -1072,5 +1240,291 @@ describe("shared marketplace helpers", () => {
     const published = await store.getPublishedServiceBySlug("signal-labs-wallet-sync");
     expect(published?.service.payoutWallet).toBe(replacementWallet);
     expect(expectMarketplaceCatalogEndpoint(published?.endpoints[0]).payout.providerWallet).toBe(replacementWallet);
+  });
+
+  it("persists marketplace route methods through the Postgres store", async () => {
+    const wallet = "fast1provider000000000000000000000000000000000000000000000000000000";
+    const accountId = "acct_postgres";
+    const serviceId = "service_postgres";
+    const now = TEST_TIMESTAMP;
+    const queries: Array<{ sql: string; params: unknown[] }> = [];
+    const draftRows: Record<string, unknown>[] = [];
+    const publishedRows: Record<string, unknown>[] = [
+      {
+        endpoint_version_id: "endpoint_version_get",
+        service_id: serviceId,
+        service_version_id: "service_version_postgres",
+        endpoint_draft_id: "draft_quote_get",
+        route_id: "signals-postgres.quote-get.v1",
+        provider: "signals-postgres",
+        operation: "quote-get",
+        version: "v1",
+        method: "GET",
+        settlement_mode: "verified_escrow",
+        mode: "sync",
+        network: "fast-mainnet",
+        price: "Free",
+        billing: { type: "free" },
+        title: "Quote GET",
+        description: "Return a single quote snapshot.",
+        payout: { providerAccountId: accountId, providerWallet: wallet, providerBps: 10_000 },
+        request_example: { symbol: "FAST" },
+        response_example: { symbol: "FAST" },
+        usage_notes: null,
+        request_schema_json: {
+          type: "object",
+          properties: {
+            symbol: { type: "string" }
+          },
+          required: ["symbol"],
+          additionalProperties: false
+        },
+        response_schema_json: {
+          type: "object",
+          properties: {
+            symbol: { type: "string" }
+          },
+          required: ["symbol"],
+          additionalProperties: false
+        },
+        executor_kind: "http",
+        upstream_base_url: "https://provider.example.com",
+        upstream_path: "/api/quote",
+        upstream_auth_mode: "none",
+        upstream_auth_header_name: null,
+        upstream_secret_ref: null,
+        created_at: now,
+        updated_at: now
+      },
+      {
+        endpoint_version_id: "endpoint_version_post",
+        service_id: serviceId,
+        service_version_id: "service_version_postgres",
+        endpoint_draft_id: "draft_quote_post",
+        route_id: "signals-postgres.quote-post.v1",
+        provider: "signals-postgres",
+        operation: "quote-post",
+        version: "v1",
+        method: null,
+        settlement_mode: "verified_escrow",
+        mode: "sync",
+        network: "fast-mainnet",
+        price: "$0.25",
+        billing: { type: "fixed_x402" },
+        title: "Quote POST",
+        description: "Return a single quote snapshot.",
+        payout: { providerAccountId: accountId, providerWallet: wallet, providerBps: 10_000 },
+        request_example: { symbol: "FAST" },
+        response_example: { symbol: "FAST" },
+        usage_notes: null,
+        request_schema_json: {
+          type: "object",
+          properties: {
+            symbol: { type: "string" }
+          },
+          required: ["symbol"],
+          additionalProperties: false
+        },
+        response_schema_json: {
+          type: "object",
+          properties: {
+            symbol: { type: "string" }
+          },
+          required: ["symbol"],
+          additionalProperties: false
+        },
+        executor_kind: "http",
+        upstream_base_url: "https://provider.example.com",
+        upstream_path: "/api/quote",
+        upstream_auth_mode: "none",
+        upstream_auth_header_name: null,
+        upstream_secret_ref: null,
+        created_at: now,
+        updated_at: now
+      }
+    ];
+
+    const store = new PostgresMarketplaceStore({
+      query: async (sql: string, params: unknown[] = []) => {
+        queries.push({ sql, params });
+
+        if (sql.includes("SELECT * FROM provider_services WHERE id = $1")) {
+          return {
+            rowCount: 1,
+            rows: [
+              {
+                id: serviceId,
+                provider_account_id: accountId,
+                service_type: "marketplace_proxy",
+                settlement_mode: "verified_escrow",
+                slug: "signal-labs-postgres",
+                api_namespace: "signals-postgres",
+                name: "Signal Labs Postgres",
+                tagline: "Persistence coverage",
+                about: "Provider-authored signal endpoints.",
+                categories: ["Research"],
+                prompt_intro: 'I want to use the "Signal Labs Postgres" service on Fast Marketplace.',
+                setup_instructions: ["Use a funded Fast wallet."],
+                website_url: "https://provider.example.com",
+                payout_wallet: wallet,
+                featured: false,
+                status: "draft",
+                created_at: now,
+                updated_at: now
+              }
+            ]
+          };
+        }
+
+        if (sql.includes("SELECT * FROM provider_accounts WHERE id = $1")) {
+          return {
+            rowCount: 1,
+            rows: [
+              {
+                id: accountId,
+                owner_wallet: wallet,
+                display_name: "Signal Labs",
+                website_url: "https://provider.example.com",
+                bio: null,
+                contact_email: null,
+                created_at: now,
+                updated_at: now
+              }
+            ]
+          };
+        }
+
+        if (sql.includes("SELECT * FROM provider_endpoint_drafts") && sql.includes("WHERE service_id = $1")) {
+          return {
+            rowCount: draftRows.length,
+            rows: draftRows
+          };
+        }
+
+        if (sql.includes("SELECT * FROM provider_external_endpoint_drafts")) {
+          return { rowCount: 0, rows: [] };
+        }
+
+        if (sql.includes("SELECT * FROM provider_verifications")) {
+          return { rowCount: 0, rows: [] };
+        }
+
+        if (sql.includes("SELECT * FROM provider_reviews")) {
+          return { rowCount: 0, rows: [] };
+        }
+
+        if (sql.includes("INSERT INTO provider_endpoint_drafts")) {
+          const row = {
+            id: params[0] as string,
+            service_id: params[1] as string,
+            route_id: params[2] as string,
+            operation: params[3] as string,
+            method: params[4] as string,
+            title: params[5] as string,
+            description: params[6] as string,
+            price: params[7] as string,
+            billing: JSON.parse(params[8] as string),
+            mode: params[9] as string,
+            request_schema_json: JSON.parse(params[10] as string),
+            response_schema_json: JSON.parse(params[11] as string),
+            request_example: JSON.parse(params[12] as string),
+            response_example: JSON.parse(params[13] as string),
+            usage_notes: params[14] as string | null,
+            executor_kind: params[15] as string,
+            upstream_base_url: params[16] as string | null,
+            upstream_path: params[17] as string | null,
+            upstream_auth_mode: params[18] as string | null,
+            upstream_auth_header_name: params[19] as string | null,
+            upstream_secret_ref: params[20] as string | null,
+            payout: JSON.parse(params[21] as string),
+            created_at: now,
+            updated_at: now
+          };
+          draftRows.push(row);
+          return { rowCount: 1, rows: [row] };
+        }
+
+        if (sql.includes("SELECT e.*") && sql.includes("JOIN published_endpoint_versions e")) {
+          const match = publishedRows.find(
+            (row) => row.provider === params[0] && row.operation === params[1] && row.network === params[2]
+          );
+          return {
+            rowCount: match ? 1 : 0,
+            rows: match ? [match] : []
+          };
+        }
+
+        return { rowCount: 0, rows: [] };
+      }
+    } as never);
+
+    const created = await store.createProviderEndpointDraft(serviceId, wallet, {
+      endpointType: "marketplace_proxy",
+      operation: "quote-get",
+      method: "GET",
+      title: "Quote GET",
+      description: "Return a single quote snapshot.",
+      billingType: "free",
+      mode: "sync",
+      requestSchemaJson: {
+        type: "object",
+        properties: {
+          symbol: { type: "string" }
+        },
+        required: ["symbol"],
+        additionalProperties: false
+      },
+      responseSchemaJson: {
+        type: "object",
+        properties: {
+          symbol: { type: "string" }
+        },
+        required: ["symbol"],
+        additionalProperties: false
+      },
+      requestExample: { symbol: "FAST" },
+      responseExample: { symbol: "FAST" },
+      upstreamBaseUrl: "https://provider.example.com",
+      upstreamPath: "/api/quote",
+      upstreamAuthMode: "none"
+    });
+
+    expect(created.method).toBe("GET");
+    const insert = queries.find((entry) => entry.sql.includes("INSERT INTO provider_endpoint_drafts"));
+    expect(insert?.params[4]).toBe("GET");
+
+    const detail = await store.getProviderServiceForOwner(serviceId, wallet);
+    expect(expectMarketplaceCatalogEndpoint(detail?.endpoints[0]).method).toBe("GET");
+
+    const publishedGet = await store.findPublishedRoute("signals-postgres", "quote-get", "fast-mainnet");
+    const publishedPost = await store.findPublishedRoute("signals-postgres", "quote-post", "fast-mainnet");
+
+    expect(publishedGet?.method).toBe("GET");
+    expect(publishedPost?.method).toBe("POST");
+  });
+
+  it("adds Postgres method defaults and backfill migrations for marketplace routes", async () => {
+    const queries: string[] = [];
+    const query = async (sql: string) => {
+      queries.push(sql);
+      return { rowCount: 0, rows: [] };
+    };
+    const store = new PostgresMarketplaceStore({
+      query,
+      connect: async () => ({
+        query,
+        release() {}
+      })
+    } as never);
+
+    await store.ensureSchema();
+
+    const schemaSql = queries.join("\n");
+    expect(schemaSql).toContain("method TEXT NOT NULL DEFAULT 'POST'");
+    expect(schemaSql).toContain("ALTER TABLE provider_endpoint_drafts");
+    expect(schemaSql).toContain("ADD COLUMN IF NOT EXISTS method TEXT NOT NULL DEFAULT 'POST'");
+    expect(schemaSql).toContain("ALTER TABLE published_endpoint_versions");
+    expect(schemaSql).toMatch(/UPDATE provider_endpoint_drafts[\s\S]*SET method = 'POST'[\s\S]*WHERE method IS NULL/);
+    expect(schemaSql).toMatch(/UPDATE published_endpoint_versions[\s\S]*SET method = 'POST'[\s\S]*WHERE method IS NULL/);
   });
 });
