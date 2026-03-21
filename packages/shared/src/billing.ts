@@ -1,6 +1,6 @@
 import { decimalToRawString, rawToDecimalString } from "./amounts.js";
 import type {
-  CreateProviderEndpointDraftInput,
+  CreateMarketplaceProviderEndpointDraftInput,
   FixedX402Billing,
   FreeBilling,
   MarketplaceRoute,
@@ -182,7 +182,7 @@ export function priceLabelForBilling(billing: RouteBilling): string {
   return "Prepaid credit";
 }
 
-export function createDraftRouteBilling(input: Pick<CreateProviderEndpointDraftInput, "billingType" | "price" | "minAmount" | "maxAmount">): {
+export function createDraftRouteBilling(input: Pick<CreateMarketplaceProviderEndpointDraftInput, "billingType" | "price" | "minAmount" | "maxAmount">): {
   billing: RouteBilling;
   price: string;
 } {

@@ -24,7 +24,9 @@ describe("ServicePage", () => {
       <ServicePage
         deploymentNetwork="mainnet"
         service={{
+          serviceType: "marketplace_proxy",
           summary: {
+            serviceType: "marketplace_proxy",
             slug: "mock-research-signals",
             name: "Mock Research Signals",
             ownerName: "Fast Marketplace",
@@ -46,6 +48,7 @@ describe("ServicePage", () => {
           skillUrl: "https://marketplace.example.com/skill.md",
           endpoints: [
             {
+              endpointType: "marketplace_proxy",
               routeId: "mock.quick-insight.v1",
               title: "Quick Insight",
               description: "Instant paid insight.",

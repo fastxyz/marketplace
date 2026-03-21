@@ -1,3 +1,4 @@
+import React from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ProviderServiceStatus } from "@marketplace/shared";
@@ -63,7 +64,7 @@ export default async function AdminProviderServicesPage({
                 <p className="eyebrow">Admin review</p>
                 <h1 className="section-title">Provider services</h1>
                 <p className="body-copy">
-                  Review submitted provider supply, assign Community or Verified settlement, and publish or suspend services.
+                  Review submitted provider supply, assign settlement for marketplace-proxied services, and publish or suspend services.
                 </p>
               </div>
             </div>
@@ -105,9 +106,13 @@ export default async function AdminProviderServicesPage({
                     <div className="space-y-2">
                       <div className="flex flex-wrap gap-2">
                         <Badge variant="secondary">{detail.service.status}</Badge>
-                        <Badge variant={detail.service.settlementMode === "verified_escrow" ? "default" : "outline"}>
-                          {detail.service.settlementMode === "verified_escrow" ? "Verified" : "Community"}
-                        </Badge>
+                        {detail.service.serviceType === "marketplace_proxy" ? (
+                          <Badge variant={detail.service.settlementMode === "verified_escrow" ? "default" : "outline"}>
+                            {detail.service.settlementMode === "verified_escrow" ? "Verified" : "Community"}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">External API</Badge>
+                        )}
                         {detail.verification ? (
                           <Badge variant="outline">verification: {detail.verification.status}</Badge>
                         ) : null}
@@ -117,7 +122,10 @@ export default async function AdminProviderServicesPage({
                       </div>
                       <CardTitle>{detail.service.name}</CardTitle>
                       <CardDescription>
-                        {detail.service.apiNamespace} · {detail.account.displayName} · {detail.endpoints.length} endpoint
+                        {detail.service.serviceType === "marketplace_proxy"
+                          ? detail.service.apiNamespace
+                          : "discovery-only external registry"}{" "}
+                        · {detail.account.displayName} · {detail.endpoints.length} endpoint
                         {detail.endpoints.length === 1 ? "" : "s"}
                       </CardDescription>
                     </div>
@@ -130,7 +138,11 @@ export default async function AdminProviderServicesPage({
                 </CardHeader>
                 <CardContent className="grid gap-2 text-sm text-muted-foreground">
                   <div>Website: {detail.service.websiteUrl ?? "not set"}</div>
-                  <div>Payout wallet: {detail.service.payoutWallet ?? "not set"}</div>
+                  {detail.service.serviceType === "marketplace_proxy" ? (
+                    <div>Payout wallet: {detail.service.payoutWallet ?? "not set"}</div>
+                  ) : (
+                    <div>Access model: discovery-only external API listing</div>
+                  )}
                   <div>Updated: {detail.service.updatedAt.slice(0, 10)}</div>
                 </CardContent>
               </Card>

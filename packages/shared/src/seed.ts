@@ -1,4 +1,5 @@
 import type {
+  MarketplaceProviderEndpointDraftRecord,
   MarketplaceRoute,
   ProviderAccountRecord,
   ProviderEndpointDraftRecord,
@@ -25,6 +26,7 @@ export const MARKETPLACE_PROVIDER_ACCOUNT_SEED: ProviderAccountRecord = {
 export const MOCK_PROVIDER_SERVICE_SEED: ProviderServiceRecord = {
   id: "service_mock_research_signals",
   providerAccountId: MARKETPLACE_PROVIDER_ACCOUNT_SEED.id,
+  serviceType: "marketplace_proxy",
   settlementMode: "verified_escrow",
   slug: "mock-research-signals",
   apiNamespace: "mock",
@@ -50,6 +52,7 @@ export const MOCK_PROVIDER_SERVICE_SEED: ProviderServiceRecord = {
 export const TAVILY_PROVIDER_SERVICE_SEED: ProviderServiceRecord = {
   id: "service_tavily_search",
   providerAccountId: MARKETPLACE_PROVIDER_ACCOUNT_SEED.id,
+  serviceType: "marketplace_proxy",
   settlementMode: "verified_escrow",
   slug: "tavily-search",
   apiNamespace: "tavily",
@@ -659,8 +662,9 @@ export const MARKETPLACE_PROVIDER_SERVICE_SEEDS: ProviderServiceRecord[] = [
   TAVILY_PROVIDER_SERVICE_SEED
 ];
 
-function buildProviderEndpointDraft(serviceId: string, route: MarketplaceRoute): ProviderEndpointDraftRecord {
+function buildProviderEndpointDraft(serviceId: string, route: MarketplaceRoute): MarketplaceProviderEndpointDraftRecord {
   return {
+    endpointType: "marketplace_proxy",
     id: `draft_${route.routeId}`,
     serviceId,
     routeId: route.routeId,
@@ -700,6 +704,7 @@ function buildPublishedServiceVersion(input: {
     serviceId: input.service.id,
     providerAccountId: input.service.providerAccountId,
     settlementMode: input.service.settlementMode,
+    serviceType: input.service.serviceType,
     slug: input.service.slug,
     apiNamespace: input.service.apiNamespace,
     name: input.service.name,
@@ -776,15 +781,16 @@ export function buildSeededPublishedEndpointVersions(
       const draft = buildProviderEndpointDraft(group.service.id, route);
 
       return {
+        endpointType: "marketplace_proxy",
         endpointVersionId: `published_${draft.routeId}`,
         serviceId: draft.serviceId,
         serviceVersionId: group.publishedService.versionId,
         endpointDraftId: draft.id,
         routeId: draft.routeId,
-        provider: group.publishedService.apiNamespace,
+        provider: group.publishedService.apiNamespace ?? "unknown",
         operation: draft.operation,
         version: "v1",
-        settlementMode: group.publishedService.settlementMode,
+        settlementMode: group.publishedService.settlementMode ?? "verified_escrow",
         mode: draft.mode,
         network: config.paymentNetwork,
         price: draft.price,

@@ -89,23 +89,35 @@ function ProviderServiceReviewInner({
     );
   }
 
+  const isMarketplaceService = detail.service.serviceType === "marketplace_proxy";
   const checklist = [
-    {
-      label: `Settlement tier is ${detail.service.settlementMode === "verified_escrow" ? "Verified" : "Community"}`,
-      ok: true
-    },
+    isMarketplaceService
+      ? {
+          label: `Settlement tier is ${detail.service.settlementMode === "verified_escrow" ? "Verified" : "Community"}`,
+          ok: true
+        }
+      : {
+          label: "Service is marked as a discovery-only external API",
+          ok: true
+        },
     { label: "Website URL is set", ok: Boolean(detail.service.websiteUrl) },
-    { label: "Payout wallet is set", ok: Boolean(detail.service.payoutWallet) },
+    {
+      label: isMarketplaceService ? "Payout wallet is set" : "Direct endpoint metadata is set on the service",
+      ok: isMarketplaceService ? Boolean(detail.service.payoutWallet) : true
+    },
     { label: "At least one endpoint exists", ok: detail.endpoints.length > 0 },
     { label: "Website verification succeeded", ok: detail.verification?.status === "verified" },
     {
-      label: "Runtime key is ready for Community or prepaid flows",
-      ok:
-        Boolean(runtimeKey)
-        || (
-          detail.service.settlementMode === "verified_escrow"
-          && !detail.endpoints.some((endpoint) => endpoint.billing.type === "prepaid_credit")
-        )
+      label: isMarketplaceService ? "Runtime key is ready for Community or prepaid flows" : "Marketplace runtime key is not required",
+      ok: isMarketplaceService
+        ? (
+            Boolean(runtimeKey)
+            || (
+              detail.service.settlementMode === "verified_escrow"
+              && !detail.endpoints.some((endpoint) => endpoint.endpointType === "marketplace_proxy" && endpoint.billing.type === "prepaid_credit")
+            )
+          )
+        : true
     }
   ];
 
@@ -129,7 +141,10 @@ function ProviderServiceReviewInner({
       <Card variant="frosted">
         <CardHeader>
           <CardTitle className="text-3xl">{detail.service.name}</CardTitle>
-          <CardDescription>{detail.service.status} · {detail.service.settlementMode === "verified_escrow" ? "Verified" : "Community"}</CardDescription>
+          <CardDescription>
+            {detail.service.status}
+            {isMarketplaceService ? ` · ${detail.service.settlementMode === "verified_escrow" ? "Verified" : "Community"}` : " · External API"}
+          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 text-sm">
           <div className="rounded-card border border-border bg-background/70 p-5 dark:bg-background/20">

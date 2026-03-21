@@ -19,6 +19,9 @@ export type ProviderServiceStatus =
 export type ProviderVerificationStatus = "pending" | "verified" | "failed";
 export type ProviderReviewStatus = "pending_review" | "changes_requested" | "published" | "suspended";
 export type SettlementMode = "community_direct" | "verified_escrow";
+export type ProviderServiceType = "marketplace_proxy" | "external_registry";
+export type ServiceEndpointType = ProviderServiceType;
+export type ExternalEndpointMethod = "GET" | "POST";
 
 export interface RoutePayoutConfig {
   providerAccountId: string;
@@ -92,9 +95,10 @@ export interface MarketplaceRoute {
 export interface ServiceDefinition {
   serviceId: string;
   providerAccountId: string;
-  settlementMode: SettlementMode;
+  serviceType: ProviderServiceType;
+  settlementMode: SettlementMode | null;
   slug: string;
-  apiNamespace: string;
+  apiNamespace: string | null;
   name: string;
   ownerName: string;
   tagline: string;
@@ -119,6 +123,7 @@ export interface PublishedServiceVersionRecord extends ServiceDefinition {
 }
 
 export interface PublishedEndpointVersionRecord extends MarketplaceRoute {
+  endpointType: "marketplace_proxy";
   endpointVersionId: string;
   serviceId: string;
   serviceVersionId: string;
@@ -126,6 +131,47 @@ export interface PublishedEndpointVersionRecord extends MarketplaceRoute {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface PublishedExternalEndpointVersionRecord {
+  endpointType: "external_registry";
+  endpointVersionId: string;
+  serviceId: string;
+  serviceVersionId: string;
+  endpointDraftId: string | null;
+  routeId: null;
+  provider: null;
+  operation: null;
+  version: null;
+  settlementMode: null;
+  mode: null;
+  network: null;
+  price: null;
+  billing: null;
+  title: string;
+  description: string;
+  payout: null;
+  method: ExternalEndpointMethod;
+  publicUrl: string;
+  docsUrl: string;
+  authNotes: string | null;
+  requestExample: unknown;
+  responseExample: unknown;
+  usageNotes?: string;
+  requestSchemaJson: null;
+  responseSchemaJson: null;
+  executorKind: null;
+  upstreamBaseUrl: null;
+  upstreamPath: null;
+  upstreamAuthMode: null;
+  upstreamAuthHeaderName: null;
+  upstreamSecretRef: null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PublishedServiceEndpointVersionRecord =
+  | PublishedEndpointVersionRecord
+  | PublishedExternalEndpointVersionRecord;
 
 export interface ServiceAnalyticsPoint {
   date: string;
@@ -139,7 +185,8 @@ export interface ServiceAnalytics {
   volume30d: ServiceAnalyticsPoint[];
 }
 
-export interface ServiceSummary {
+export interface MarketplaceServiceSummary {
+  serviceType: "marketplace_proxy";
   slug: string;
   name: string;
   ownerName: string;
@@ -160,7 +207,35 @@ export interface ServiceSummary {
   }>;
 }
 
-export interface ServiceCatalogEndpoint {
+export interface ExternalRegistryServiceSummary {
+  serviceType: "external_registry";
+  slug: string;
+  name: string;
+  ownerName: string;
+  tagline: string;
+  categories: string[];
+  settlementMode: null;
+  settlementLabel: string;
+  settlementDescription: string;
+  priceRange: string;
+  settlementToken: null;
+  totalCalls: null;
+  revenue: null;
+  successRate30d: null;
+  volume30d: Array<{
+    date: string;
+    amount: string;
+  }>;
+  accessModelLabel: string;
+  accessModelDescription: string;
+  endpointCount: number;
+  websiteUrl: string | null;
+}
+
+export type ServiceSummary = MarketplaceServiceSummary | ExternalRegistryServiceSummary;
+
+export interface MarketplaceServiceCatalogEndpoint {
+  endpointType: "marketplace_proxy";
   routeId: string;
   title: string;
   description: string;
@@ -176,13 +251,42 @@ export interface ServiceCatalogEndpoint {
   usageNotes?: string;
 }
 
-export interface ServiceDetail {
-  summary: ServiceSummary;
+export interface ExternalServiceCatalogEndpoint {
+  endpointType: "external_registry";
+  endpointId: string;
+  title: string;
+  description: string;
+  method: ExternalEndpointMethod;
+  publicUrl: string;
+  docsUrl: string;
+  authNotes: string | null;
+  requestExample: unknown;
+  responseExample: unknown;
+  usageNotes?: string;
+}
+
+export type ServiceCatalogEndpoint = MarketplaceServiceCatalogEndpoint | ExternalServiceCatalogEndpoint;
+
+export interface MarketplaceServiceDetail {
+  serviceType: "marketplace_proxy";
+  summary: MarketplaceServiceSummary;
   about: string;
   useThisServicePrompt: string;
   skillUrl: string;
-  endpoints: ServiceCatalogEndpoint[];
+  endpoints: MarketplaceServiceCatalogEndpoint[];
 }
+
+export interface ExternalRegistryServiceDetail {
+  serviceType: "external_registry";
+  summary: ExternalRegistryServiceSummary;
+  about: string;
+  useThisServicePrompt: string;
+  skillUrl: null;
+  websiteUrl: string | null;
+  endpoints: ExternalServiceCatalogEndpoint[];
+}
+
+export type ServiceDetail = MarketplaceServiceDetail | ExternalRegistryServiceDetail;
 
 export interface SuggestionRecord {
   id: string;
@@ -258,9 +362,10 @@ export interface ProviderSecretRecord {
 export interface ProviderServiceRecord {
   id: string;
   providerAccountId: string;
-  settlementMode: SettlementMode;
+  serviceType: ProviderServiceType;
+  settlementMode: SettlementMode | null;
   slug: string;
-  apiNamespace: string;
+  apiNamespace: string | null;
   name: string;
   tagline: string;
   about: string;
@@ -275,7 +380,8 @@ export interface ProviderServiceRecord {
   updatedAt: string;
 }
 
-export interface ProviderEndpointDraftRecord {
+export interface MarketplaceProviderEndpointDraftRecord {
+  endpointType: "marketplace_proxy";
   id: string;
   serviceId: string;
   routeId: string;
@@ -301,6 +407,42 @@ export interface ProviderEndpointDraftRecord {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface ExternalProviderEndpointDraftRecord {
+  endpointType: "external_registry";
+  id: string;
+  serviceId: string;
+  routeId: null;
+  operation: null;
+  title: string;
+  description: string;
+  price: null;
+  billing: null;
+  mode: null;
+  requestSchemaJson: null;
+  responseSchemaJson: null;
+  method: ExternalEndpointMethod;
+  publicUrl: string;
+  docsUrl: string;
+  authNotes: string | null;
+  requestExample: unknown;
+  responseExample: unknown;
+  usageNotes: string | null;
+  executorKind: null;
+  upstreamBaseUrl: null;
+  upstreamPath: null;
+  upstreamAuthMode: null;
+  upstreamAuthHeaderName: null;
+  upstreamSecretRef: null;
+  hasUpstreamSecret: false;
+  payout: null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ProviderEndpointDraftRecord =
+  | MarketplaceProviderEndpointDraftRecord
+  | ExternalProviderEndpointDraftRecord;
 
 export interface ProviderVerificationRecord {
   id: string;
@@ -341,8 +483,9 @@ export interface UpsertProviderAccountInput {
 }
 
 export interface CreateProviderServiceInput {
+  serviceType: ProviderServiceType;
   slug: string;
-  apiNamespace: string;
+  apiNamespace?: string | null;
   name: string;
   tagline: string;
   about: string;
@@ -350,13 +493,14 @@ export interface CreateProviderServiceInput {
   promptIntro: string;
   setupInstructions: string[];
   websiteUrl?: string | null;
-  payoutWallet: string;
+  payoutWallet?: string | null;
   featured?: boolean;
 }
 
 export interface UpdateProviderServiceInput {
+  serviceType?: ProviderServiceType;
   slug?: string;
-  apiNamespace?: string;
+  apiNamespace?: string | null;
   name?: string;
   tagline?: string;
   about?: string;
@@ -368,7 +512,8 @@ export interface UpdateProviderServiceInput {
   featured?: boolean;
 }
 
-export interface CreateProviderEndpointDraftInput {
+export interface CreateMarketplaceProviderEndpointDraftInput {
+  endpointType: "marketplace_proxy";
   operation: string;
   title: string;
   description: string;
@@ -389,7 +534,25 @@ export interface CreateProviderEndpointDraftInput {
   upstreamSecret?: string | null;
 }
 
-export interface UpdateProviderEndpointDraftInput {
+export interface CreateExternalProviderEndpointDraftInput {
+  endpointType: "external_registry";
+  title: string;
+  description: string;
+  method: ExternalEndpointMethod;
+  publicUrl: string;
+  docsUrl: string;
+  authNotes?: string | null;
+  requestExample: unknown;
+  responseExample: unknown;
+  usageNotes?: string | null;
+}
+
+export type CreateProviderEndpointDraftInput =
+  | CreateMarketplaceProviderEndpointDraftInput
+  | CreateExternalProviderEndpointDraftInput;
+
+export interface UpdateMarketplaceProviderEndpointDraftInput {
+  endpointType: "marketplace_proxy";
   operation?: string;
   title?: string;
   description?: string;
@@ -409,6 +572,23 @@ export interface UpdateProviderEndpointDraftInput {
   upstreamSecret?: string | null;
   clearUpstreamSecret?: boolean;
 }
+
+export interface UpdateExternalProviderEndpointDraftInput {
+  endpointType: "external_registry";
+  title?: string;
+  description?: string;
+  method?: ExternalEndpointMethod;
+  publicUrl?: string;
+  docsUrl?: string;
+  authNotes?: string | null;
+  requestExample?: unknown;
+  responseExample?: unknown;
+  usageNotes?: string | null;
+}
+
+export type UpdateProviderEndpointDraftInput =
+  | UpdateMarketplaceProviderEndpointDraftInput
+  | UpdateExternalProviderEndpointDraftInput;
 
 export interface OpenApiImportRequest {
   documentUrl: string;
@@ -872,7 +1052,7 @@ export interface MarketplaceStore {
   listPublishedServices(): Promise<PublishedServiceVersionRecord[]>;
   getPublishedServiceBySlug(slug: string): Promise<{
     service: PublishedServiceVersionRecord;
-    endpoints: PublishedEndpointVersionRecord[];
+    endpoints: PublishedServiceEndpointVersionRecord[];
   } | null>;
   listPublishedRoutes(): Promise<PublishedEndpointVersionRecord[]>;
   findPublishedRoute(

@@ -10,7 +10,26 @@ import {
 } from "./constants.js";
 import { getDefaultMarketplaceNetworkConfig } from "./network.js";
 import { settlementModeDescription, settlementModeLabel } from "./settlement.js";
-import type { MarketplaceRoute, ServiceDefinition } from "./types.js";
+import type {
+  ExternalRegistryServiceSummary,
+  MarketplaceRoute,
+  MarketplaceServiceSummary,
+  PublishedServiceEndpointVersionRecord,
+  ServiceDefinition
+} from "./types.js";
+
+type PublishedCatalogService = {
+  service: ServiceDefinition;
+  endpoints: PublishedServiceEndpointVersionRecord[];
+};
+
+function isMarketplaceCatalogService(input: PublishedCatalogService): boolean {
+  return input.service.serviceType === "marketplace_proxy";
+}
+
+function isExternalCatalogService(input: PublishedCatalogService): boolean {
+  return input.service.serviceType === "external_registry";
+}
 
 export function buildOpenApiDocument(input: {
   baseUrl?: string;
@@ -288,7 +307,7 @@ export function buildOpenApiDocument(input: {
 
 export function buildLlmsTxt(input: {
   baseUrl?: string;
-  services: ServiceDefinition[];
+  services: PublishedCatalogService[];
   routes: MarketplaceRoute[];
 }): string {
   const network = getDefaultMarketplaceNetworkConfig();
@@ -296,7 +315,7 @@ export function buildLlmsTxt(input: {
   const lines = [
     `# ${MARKETPLACE_NAME}`,
     "",
-    "Fast-only API marketplace with free, x402-paid, and prepaid-credit trigger routes.",
+    "Fast-only API marketplace with executable marketplace routes plus discovery-only external API listings.",
     "",
     `Base URL: ${baseUrl}`,
     `Fast network: ${network.displayName}`,
@@ -307,13 +326,13 @@ export function buildLlmsTxt(input: {
     "Repeat retrieval auth: wallet challenge session",
     "Marketplace skill: serve from the public web app at /skill.md",
     "",
-    "## Services"
+    "## Marketplace Services"
   ];
 
-  for (const service of input.services) {
-    const routes = input.routes.filter((route) => service.routeIds.includes(route.routeId));
+  for (const serviceDetail of input.services.filter(isMarketplaceCatalogService)) {
+    const routes = serviceDetail.endpoints.filter((endpoint) => endpoint.endpointType === "marketplace_proxy");
     const summary = buildServiceSummary({
-      service,
+      service: serviceDetail.service,
       endpoints: routes,
       analytics: {
         totalCalls: 0,
@@ -322,17 +341,63 @@ export function buildLlmsTxt(input: {
         volume30d: []
       }
     });
+    if (summary.serviceType !== "marketplace_proxy") {
+      throw new Error("Expected a marketplace service summary.");
+    }
 
     lines.push(
-      `- ${service.name}`,
-      `  owner: ${service.ownerName}`,
-      `  slug: ${service.slug}`,
-      `  settlement: ${settlementModeLabel(service.settlementMode)}`,
-      `  guarantees: ${settlementModeDescription(service.settlementMode)}`,
+      `- ${serviceDetail.service.name}`,
+      `  owner: ${serviceDetail.service.ownerName}`,
+      `  slug: ${serviceDetail.service.slug}`,
+      `  settlement: ${summary.settlementLabel}`,
+      `  guarantees: ${summary.settlementDescription}`,
       `  priceRange: ${summary.priceRange}`,
       `  endpointCount: ${routes.length}`,
-      `  categories: ${service.categories.join(", ")}`
+      `  categories: ${serviceDetail.service.categories.join(", ")}`
     );
+  }
+
+  const externalServices = input.services.filter(isExternalCatalogService);
+  if (externalServices.length > 0) {
+    lines.push("", "## Discovery-Only External APIs");
+  }
+
+  for (const serviceDetail of externalServices) {
+    const summary = buildServiceSummary({
+      service: serviceDetail.service,
+      endpoints: serviceDetail.endpoints,
+      analytics: {
+        totalCalls: 0,
+        revenueRaw: "0",
+        successRate30d: 0,
+        volume30d: []
+      }
+    });
+    if (summary.serviceType !== "external_registry") {
+      throw new Error("Expected an external registry summary.");
+    }
+
+    lines.push(
+      `- ${serviceDetail.service.name}`,
+      `  owner: ${serviceDetail.service.ownerName}`,
+      `  slug: ${serviceDetail.service.slug}`,
+      `  website: ${serviceDetail.service.websiteUrl ?? "not provided"}`,
+      `  access: ${summary.accessModelDescription}`,
+      `  endpointCount: ${summary.endpointCount}`,
+      `  categories: ${serviceDetail.service.categories.join(", ")}`
+    );
+
+    for (const endpoint of serviceDetail.endpoints.filter((candidate) => candidate.endpointType === "external_registry")) {
+      lines.push(
+        `  - ${endpoint.method} ${endpoint.publicUrl}`,
+        `    docs: ${endpoint.docsUrl}`,
+        `    executableByMarketplace: false`
+      );
+
+      if (endpoint.authNotes) {
+        lines.push(`    auth: ${endpoint.authNotes}`);
+      }
+    }
   }
 
   lines.push("", "## Routes");
@@ -357,7 +422,7 @@ export function buildLlmsTxt(input: {
 
 export function buildMarketplaceCatalog(input: {
   baseUrl?: string;
-  services: ServiceDefinition[];
+  services: PublishedCatalogService[];
   routes: MarketplaceRoute[];
 }) {
   const network = getDefaultMarketplaceNetworkConfig();
@@ -389,16 +454,65 @@ export function buildMarketplaceCatalog(input: {
       walletChallengeEndpoint: "/auth/wallet/challenge",
       walletSessionEndpoint: "/auth/wallet/session"
     },
-    services: input.services.map((service) => ({
-      slug: service.slug,
-      name: service.name,
-      ownerName: service.ownerName,
-      settlementMode: service.settlementMode,
-      settlementLabel: settlementModeLabel(service.settlementMode),
-      settlementDescription: settlementModeDescription(service.settlementMode),
-      categories: service.categories,
-      routeIds: service.routeIds
-    })),
+    services: input.services.filter(isMarketplaceCatalogService).map((serviceDetail) => {
+      const summary = buildServiceSummary({
+        service: serviceDetail.service,
+        endpoints: serviceDetail.endpoints,
+        analytics: {
+          totalCalls: 0,
+          revenueRaw: "0",
+          successRate30d: 0,
+          volume30d: []
+        }
+      }) as MarketplaceServiceSummary;
+
+      return {
+        serviceType: "marketplace_proxy",
+        executableByMarketplace: true,
+        slug: serviceDetail.service.slug,
+        name: serviceDetail.service.name,
+        ownerName: serviceDetail.service.ownerName,
+        settlementMode: summary.settlementMode,
+        settlementLabel: summary.settlementLabel,
+        settlementDescription: summary.settlementDescription,
+        categories: serviceDetail.service.categories,
+        routeIds: serviceDetail.service.routeIds
+      };
+    }),
+    discoveryOnlyServices: input.services.filter(isExternalCatalogService).map((serviceDetail) => {
+      const summary = buildServiceSummary({
+        service: serviceDetail.service,
+        endpoints: serviceDetail.endpoints,
+        analytics: {
+          totalCalls: 0,
+          revenueRaw: "0",
+          successRate30d: 0,
+          volume30d: []
+        }
+      }) as ExternalRegistryServiceSummary;
+
+      return {
+        serviceType: "external_registry",
+        executableByMarketplace: false,
+        slug: serviceDetail.service.slug,
+        name: serviceDetail.service.name,
+        ownerName: serviceDetail.service.ownerName,
+        websiteUrl: serviceDetail.service.websiteUrl,
+        accessModelLabel: summary.accessModelLabel,
+        accessModelDescription: summary.accessModelDescription,
+        categories: serviceDetail.service.categories,
+        endpoints: serviceDetail.endpoints
+          .filter((endpoint) => endpoint.endpointType === "external_registry")
+          .map((endpoint) => ({
+            endpointId: endpoint.endpointVersionId,
+            method: endpoint.method,
+            publicUrl: endpoint.publicUrl,
+            docsUrl: endpoint.docsUrl,
+            authNotes: endpoint.authNotes,
+            executableByMarketplace: false
+          }))
+      };
+    }),
     routes: input.routes.map((route) => ({
       routeId: route.routeId,
       provider: route.provider,

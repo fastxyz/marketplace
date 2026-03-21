@@ -180,8 +180,8 @@ export async function publishProviderServiceAction(formData: FormData): Promise<
   const reviewerIdentity = getString(formData, "reviewerIdentity") || null;
   const returnTo = getString(formData, "returnTo") || `/admin/services/${serviceId}`;
 
-  if (!serviceId || !settlementMode) {
-    redirect(buildAdminRedirect(returnTo, "error", "Service id and settlement tier are required."));
+  if (!serviceId) {
+    redirect(buildAdminRedirect(returnTo, "error", "Service id is required."));
   }
 
   await finalizeAdminServiceMutation({
@@ -190,7 +190,9 @@ export async function publishProviderServiceAction(formData: FormData): Promise<
     successMessage:
       settlementMode === "verified_escrow"
         ? "Published service as Verified."
-        : "Published service as Community.",
+        : settlementMode === "community_direct"
+          ? "Published service as Community."
+          : "Published service.",
     fallbackErrorMessage: "Failed to publish provider service.",
     mutate: () => publishAdminProviderService(serviceId, {
       reviewerIdentity,

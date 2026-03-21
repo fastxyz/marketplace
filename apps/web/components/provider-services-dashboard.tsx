@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import type { MarketplaceDeploymentNetwork } from "@marketplace/shared";
+import type { MarketplaceDeploymentNetwork, ProviderServiceType } from "@marketplace/shared";
 
 import { ProviderSessionGate } from "@/components/provider-session-gate";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,7 @@ function ProviderServicesDashboardInner({
   accessToken: string;
 }) {
   type ServiceDraftField =
+    | "serviceType"
     | "slug"
     | "apiNamespace"
     | "name"
@@ -57,6 +58,7 @@ function ProviderServicesDashboardInner({
   const [error, setError] = React.useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = React.useState<Partial<Record<ServiceDraftField, string>>>({});
   const [form, setForm] = React.useState({
+    serviceType: "marketplace_proxy" as ProviderServiceType,
     slug: "",
     apiNamespace: "",
     name: "",
@@ -99,8 +101,9 @@ function ProviderServicesDashboardInner({
       try {
         setFieldErrors({});
         const detail = await createProviderService(apiBaseUrl, accessToken, {
+          serviceType: form.serviceType,
           slug: form.slug,
-          apiNamespace: form.apiNamespace,
+          apiNamespace: form.serviceType === "marketplace_proxy" ? form.apiNamespace : undefined,
           name: form.name,
           tagline: form.tagline,
           about: form.about,
@@ -114,7 +117,7 @@ function ProviderServicesDashboardInner({
             .map((value) => value.trim())
             .filter(Boolean),
           websiteUrl: form.websiteUrl || undefined,
-          payoutWallet: form.payoutWallet
+          payoutWallet: form.serviceType === "marketplace_proxy" ? form.payoutWallet : undefined
         });
         window.location.assign(`/providers/services/${detail.service.id}`);
       } catch (nextError) {
@@ -154,7 +157,9 @@ function ProviderServicesDashboardInner({
                 <div>
                   <div className="text-lg font-medium tracking-headline">{service.service.name}</div>
                   <div className="text-sm leading-6 text-muted-foreground">
-                    {service.service.apiNamespace} / {service.service.status}
+                    {service.service.serviceType === "marketplace_proxy"
+                      ? `${service.service.apiNamespace} / ${service.service.status}`
+                      : `external registry / ${service.service.status}`}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -181,6 +186,23 @@ function ProviderServicesDashboardInner({
         </CardHeader>
         <CardContent>
           <form className="grid gap-4" onSubmit={onCreateService}>
+            <label className="grid gap-2 text-sm font-medium">
+              Service type
+              <select
+                value={form.serviceType}
+                className="fast-select min-h-12"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    serviceType: event.target.value as ProviderServiceType,
+                    apiNamespace: event.target.value === "marketplace_proxy" ? current.apiNamespace : "",
+                    payoutWallet: event.target.value === "marketplace_proxy" ? current.payoutWallet : ""
+                  }))}
+              >
+                <option value="marketplace_proxy">Marketplace proxy</option>
+                <option value="external_registry">External registry</option>
+              </select>
+            </label>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="grid gap-2 text-sm font-medium">
                 Service name
@@ -222,19 +244,25 @@ function ProviderServicesDashboardInner({
                 />
                 {fieldErrors.slug ? <span className="text-xs text-destructive">{fieldErrors.slug}</span> : null}
               </label>
-              <label className="grid gap-2 text-sm font-medium">
-                API namespace
-                <Input
-                  value={form.apiNamespace}
-                  minLength={3}
-                  maxLength={64}
-                  pattern="^[a-z0-9-]{3,64}$"
-                  placeholder="test-service"
-                  onChange={(event) => setForm((current) => ({ ...current, apiNamespace: event.target.value }))}
-                  required
-                />
-                {fieldErrors.apiNamespace ? <span className="text-xs text-destructive">{fieldErrors.apiNamespace}</span> : null}
-              </label>
+              {form.serviceType === "marketplace_proxy" ? (
+                <label className="grid gap-2 text-sm font-medium">
+                  API namespace
+                  <Input
+                    value={form.apiNamespace}
+                    minLength={3}
+                    maxLength={64}
+                    pattern="^[a-z0-9-]{3,64}$"
+                    placeholder="test-service"
+                    onChange={(event) => setForm((current) => ({ ...current, apiNamespace: event.target.value }))}
+                    required
+                  />
+                  {fieldErrors.apiNamespace ? <span className="text-xs text-destructive">{fieldErrors.apiNamespace}</span> : null}
+                </label>
+              ) : (
+                <div className="rounded-card border border-border bg-background/70 px-4 py-3 text-sm text-muted-foreground dark:bg-background/20">
+                  External registry services do not define a marketplace API namespace.
+                </div>
+              )}
             </div>
 
             <label className="grid gap-2 text-sm font-medium">
@@ -297,16 +325,22 @@ function ProviderServicesDashboardInner({
               {fieldErrors.setupInstructions ? <span className="text-xs text-destructive">{fieldErrors.setupInstructions}</span> : null}
             </label>
 
-            <label className="grid gap-2 text-sm font-medium">
-              Payout wallet
-              <Input
-                value={form.payoutWallet}
-                placeholder="fast1rv8wsdd5pnkit4u637g2yj4tpuyq26rzw8380rfapnsnljz7v3tqv4ajuq"
-                onChange={(event) => setForm((current) => ({ ...current, payoutWallet: event.target.value }))}
-                required
-              />
-              {fieldErrors.payoutWallet ? <span className="text-xs text-destructive">{fieldErrors.payoutWallet}</span> : null}
-            </label>
+            {form.serviceType === "marketplace_proxy" ? (
+              <label className="grid gap-2 text-sm font-medium">
+                Payout wallet
+                <Input
+                  value={form.payoutWallet}
+                  placeholder="fast1rv8wsdd5pnkit4u637g2yj4tpuyq26rzw8380rfapnsnljz7v3tqv4ajuq"
+                  onChange={(event) => setForm((current) => ({ ...current, payoutWallet: event.target.value }))}
+                  required
+                />
+                {fieldErrors.payoutWallet ? <span className="text-xs text-destructive">{fieldErrors.payoutWallet}</span> : null}
+              </label>
+            ) : (
+              <div className="rounded-card border border-border bg-background/70 px-4 py-3 text-sm text-muted-foreground dark:bg-background/20">
+                External registry services stay discovery-only and do not use marketplace payouts.
+              </div>
+            )}
 
             <Button type="submit" disabled={pending}>
               {pending ? "Creating..." : "Create draft"}
@@ -320,6 +354,7 @@ function ProviderServicesDashboardInner({
 }
 
 function validateServiceDraftForm(form: {
+  serviceType: ProviderServiceType;
   slug: string;
   apiNamespace: string;
   name: string;
@@ -359,7 +394,7 @@ function validateServiceDraftForm(form: {
     fieldErrors.slug = "Use 3-64 lowercase letters, numbers, or hyphens.";
   }
 
-  if (!slugPattern.test(form.apiNamespace.trim())) {
+  if (form.serviceType === "marketplace_proxy" && !slugPattern.test(form.apiNamespace.trim())) {
     fieldErrors.apiNamespace = "Use 3-64 lowercase letters, numbers, or hyphens.";
   }
 
@@ -399,7 +434,7 @@ function validateServiceDraftForm(form: {
     }
   }
 
-  if (!form.payoutWallet.trim()) {
+  if (form.serviceType === "marketplace_proxy" && !form.payoutWallet.trim()) {
     fieldErrors.payoutWallet = "Payout wallet is required.";
   }
 

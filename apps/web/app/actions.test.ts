@@ -84,6 +84,25 @@ describe("admin service actions", () => {
     expect(mocks.redirect).toHaveBeenCalledTimes(1);
   });
 
+  it("publishes external registry listings without requiring a settlement tier", async () => {
+    mocks.publishAdminProviderService.mockResolvedValue({});
+    const formData = new FormData();
+    formData.set("id", "service_external");
+    formData.set("returnTo", "/admin/services/service_external");
+
+    await expect(publishProviderServiceAction(formData)).rejects.toThrow(
+      "REDIRECT:/admin/services/service_external?message=Published%20service."
+    );
+
+    expect(mocks.publishAdminProviderService).toHaveBeenCalledWith("service_external", {
+      reviewerIdentity: null,
+      settlementMode: null
+    });
+    expect(mocks.revalidatePath).toHaveBeenNthCalledWith(1, "/admin/services");
+    expect(mocks.revalidatePath).toHaveBeenNthCalledWith(2, "/admin/services/service_external");
+    expect(mocks.redirect).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps admin mutation failures on the error redirect path", async () => {
     mocks.suspendAdminProviderService.mockRejectedValue(new Error("upstream failed"));
     const formData = new FormData();

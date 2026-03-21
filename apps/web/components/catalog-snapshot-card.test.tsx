@@ -12,6 +12,7 @@ describe("CatalogSnapshotCard", () => {
       <CatalogSnapshotCard
         services={[
           {
+            serviceType: "marketplace_proxy",
             slug: "mock-research-signals",
             name: "Mock Research Signals",
             ownerName: "Fast Marketplace",
@@ -29,6 +30,7 @@ describe("CatalogSnapshotCard", () => {
             volume30d: []
           },
           {
+            serviceType: "marketplace_proxy",
             slug: "weather-wire",
             name: "Weather Wire",
             ownerName: "Sky Data",

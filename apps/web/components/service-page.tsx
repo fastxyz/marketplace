@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ArrowLeftRight, ArrowUpRight, Command, DatabaseZap, Sparkle } from "lucide-react";
-import type { ServiceDetail } from "@marketplace/shared";
+import type { MarketplaceServiceCatalogEndpoint, ServiceDetail } from "@marketplace/shared";
 import type { WebDeploymentNetwork } from "@/lib/network";
 
 import { CopyButton } from "@/components/copy-button";
@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-function usesTokenPrice(billingType: ServiceDetail["endpoints"][number]["billingType"]): boolean {
+function usesTokenPrice(billingType: MarketplaceServiceCatalogEndpoint["billingType"]): boolean {
   return billingType === "fixed_x402" || billingType === "topup_x402_variable";
 }
 
@@ -30,11 +30,13 @@ export function ServicePage({
   service: ServiceDetail;
   deploymentNetwork: WebDeploymentNetwork;
 }) {
+  const isMarketplaceService = service.serviceType === "marketplace_proxy";
+
   return (
     <main className="page-shell">
       <section className="section-sep">
         <div className="section-container section-stack">
-          <div className="grid gap-10 lg:grid-cols-[1.12fr_0.88fr]">
+          <div className={`grid gap-10 ${isMarketplaceService ? "lg:grid-cols-[1.12fr_0.88fr]" : "lg:grid-cols-[1fr_0.9fr]"}`}>
             <div className="space-y-8">
               <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                 <Link href="/" className="fast-link">
@@ -47,17 +49,30 @@ export function ServicePage({
               <div className="space-y-5">
                 <div className="flex flex-wrap items-center gap-3">
                   <Badge variant="outline">{service.summary.ownerName}</Badge>
-                  <Badge variant={service.summary.settlementMode === "verified_escrow" ? "default" : "secondary"}>
-                    {service.summary.settlementLabel}
-                  </Badge>
-                  <span className="text-sm tracking-headline text-muted-foreground">
-                    {formatSummaryPriceRange(service.summary.priceRange)}
-                  </span>
+                  {isMarketplaceService ? (
+                    <>
+                      <Badge variant={service.summary.settlementMode === "verified_escrow" ? "default" : "secondary"}>
+                        {service.summary.settlementLabel}
+                      </Badge>
+                      <span className="text-sm tracking-headline text-muted-foreground">
+                        {formatSummaryPriceRange(service.summary.priceRange)}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Badge variant="secondary">{service.summary.accessModelLabel}</Badge>
+                      {service.websiteUrl ? (
+                        <Badge variant="outline">{new URL(service.websiteUrl).hostname}</Badge>
+                      ) : null}
+                    </>
+                  )}
                 </div>
                 <div className="space-y-4">
                   <h1 className="section-title">{service.summary.name}</h1>
                   <p className="body-copy">{service.summary.tagline}</p>
-                  <p className="text-sm leading-7 text-muted-foreground">{service.summary.settlementDescription}</p>
+                  <p className="text-sm leading-7 text-muted-foreground">
+                    {isMarketplaceService ? service.summary.settlementDescription : service.summary.accessModelDescription}
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {service.summary.categories.map((category) => (
@@ -68,28 +83,53 @@ export function ServicePage({
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <StatCard label="Total Calls" value={String(service.summary.totalCalls)} icon={<Sparkle className="h-4 w-4" />} />
-                <StatCard label="Revenue" value={`$${service.summary.revenue}`} icon={<DatabaseZap className="h-4 w-4" />} />
-                <StatCard label="Endpoints" value={String(service.summary.endpointCount)} icon={<ArrowLeftRight className="h-4 w-4" />} />
-                <StatCard
-                  label="Success Rate (30d)"
-                  value={`${service.summary.successRate30d.toFixed(1)}%`}
-                  icon={<Command className="h-4 w-4" />}
-                />
-              </div>
+              {isMarketplaceService ? (
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <StatCard label="Total Calls" value={String(service.summary.totalCalls)} icon={<Sparkle className="h-4 w-4" />} />
+                  <StatCard label="Revenue" value={`$${service.summary.revenue}`} icon={<DatabaseZap className="h-4 w-4" />} />
+                  <StatCard label="Endpoints" value={String(service.summary.endpointCount)} icon={<ArrowLeftRight className="h-4 w-4" />} />
+                  <StatCard
+                    label="Success Rate (30d)"
+                    value={`${service.summary.successRate30d.toFixed(1)}%`}
+                    icon={<Command className="h-4 w-4" />}
+                  />
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  <StatCard label="Endpoints" value={String(service.summary.endpointCount)} icon={<ArrowLeftRight className="h-4 w-4" />} />
+                  <StatCard label="Access" value="Direct API" icon={<ArrowUpRight className="h-4 w-4" />} />
+                  <StatCard label="Marketplace role" value="Discovery" icon={<Command className="h-4 w-4" />} />
+                </div>
+              )}
             </div>
 
-            <Card variant="frosted">
-              <CardHeader>
-                <Badge variant="eyebrow">Transaction volume</Badge>
-                <CardTitle className="text-3xl">Marketplace call flow over time</CardTitle>
-                <CardDescription>Thirty-day volume across live marketplace traffic.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <VolumeChart points={service.summary.volume30d} tokenSymbol={service.summary.settlementToken} />
-              </CardContent>
-            </Card>
+            {isMarketplaceService ? (
+              <Card variant="frosted">
+                <CardHeader>
+                  <Badge variant="eyebrow">Transaction volume</Badge>
+                  <CardTitle className="text-3xl">Marketplace call flow over time</CardTitle>
+                  <CardDescription>Thirty-day volume across live marketplace traffic.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <VolumeChart points={service.summary.volume30d} tokenSymbol={service.summary.settlementToken} />
+                </CardContent>
+              </Card>
+            ) : (
+              <Card variant="frosted">
+                <CardHeader>
+                  <Badge variant="eyebrow">Direct Access</Badge>
+                  <CardTitle className="text-3xl">Provider-owned integration</CardTitle>
+                  <CardDescription>
+                    This listing is discovery-only. Calls go straight to the provider and follow the provider&apos;s docs and auth model.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4 text-sm text-muted-foreground">
+                  <div>Marketplace execution: disabled</div>
+                  <div>Auth and payment: provider-defined</div>
+                  <div>Use the endpoint docs below for exact direct URLs.</div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </section>
@@ -128,13 +168,17 @@ export function ServicePage({
               <div className="terminal-body space-y-5">
                 <div className="terminal-kicker">Setup and exact call parameters</div>
                 <p className="max-w-3xl text-sm leading-7 text-white/70">
-                  Includes setup, the marketplace skill, and exact call parameters for each available endpoint.
+                  {isMarketplaceService
+                    ? "Includes setup, the marketplace skill, and exact call parameters for each available endpoint."
+                    : "Includes setup, direct endpoint URLs, and provider-auth details for each available endpoint."}
                 </p>
                 <pre className="terminal-command overflow-x-auto whitespace-pre-wrap">{service.useThisServicePrompt}</pre>
-                <Link href={service.skillUrl} className="terminal-meta inline-flex items-center gap-2">
-                  Open canonical SKILL.md
-                  <ArrowUpRight className="h-4 w-4" />
-                </Link>
+                {service.skillUrl ? (
+                  <Link href={service.skillUrl} className="terminal-meta inline-flex items-center gap-2">
+                    Open canonical SKILL.md
+                    <ArrowUpRight className="h-4 w-4" />
+                  </Link>
+                ) : null}
               </div>
             </div>
           </div>
@@ -146,49 +190,94 @@ export function ServicePage({
           <Card variant="frosted">
             <CardHeader>
               <Badge variant="eyebrow">Available endpoints ({service.endpoints.length})</Badge>
-              <CardTitle className="text-3xl">Request docs, pricing, and examples</CardTitle>
+              <CardTitle className="text-3xl">
+                {isMarketplaceService ? "Request docs, pricing, and examples" : "Direct endpoint docs and examples"}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <Accordion type="single" collapsible className="w-full">
-                {service.endpoints.map((endpoint) => (
-                  <AccordionItem key={endpoint.routeId} value={endpoint.routeId}>
-                    <AccordionTrigger>
-                      <div className="grid flex-1 gap-3 md:grid-cols-[auto_1fr_auto] md:items-center">
-                        <div className="metric-label">{endpoint.method}</div>
-                        <div>
-                          <div className="text-lg font-medium tracking-headline text-foreground">{endpoint.title}</div>
-                          <div className="text-sm leading-7 text-muted-foreground">{endpoint.description}</div>
-                        </div>
-                        <div className="text-sm font-medium tracking-headline text-foreground">
-                          {endpoint.price}{usesTokenPrice(endpoint.billingType) ? ` ${endpoint.tokenSymbol}` : ""}
-                        </div>
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent>
-                      <div className="grid gap-5 lg:grid-cols-2">
-                        <Card className="h-full">
-                          <CardHeader className="pb-4">
-                            <Badge variant="eyebrow">Proxy URL</Badge>
-                            <CardTitle className="text-xl">Direct marketplace route</CardTitle>
-                          </CardHeader>
-                          <CardContent className="space-y-4">
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="break-all text-sm leading-7 text-muted-foreground">{endpoint.proxyUrl}</div>
-                              <CopyButton value={endpoint.proxyUrl} />
+                {isMarketplaceService
+                  ? service.endpoints.map((endpoint) => (
+                      <AccordionItem key={endpoint.routeId} value={endpoint.routeId}>
+                        <AccordionTrigger>
+                          <div className="grid flex-1 gap-3 md:grid-cols-[auto_1fr_auto] md:items-center">
+                            <div className="metric-label">{endpoint.method}</div>
+                            <div>
+                              <div className="text-lg font-medium tracking-headline text-foreground">{endpoint.title}</div>
+                              <div className="text-sm leading-7 text-muted-foreground">{endpoint.description}</div>
                             </div>
-                            {endpoint.usageNotes ? (
-                              <p className="text-sm leading-7 text-muted-foreground">{endpoint.usageNotes}</p>
-                            ) : null}
-                          </CardContent>
-                        </Card>
+                            <div className="text-sm font-medium tracking-headline text-foreground">
+                              {endpoint.price}{usesTokenPrice(endpoint.billingType) ? ` ${endpoint.tokenSymbol}` : ""}
+                            </div>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="grid gap-5 lg:grid-cols-2">
+                            <Card className="h-full">
+                              <CardHeader className="pb-4">
+                                <Badge variant="eyebrow">Proxy URL</Badge>
+                                <CardTitle className="text-xl">Direct marketplace route</CardTitle>
+                              </CardHeader>
+                              <CardContent className="space-y-4">
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="break-all text-sm leading-7 text-muted-foreground">{endpoint.proxyUrl}</div>
+                                  <CopyButton value={endpoint.proxyUrl} />
+                                </div>
+                                {endpoint.usageNotes ? (
+                                  <p className="text-sm leading-7 text-muted-foreground">{endpoint.usageNotes}</p>
+                                ) : null}
+                              </CardContent>
+                            </Card>
 
-                        <ExampleBlock label="Request Example" value={JSON.stringify(endpoint.requestExample, null, 2)} />
-                        <ExampleBlock label="Response Example" value={JSON.stringify(endpoint.responseExample, null, 2)} />
-                        <EndpointBrowserRunner endpoint={endpoint} deploymentNetwork={deploymentNetwork} />
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
+                            <ExampleBlock label="Request Example" value={JSON.stringify(endpoint.requestExample, null, 2)} />
+                            <ExampleBlock label="Response Example" value={JSON.stringify(endpoint.responseExample, null, 2)} />
+                            <EndpointBrowserRunner endpoint={endpoint} deploymentNetwork={deploymentNetwork} />
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    ))
+                  : service.endpoints.map((endpoint) => (
+                      <AccordionItem key={endpoint.endpointId} value={endpoint.endpointId}>
+                        <AccordionTrigger>
+                          <div className="grid flex-1 gap-3 md:grid-cols-[auto_1fr] md:items-center">
+                            <div className="metric-label">{endpoint.method}</div>
+                            <div>
+                              <div className="text-lg font-medium tracking-headline text-foreground">{endpoint.title}</div>
+                              <div className="text-sm leading-7 text-muted-foreground">{endpoint.description}</div>
+                            </div>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="grid gap-5 lg:grid-cols-2">
+                            <Card className="h-full">
+                              <CardHeader className="pb-4">
+                                <Badge variant="eyebrow">Direct URL</Badge>
+                                <CardTitle className="text-xl">Provider endpoint</CardTitle>
+                              </CardHeader>
+                              <CardContent className="space-y-4">
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="break-all text-sm leading-7 text-muted-foreground">{endpoint.publicUrl}</div>
+                                  <CopyButton value={endpoint.publicUrl} />
+                                </div>
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="break-all text-sm leading-7 text-muted-foreground">{endpoint.docsUrl}</div>
+                                  <CopyButton value={endpoint.docsUrl} />
+                                </div>
+                                {endpoint.authNotes ? (
+                                  <p className="text-sm leading-7 text-muted-foreground">Auth: {endpoint.authNotes}</p>
+                                ) : null}
+                                {endpoint.usageNotes ? (
+                                  <p className="text-sm leading-7 text-muted-foreground">{endpoint.usageNotes}</p>
+                                ) : null}
+                              </CardContent>
+                            </Card>
+
+                            <ExampleBlock label="Request Example" value={JSON.stringify(endpoint.requestExample, null, 2)} />
+                            <ExampleBlock label="Response Example" value={JSON.stringify(endpoint.responseExample, null, 2)} />
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    ))}
               </Accordion>
             </CardContent>
           </Card>

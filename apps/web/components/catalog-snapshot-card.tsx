@@ -6,8 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 function buildMarketplaceTotals(services: ServiceSummary[]) {
   return services.reduce(
     (totals, service) => {
-      totals.calls += service.totalCalls;
-      totals.revenue += Number(service.revenue);
+      if (service.serviceType === "marketplace_proxy") {
+        totals.calls += service.totalCalls;
+        totals.revenue += Number(service.revenue);
+      }
       totals.endpoints += service.endpointCount;
       return totals;
     },

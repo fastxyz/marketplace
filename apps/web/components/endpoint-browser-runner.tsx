@@ -2,7 +2,7 @@
 
 import React from "react";
 import { LoaderCircle, RefreshCcw, TriangleAlert, Wallet } from "lucide-react";
-import type { ServiceCatalogEndpoint } from "@marketplace/shared";
+import type { MarketplaceServiceCatalogEndpoint } from "@marketplace/shared";
 import type { WebDeploymentNetwork } from "@/lib/network";
 
 import { CopyButton } from "@/components/copy-button";
@@ -46,7 +46,7 @@ export function EndpointBrowserRunner({
   endpoint,
   deploymentNetwork
 }: {
-  endpoint: ServiceCatalogEndpoint;
+  endpoint: MarketplaceServiceCatalogEndpoint;
   deploymentNetwork: WebDeploymentNetwork;
 }) {
   const [requestBody, setRequestBody] = React.useState(() => JSON.stringify(endpoint.requestExample, null, 2));
