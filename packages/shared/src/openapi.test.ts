@@ -350,6 +350,62 @@ describe("parseOpenApiImportDocument", () => {
                 }
               }
             }
+          },
+          "/tags": {
+            get: {
+              parameters: [
+                {
+                  name: "tags",
+                  in: "query",
+                  style: "pipeDelimited",
+                  schema: {
+                    type: "array",
+                    items: {
+                      type: "string"
+                    }
+                  }
+                }
+              ],
+              responses: {
+                "200": {
+                  content: {
+                    "application/json": {
+                      schema: {
+                        type: "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "/list": {
+            get: {
+              parameters: [
+                {
+                  name: "ids",
+                  in: "query",
+                  explode: false,
+                  schema: {
+                    type: "array",
+                    items: {
+                      type: "string"
+                    }
+                  }
+                }
+              ],
+              responses: {
+                "200": {
+                  content: {
+                    "application/json": {
+                      schema: {
+                        type: "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -359,6 +415,60 @@ describe("parseOpenApiImportDocument", () => {
     expect(preview.warnings).toContain("Skipped GET /signals/{id}: path parameters are not supported for imported GET routes.");
     expect(preview.warnings).toContain("Skipped GET /health: GET request bodies are not supported.");
     expect(preview.warnings).toContain("Skipped GET /search: only query parameters are supported for imported GET routes.");
+    expect(preview.warnings).toContain("Skipped GET /tags: only form-style query parameters are supported for imported GET routes.");
+    expect(preview.warnings).toContain("Skipped GET /list: only exploded query parameters are supported for imported GET routes.");
     expect(preview.warnings).toContain("No importable POST or safe GET operations were found in this document.");
+  });
+
+  it("accepts scalar form query params even when explode is false", () => {
+    const preview = parseOpenApiImportDocument({
+      documentUrl: "https://provider.example.com/openapi.json",
+      document: {
+        openapi: "3.0.3",
+        paths: {
+          "/status": {
+            get: {
+              parameters: [
+                {
+                  name: "verbose",
+                  in: "query",
+                  explode: false,
+                  schema: {
+                    type: "boolean"
+                  }
+                }
+              ],
+              responses: {
+                "200": {
+                  content: {
+                    "application/json": {
+                      schema: {
+                        type: "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    expect(preview.warnings).toEqual([]);
+    expect(preview.endpoints).toHaveLength(1);
+    expect(preview.endpoints[0]).toMatchObject({
+      method: "GET",
+      upstreamPath: "/status",
+      requestSchemaJson: {
+        type: "object",
+        properties: {
+          verbose: {
+            type: "boolean"
+          }
+        },
+        additionalProperties: false
+      }
+    });
   });
 });

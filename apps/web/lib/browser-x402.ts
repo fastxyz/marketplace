@@ -96,10 +96,11 @@ export function formatResponseBody(body: unknown): string {
   return JSON.stringify(body, null, 2);
 }
 
-export async function createJobAccessToken(input: {
+async function createScopedAccessToken(input: {
   apiBaseUrl: string;
   wallet: string;
-  jobToken: string;
+  resourceType: "job" | "api";
+  resourceId: string;
   connector: BrowserConnectorLike;
 }): Promise<string> {
   const challengeResponse = await fetch(`${input.apiBaseUrl.replace(/\/$/, "")}/auth/challenge`, {
@@ -109,8 +110,8 @@ export async function createJobAccessToken(input: {
     },
     body: JSON.stringify({
       wallet: input.wallet,
-      resourceType: "job",
-      resourceId: input.jobToken
+      resourceType: input.resourceType,
+      resourceId: input.resourceId
     })
   });
 
@@ -132,8 +133,8 @@ export async function createJobAccessToken(input: {
     },
     body: JSON.stringify({
       wallet: input.wallet,
-      resourceType: "job",
-      resourceId: input.jobToken,
+      resourceType: input.resourceType,
+      resourceId: input.resourceId,
       nonce: challenge.nonce,
       expiresAt: challenge.expiresAt,
       signature: signed.signature
@@ -146,6 +147,36 @@ export async function createJobAccessToken(input: {
 
   const session = (await sessionResponse.json()) as { accessToken: string };
   return session.accessToken;
+}
+
+export async function createJobAccessToken(input: {
+  apiBaseUrl: string;
+  wallet: string;
+  jobToken: string;
+  connector: BrowserConnectorLike;
+}): Promise<string> {
+  return createScopedAccessToken({
+    apiBaseUrl: input.apiBaseUrl,
+    wallet: input.wallet,
+    resourceType: "job",
+    resourceId: input.jobToken,
+    connector: input.connector
+  });
+}
+
+export async function createApiAccessToken(input: {
+  apiBaseUrl: string;
+  wallet: string;
+  routeId: string;
+  connector: BrowserConnectorLike;
+}): Promise<string> {
+  return createScopedAccessToken({
+    apiBaseUrl: input.apiBaseUrl,
+    wallet: input.wallet,
+    resourceType: "api",
+    resourceId: input.routeId,
+    connector: input.connector
+  });
 }
 
 function base64EncodeJson(value: unknown): string {

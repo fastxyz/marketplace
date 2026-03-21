@@ -259,9 +259,24 @@ export function buildOpenApiDocument(input: {
 
     const parameters: Array<Record<string, unknown>> = [];
 
-    if (route.billing.type !== "free") {
+    if (route.billing.type === "prepaid_credit") {
+      responses["401"] = {
+        description: "Wallet session bearer token required."
+      };
+      responses["403"] = {
+        description: "Bearer token scope does not match this route."
+      };
+
+      parameters.push({
+        in: "header",
+        name: "Authorization",
+        required: true,
+        schema: { type: "string" },
+        description: "Bearer wallet session token scoped to this route."
+      });
+    } else if (route.billing.type !== "free") {
       responses["402"] = {
-        description: route.billing.type === "prepaid_credit" ? "Wallet session required." : "Payment required.",
+        description: "Payment required.",
         headers: {
           [PAYMENT_REQUIRED_HEADER]: {
             schema: { type: "string" }
@@ -273,7 +288,7 @@ export function buildOpenApiDocument(input: {
         {
           in: "header",
           name: PAYMENT_IDENTIFIER_HEADER,
-          required: route.billing.type !== "prepaid_credit",
+          required: true,
           schema: { type: "string" }
         },
         {

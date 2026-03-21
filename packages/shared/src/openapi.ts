@@ -184,6 +184,21 @@ function buildSafeGetImportCandidate(input: {
     if (location === "path" || location === "cookie" || location === "header") {
       return { reason: "only query parameters are supported for imported GET routes." };
     }
+
+    if (location === "query") {
+      const style = readOptionalString(parameter, "style");
+      if (style && style !== "form") {
+        return { reason: "only form-style query parameters are supported for imported GET routes." };
+      }
+
+      const schema = parameter.schema
+        ? normalizeJsonSchema(input.root, parameter.schema)
+        : structuredClone(DEFAULT_REQUEST_SCHEMA);
+
+      if (parameter.explode === false && !supportsNonExplodedScalarQueryParameter(schema)) {
+        return { reason: "only exploded query parameters are supported for imported GET routes." };
+      }
+    }
   }
 
   try {
@@ -201,6 +216,15 @@ function buildSafeGetImportCandidate(input: {
       reason: error instanceof Error ? error.message : "query parameters could not be mapped safely."
     };
   }
+}
+
+function supportsNonExplodedScalarQueryParameter(schema: JsonSchema): boolean {
+  return (
+    schema.type === "string"
+    || schema.type === "number"
+    || schema.type === "integer"
+    || schema.type === "boolean"
+  );
 }
 
 function countUnsupportedImportOperations(pathItem: Record<string, unknown>): number {

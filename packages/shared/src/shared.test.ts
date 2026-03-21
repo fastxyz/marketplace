@@ -364,6 +364,52 @@ describe("shared marketplace helpers", () => {
     expect(detail.useThisServicePrompt).toContain("No payment headers are required.");
   });
 
+  it("describes prepaid-credit routes with bearer auth instead of x402 headers", () => {
+    const seededService = listServiceDefinitions().find((candidate) => candidate.slug === "mock-research-signals");
+    const seededRoute = marketplaceRoutes.find((candidate) => candidate.routeId === "mock.quick-insight.v1");
+    if (!seededService || !seededRoute) {
+      throw new Error("Mock seeded service is missing.");
+    }
+
+    const prepaidRoute = {
+      ...seededRoute,
+      routeId: "mock.prepaid-insight.v1",
+      operation: "prepaid-insight",
+      billing: {
+        type: "prepaid_credit" as const
+      },
+      price: "Prepaid credit"
+    };
+    const prepaidService = {
+      ...seededService,
+      slug: "mock-prepaid-signals",
+      routeIds: [prepaidRoute.routeId]
+    };
+
+    const document = buildOpenApiDocument({
+      baseUrl: "https://api.marketplace.example.com",
+      services: [prepaidService],
+      routes: [prepaidRoute]
+    });
+    const prepaidPath = document.paths["/api/mock/prepaid-insight"] as {
+      post?: {
+        responses?: Record<string, unknown>;
+        parameters?: Array<{ name?: string; in?: string; required?: boolean }>;
+      };
+    };
+
+    expect(prepaidPath.post?.responses?.["401"]).toBeDefined();
+    expect(prepaidPath.post?.responses?.["403"]).toBeDefined();
+    expect(prepaidPath.post?.responses?.["402"]).toBeUndefined();
+    expect(prepaidPath.post?.parameters).toEqual([
+      expect.objectContaining({
+        name: "Authorization",
+        in: "header",
+        required: true
+      })
+    ]);
+  });
+
   it("builds testnet routes when the deployment targets testnet", () => {
     const routes = buildMarketplaceRoutes(
       resolveMarketplaceNetworkConfig({
