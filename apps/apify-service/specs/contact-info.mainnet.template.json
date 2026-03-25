@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "Contact Info Scraper",
-    "bio": "Marketplace-hosted contact detail extraction powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifycontactinfo.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "Contact Info Scraper",
     "tagline": "Extract emails, phone numbers, and social profile links from websites through a Fast-native async proxy.",
     "about": "Contact Info Scraper exposes an Apify-backed website contact extraction workflow through the marketplace for lead enrichment, prospecting, and site-level contact discovery.",
-    "categories": ["Lead Generation", "Sales", "Research"],
+    "categories": [
+      "Lead Generation",
+      "Sales",
+      "Research"
+    ],
     "promptIntro": "I want to use the Contact Info Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -37,14 +41,18 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["startUrls"],
+        "required": [
+          "startUrls"
+        ],
         "properties": {
           "startUrls": {
             "type": "array",
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["url"],
+              "required": [
+                "url"
+              ],
               "properties": {
                 "url": {
                   "type": "string",
@@ -91,8 +99,12 @@
         "items": [
           {
             "url": "https://example.com/contact",
-            "emails": ["hello@example.com"],
-            "phones": ["+1 555-0100"]
+            "emails": [
+              "hello@example.com"
+            ],
+            "phones": [
+              "+1 555-0100"
+            ]
           }
         ]
       },

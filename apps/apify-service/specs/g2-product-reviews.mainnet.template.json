@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "G2 Product Reviews Scraper",
-    "bio": "Marketplace-hosted G2 review extraction powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifyg2reviews.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "G2 Product Reviews Scraper",
     "tagline": "Collect software product reviews from G2 through a Fast-native async proxy.",
     "about": "G2 Product Reviews Scraper exposes an Apify-backed review extraction workflow through the marketplace for voice-of-customer analysis, competitive product research, and review summarization from G2 product slugs.",
-    "categories": ["Reviews", "Research", "Lead Generation"],
+    "categories": [
+      "Reviews",
+      "Research",
+      "Lead Generation"
+    ],
     "promptIntro": "I want to use the G2 Product Reviews Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -37,7 +41,9 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["product"],
+        "required": [
+          "product"
+        ],
         "properties": {
           "product": {
             "type": "string",

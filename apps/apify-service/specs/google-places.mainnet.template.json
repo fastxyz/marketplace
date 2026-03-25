@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "Google Places Scraper",
-    "bio": "Marketplace-hosted Google Maps scraping and enrichment powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifygoogleplaces.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "Google Places Scraper",
     "tagline": "Search, review, and enrich Google Maps businesses through a Fast-native async proxy.",
     "about": "Google Places Scraper exposes multiple Apify-backed Google Maps workflows through the marketplace, including place search, direct detail fetches, review extraction, and lead enrichment.",
-    "categories": ["Research", "Sales", "Lead Generation"],
+    "categories": [
+      "Research",
+      "Sales",
+      "Lead Generation"
+    ],
     "promptIntro": "I want to use the Google Places Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -37,7 +41,9 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["searchStringsArray"],
+        "required": [
+          "searchStringsArray"
+        ],
         "properties": {
           "searchStringsArray": {
             "type": "array",
@@ -62,7 +68,9 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "searchStringsArray": ["coffee shops"],
+        "searchStringsArray": [
+          "coffee shops"
+        ],
         "locationQuery": "San Francisco, California, United States",
         "maxCrawledPlacesPerSearch": 20
       },
@@ -110,7 +118,9 @@
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["url"],
+              "required": [
+                "url"
+              ],
               "properties": {
                 "url": {
                   "type": "string",
@@ -126,10 +136,14 @@
         },
         "anyOf": [
           {
-            "required": ["placeIds"]
+            "required": [
+              "placeIds"
+            ]
           },
           {
-            "required": ["startUrls"]
+            "required": [
+              "startUrls"
+            ]
           }
         ],
         "additionalProperties": true
@@ -139,7 +153,9 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "placeIds": ["ChIJJQz5EZzKw4kRCZ95UajbyGw"],
+        "placeIds": [
+          "ChIJJQz5EZzKw4kRCZ95UajbyGw"
+        ],
         "scrapePlaceDetailPage": true
       },
       "responseExample": {
@@ -187,7 +203,9 @@
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["url"],
+              "required": [
+                "url"
+              ],
               "properties": {
                 "url": {
                   "type": "string",
@@ -210,10 +228,14 @@
         },
         "anyOf": [
           {
-            "required": ["placeIds"]
+            "required": [
+              "placeIds"
+            ]
           },
           {
-            "required": ["startUrls"]
+            "required": [
+              "startUrls"
+            ]
           }
         ],
         "additionalProperties": true
@@ -223,7 +245,9 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "placeIds": ["ChIJJQz5EZzKw4kRCZ95UajbyGw"],
+        "placeIds": [
+          "ChIJJQz5EZzKw4kRCZ95UajbyGw"
+        ],
         "scrapePlaceDetailPage": true,
         "maxReviews": 25,
         "reviewsSort": "newest"
@@ -262,7 +286,9 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["searchStringsArray"],
+        "required": [
+          "searchStringsArray"
+        ],
         "properties": {
           "searchStringsArray": {
             "type": "array",
@@ -304,7 +330,9 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "searchStringsArray": ["dentists"],
+        "searchStringsArray": [
+          "dentists"
+        ],
         "locationQuery": "Austin, Texas, United States",
         "maxCrawledPlacesPerSearch": 20,
         "website": "allPlaces",

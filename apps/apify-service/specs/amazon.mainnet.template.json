@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "Amazon Product Scraper",
-    "bio": "Marketplace-hosted Amazon product scraping powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifyamazon.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "Amazon Product Scraper",
     "tagline": "Extract Amazon product, pricing, and review data through a Fast-native async proxy.",
     "about": "Amazon Product Scraper exposes an Apify-backed Amazon extraction workflow through the marketplace for catalog monitoring, price intelligence, and product research from product URLs or category URLs.",
-    "categories": ["E-commerce", "Pricing", "Research"],
+    "categories": [
+      "E-commerce",
+      "Pricing",
+      "Research"
+    ],
     "promptIntro": "I want to use the Amazon Product Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -37,14 +41,18 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["startUrls"],
+        "required": [
+          "startUrls"
+        ],
         "properties": {
           "startUrls": {
             "type": "array",
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["url"],
+              "required": [
+                "url"
+              ],
               "properties": {
                 "url": {
                   "type": "string",

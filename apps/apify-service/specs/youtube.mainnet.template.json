@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "YouTube Scraper",
-    "bio": "Marketplace-hosted YouTube scraping powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifyyoutube.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "YouTube Scraper",
     "tagline": "Search YouTube, scrape channels and playlists, and fetch subtitles through a Fast-native async proxy.",
     "about": "YouTube Scraper exposes multiple Apify-backed YouTube workflows through the marketplace, including search result retrieval, channel and playlist scraping, and video subtitle extraction.",
-    "categories": ["Video", "Research", "Marketing"],
+    "categories": [
+      "Video",
+      "Research",
+      "Marketing"
+    ],
     "promptIntro": "I want to use the YouTube Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -37,7 +41,9 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["searchQueries"],
+        "required": [
+          "searchQueries"
+        ],
         "properties": {
           "searchQueries": {
             "type": "array",
@@ -67,7 +73,9 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "searchQueries": ["fast blockchain"],
+        "searchQueries": [
+          "fast blockchain"
+        ],
         "maxResults": 10,
         "maxResultsShorts": 0,
         "maxResultStreams": 0
@@ -101,14 +109,18 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["startUrls"],
+        "required": [
+          "startUrls"
+        ],
         "properties": {
           "startUrls": {
             "type": "array",
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["url"],
+              "required": [
+                "url"
+              ],
               "properties": {
                 "url": {
                   "type": "string",
@@ -166,14 +178,18 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["startUrls"],
+        "required": [
+          "startUrls"
+        ],
         "properties": {
           "startUrls": {
             "type": "array",
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["url"],
+              "required": [
+                "url"
+              ],
               "properties": {
                 "url": {
                   "type": "string",
@@ -231,14 +247,18 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["startUrls"],
+        "required": [
+          "startUrls"
+        ],
         "properties": {
           "startUrls": {
             "type": "array",
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["url"],
+              "required": [
+                "url"
+              ],
               "properties": {
                 "url": {
                   "type": "string",

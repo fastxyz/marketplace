@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "Tweet Scraper",
-    "bio": "Marketplace-hosted X/Twitter scraping powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifytweet.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "Tweet Scraper",
     "tagline": "Search topic, profile, hashtag, and verified-user tweets through a Fast-native async proxy.",
     "about": "Tweet Scraper exposes multiple Apify-backed X/Twitter search workflows through the marketplace, all based on advanced search query patterns that the upstream actor supports at scale.",
-    "categories": ["Social", "Research", "News"],
+    "categories": [
+      "Social",
+      "Research",
+      "News"
+    ],
     "promptIntro": "I want to use the Tweet Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -37,7 +41,9 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["searchTerms"],
+        "required": [
+          "searchTerms"
+        ],
         "properties": {
           "searchTerms": {
             "type": "array",
@@ -61,7 +67,9 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "searchTerms": ["artificial intelligence"],
+        "searchTerms": [
+          "artificial intelligence"
+        ],
         "sort": "Latest",
         "tweetLanguage": "en"
       },
@@ -113,10 +121,14 @@
         },
         "anyOf": [
           {
-            "required": ["author"]
+            "required": [
+              "author"
+            ]
           },
           {
-            "required": ["searchTerms"]
+            "required": [
+              "searchTerms"
+            ]
           }
         ],
         "additionalProperties": true
@@ -127,7 +139,9 @@
       },
       "requestExample": {
         "author": "NASA",
-        "searchTerms": ["from:NASA"],
+        "searchTerms": [
+          "from:NASA"
+        ],
         "sort": "Latest"
       },
       "responseExample": {
@@ -161,7 +175,9 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["searchTerms"],
+        "required": [
+          "searchTerms"
+        ],
         "properties": {
           "searchTerms": {
             "type": "array",
@@ -185,7 +201,9 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "searchTerms": ["#AI lang:en"],
+        "searchTerms": [
+          "#AI lang:en"
+        ],
         "sort": "Latest",
         "tweetLanguage": "en"
       },
@@ -218,7 +236,9 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["searchTerms"],
+        "required": [
+          "searchTerms"
+        ],
         "properties": {
           "searchTerms": {
             "type": "array",
@@ -242,7 +262,9 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "searchTerms": ["cryptocurrency filter:verified"],
+        "searchTerms": [
+          "cryptocurrency filter:verified"
+        ],
         "onlyVerifiedUsers": true,
         "sort": "Top"
       },

@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "Facebook Posts Scraper",
-    "bio": "Marketplace-hosted Facebook post scraping powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifyfacebookposts.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "Facebook Posts Scraper",
     "tagline": "Scrape Facebook page posts, videos, transcripts, and date-bounded archives through a Fast-native async proxy.",
     "about": "Facebook Posts Scraper exposes multiple Apify-backed Facebook page workflows through the marketplace, including baseline post extraction, transcript-enabled video scraping, and date-range constrained backfills.",
-    "categories": ["Social", "Research", "Marketing"],
+    "categories": [
+      "Social",
+      "Research",
+      "Marketing"
+    ],
     "promptIntro": "I want to use the Facebook Posts Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -37,14 +41,18 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["startUrls"],
+        "required": [
+          "startUrls"
+        ],
         "properties": {
           "startUrls": {
             "type": "array",
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["url"],
+              "required": [
+                "url"
+              ],
               "properties": {
                 "url": {
                   "type": "string",
@@ -103,14 +111,18 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["startUrls"],
+        "required": [
+          "startUrls"
+        ],
         "properties": {
           "startUrls": {
             "type": "array",
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["url"],
+              "required": [
+                "url"
+              ],
               "properties": {
                 "url": {
                   "type": "string",
@@ -177,14 +189,18 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["startUrls"],
+        "required": [
+          "startUrls"
+        ],
         "properties": {
           "startUrls": {
             "type": "array",
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["url"],
+              "required": [
+                "url"
+              ],
               "properties": {
                 "url": {
                   "type": "string",
@@ -251,14 +267,18 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["startUrls"],
+        "required": [
+          "startUrls"
+        ],
         "properties": {
           "startUrls": {
             "type": "array",
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["url"],
+              "required": [
+                "url"
+              ],
               "properties": {
                 "url": {
                   "type": "string",

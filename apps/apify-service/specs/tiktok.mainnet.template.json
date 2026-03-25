@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "TikTok Scraper",
-    "bio": "Marketplace-hosted TikTok scraping powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifytiktok.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "TikTok Scraper",
     "tagline": "Scrape TikTok profiles, hashtags, search results, and videos through a Fast-native async proxy.",
     "about": "TikTok Scraper exposes multiple Apify-backed TikTok workflows through the marketplace, including profile feeds, hashtag feeds, keyword search, and direct video detail fetches.",
-    "categories": ["Social", "Research", "Marketing"],
+    "categories": [
+      "Social",
+      "Research",
+      "Marketing"
+    ],
     "promptIntro": "I want to use the TikTok Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -37,7 +41,9 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["profiles"],
+        "required": [
+          "profiles"
+        ],
         "properties": {
           "profiles": {
             "type": "array",
@@ -55,12 +61,19 @@
             "type": "array",
             "items": {
               "type": "string",
-              "enum": ["videos", "reposts"]
+              "enum": [
+                "videos",
+                "reposts"
+              ]
             }
           },
           "profileSorting": {
             "type": "string",
-            "enum": ["latest", "popular", "oldest"]
+            "enum": [
+              "latest",
+              "popular",
+              "oldest"
+            ]
           },
           "excludePinnedPosts": {
             "type": "boolean"
@@ -73,9 +86,13 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "profiles": ["@example"],
+        "profiles": [
+          "@example"
+        ],
         "resultsPerPage": 25,
-        "profileScrapeSections": ["videos"],
+        "profileScrapeSections": [
+          "videos"
+        ],
         "profileSorting": "latest",
         "excludePinnedPosts": false
       },
@@ -110,7 +127,9 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["hashtags"],
+        "required": [
+          "hashtags"
+        ],
         "properties": {
           "hashtags": {
             "type": "array",
@@ -132,7 +151,9 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "hashtags": ["aiagents"],
+        "hashtags": [
+          "aiagents"
+        ],
         "resultsPerPage": 25
       },
       "responseExample": {
@@ -164,7 +185,9 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["searchQueries"],
+        "required": [
+          "searchQueries"
+        ],
         "properties": {
           "searchQueries": {
             "type": "array",
@@ -180,11 +203,19 @@
           },
           "searchSection": {
             "type": "string",
-            "enum": ["", "/video", "/user"]
+            "enum": [
+              "",
+              "/video",
+              "/user"
+            ]
           },
           "searchSorting": {
             "type": "string",
-            "enum": ["0", "1", "3"]
+            "enum": [
+              "0",
+              "1",
+              "3"
+            ]
           }
         },
         "additionalProperties": true
@@ -194,7 +225,9 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "searchQueries": ["fast wallet"],
+        "searchQueries": [
+          "fast wallet"
+        ],
         "resultsPerPage": 25,
         "searchSection": "/video",
         "searchSorting": "0"
@@ -230,7 +263,9 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["postURLs"],
+        "required": [
+          "postURLs"
+        ],
         "properties": {
           "postURLs": {
             "type": "array",
@@ -255,7 +290,9 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "postURLs": ["https://www.tiktok.com/@example/video/7534061113365859586"],
+        "postURLs": [
+          "https://www.tiktok.com/@example/video/7534061113365859586"
+        ],
         "scrapeRelatedVideos": false,
         "resultsPerPage": 10
       },

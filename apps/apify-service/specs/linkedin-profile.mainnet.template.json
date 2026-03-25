@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "LinkedIn Profile Scraper",
-    "bio": "Marketplace-hosted LinkedIn profile enrichment powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifylinkedinprofile.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "LinkedIn Profile Scraper",
     "tagline": "Enrich LinkedIn profile URLs with work history, education, and discovered contact data through a Fast-native async proxy.",
     "about": "LinkedIn Profile Scraper exposes an Apify-backed enrichment workflow through the marketplace for profile intelligence, recruiting, sales research, and lead enrichment from direct LinkedIn profile URLs.",
-    "categories": ["Lead Generation", "Sales", "Recruiting"],
+    "categories": [
+      "Lead Generation",
+      "Sales",
+      "Recruiting"
+    ],
     "promptIntro": "I want to use the LinkedIn Profile Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -37,7 +41,9 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["profileUrls"],
+        "required": [
+          "profileUrls"
+        ],
         "properties": {
           "profileUrls": {
             "type": "array",

@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "Indeed Scraper",
-    "bio": "Marketplace-hosted Indeed job scraping powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifyindeed.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "Indeed Scraper",
     "tagline": "Search Indeed job listings by title and location through a Fast-native async proxy.",
     "about": "Indeed Scraper exposes an Apify-backed Indeed job search workflow through the marketplace for recruiting research, hiring intelligence, and job market monitoring from title, location, or direct Indeed search URLs.",
-    "categories": ["Jobs", "Research", "Recruiting"],
+    "categories": [
+      "Jobs",
+      "Research",
+      "Recruiting"
+    ],
     "promptIntro": "I want to use the Indeed Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -61,10 +65,15 @@
         },
         "anyOf": [
           {
-            "required": ["query", "location"]
+            "required": [
+              "query",
+              "location"
+            ]
           },
           {
-            "required": ["startUrls"]
+            "required": [
+              "startUrls"
+            ]
           }
         ],
         "additionalProperties": true

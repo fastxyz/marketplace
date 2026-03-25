@@ -1,9 +1,9 @@
 {
   "profile": {
-    "displayName": "Tavily Proxy",
-    "bio": "Marketplace-hosted Tavily search and extraction endpoints for Fast buyers.",
-    "websiteUrl": "https://replace-with-your-mainnet-tavily-host.example.com",
-    "contactEmail": "replace-with-provider-email@example.com"
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
+    "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
     "serviceType": "marketplace_proxy",
@@ -23,8 +23,8 @@
       "Use the x402-paid routes below from the marketplace.",
       "Choose the endpoint that matches the Tavily workflow you need."
     ],
-    "websiteUrl": "https://replace-with-your-mainnet-tavily-host.example.com",
-    "payoutWallet": "replace-with-mainnet-fast-wallet"
+    "websiteUrl": "https://fastmainnettavily.8o.vc",
+    "payoutWallet": "fast1rv8wsdd5pnkwt4u637g2yj4tpuyq26rzw8380rfhpnsnljz7v3tqv4njuq"
   },
   "endpoints": [
     {

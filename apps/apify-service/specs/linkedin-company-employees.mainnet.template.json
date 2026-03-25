@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "LinkedIn Company Employees Scraper",
-    "bio": "Marketplace-hosted LinkedIn employee list extraction powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifylinkedinemployees.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "LinkedIn Company Employees Scraper",
     "tagline": "Extract employee lists for LinkedIn company pages through a Fast-native async proxy.",
     "about": "LinkedIn Company Employees Scraper exposes an Apify-backed LinkedIn people search workflow through the marketplace for company talent mapping, recruiting research, and account intelligence with optional location and job-title filters.",
-    "categories": ["Lead Generation", "Recruiting", "Research"],
+    "categories": [
+      "Lead Generation",
+      "Recruiting",
+      "Research"
+    ],
     "promptIntro": "I want to use the LinkedIn Company Employees Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -37,7 +41,9 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["companies"],
+        "required": [
+          "companies"
+        ],
         "properties": {
           "companies": {
             "type": "array",
@@ -83,10 +89,16 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "companies": ["https://www.linkedin.com/company/google"],
+        "companies": [
+          "https://www.linkedin.com/company/google"
+        ],
         "profileScraperMode": "Short ($4 per 1k)",
-        "locations": ["New York"],
-        "jobTitles": ["Software Engineer"],
+        "locations": [
+          "New York"
+        ],
+        "jobTitles": [
+          "Software Engineer"
+        ],
         "maxItems": 100
       },
       "responseExample": {

@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "Cheerio Scraper",
-    "bio": "Marketplace-hosted HTTP-first scraping powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifycheerio.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "Cheerio Scraper",
     "tagline": "Run high-performance HTTP crawling and custom HTML extraction through a Fast-native async proxy.",
     "about": "Cheerio Scraper exposes an Apify-backed HTTP crawler through the marketplace for high-throughput scraping on sites that do not require JavaScript rendering and where a custom Cheerio page function is the right fit.",
-    "categories": ["Developer Tools", "Automation", "Research"],
+    "categories": [
+      "Developer Tools",
+      "Automation",
+      "Research"
+    ],
     "promptIntro": "I want to use the Cheerio Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -37,14 +41,19 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["startUrls", "pageFunction"],
+        "required": [
+          "startUrls",
+          "pageFunction"
+        ],
         "properties": {
           "startUrls": {
             "type": "array",
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["url"],
+              "required": [
+                "url"
+              ],
               "properties": {
                 "url": {
                   "type": "string",

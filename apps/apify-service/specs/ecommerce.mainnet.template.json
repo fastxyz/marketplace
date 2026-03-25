@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "E-commerce Scraping Tool",
-    "bio": "Marketplace-hosted retail product scraping powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifyecommerce.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "E-commerce Scraping Tool",
     "tagline": "Extract product and pricing data from retail sites through a Fast-native async proxy.",
     "about": "E-commerce Scraping Tool exposes an Apify-backed multi-site retail scraping workflow through the marketplace for product catalog collection, competitive price monitoring, and marketplace intelligence across global and regional commerce sites.",
-    "categories": ["E-commerce", "Research", "Pricing"],
+    "categories": [
+      "E-commerce",
+      "Research",
+      "Pricing"
+    ],
     "promptIntro": "I want to use the E-commerce Scraping Tool service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -43,7 +47,9 @@
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["url"],
+              "required": [
+                "url"
+              ],
               "properties": {
                 "url": {
                   "type": "string",
@@ -68,10 +74,14 @@
         },
         "anyOf": [
           {
-            "required": ["startUrls"]
+            "required": [
+              "startUrls"
+            ]
           },
           {
-            "required": ["search"]
+            "required": [
+              "search"
+            ]
           }
         ],
         "additionalProperties": true

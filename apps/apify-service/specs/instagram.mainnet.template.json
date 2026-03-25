@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "Instagram Scraper",
-    "bio": "Marketplace-hosted Instagram scraping powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifyinstagram.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "Instagram Scraper",
     "tagline": "Scrape Instagram profiles, hashtags, places, and comments through a Fast-native async proxy.",
     "about": "Instagram Scraper exposes multiple Apify-backed Instagram workflows through the marketplace, including profile post retrieval, hashtag and place discovery, and direct post comment extraction.",
-    "categories": ["Social", "Research", "Marketing"],
+    "categories": [
+      "Social",
+      "Research",
+      "Marketing"
+    ],
     "promptIntro": "I want to use the Instagram Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -37,7 +41,10 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["directUrls", "resultsType"],
+        "required": [
+          "directUrls",
+          "resultsType"
+        ],
         "properties": {
           "directUrls": {
             "type": "array",
@@ -49,7 +56,12 @@
           },
           "resultsType": {
             "type": "string",
-            "enum": ["posts", "details", "comments", "reels"]
+            "enum": [
+              "posts",
+              "details",
+              "comments",
+              "reels"
+            ]
           },
           "resultsLimit": {
             "type": "integer",
@@ -63,7 +75,9 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "directUrls": ["https://www.instagram.com/example/"],
+        "directUrls": [
+          "https://www.instagram.com/example/"
+        ],
         "resultsType": "posts",
         "resultsLimit": 25
       },
@@ -96,7 +110,11 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["search", "searchType", "resultsType"],
+        "required": [
+          "search",
+          "searchType",
+          "resultsType"
+        ],
         "properties": {
           "search": {
             "type": "string",
@@ -104,7 +122,11 @@
           },
           "searchType": {
             "type": "string",
-            "enum": ["hashtag", "user", "place"]
+            "enum": [
+              "hashtag",
+              "user",
+              "place"
+            ]
           },
           "searchLimit": {
             "type": "integer",
@@ -112,7 +134,12 @@
           },
           "resultsType": {
             "type": "string",
-            "enum": ["posts", "details", "comments", "reels"]
+            "enum": [
+              "posts",
+              "details",
+              "comments",
+              "reels"
+            ]
           },
           "resultsLimit": {
             "type": "integer",
@@ -138,7 +165,9 @@
         "items": [
           {
             "caption": "#aiagents example post",
-            "hashtags": ["aiagents"]
+            "hashtags": [
+              "aiagents"
+            ]
           }
         ]
       },
@@ -161,7 +190,11 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["search", "searchType", "resultsType"],
+        "required": [
+          "search",
+          "searchType",
+          "resultsType"
+        ],
         "properties": {
           "search": {
             "type": "string",
@@ -169,7 +202,11 @@
           },
           "searchType": {
             "type": "string",
-            "enum": ["hashtag", "user", "place"]
+            "enum": [
+              "hashtag",
+              "user",
+              "place"
+            ]
           },
           "searchLimit": {
             "type": "integer",
@@ -177,7 +214,12 @@
           },
           "resultsType": {
             "type": "string",
-            "enum": ["posts", "details", "comments", "reels"]
+            "enum": [
+              "posts",
+              "details",
+              "comments",
+              "reels"
+            ]
           },
           "resultsLimit": {
             "type": "integer",
@@ -226,7 +268,10 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["directUrls", "resultsType"],
+        "required": [
+          "directUrls",
+          "resultsType"
+        ],
         "properties": {
           "directUrls": {
             "type": "array",
@@ -238,7 +283,9 @@
           },
           "resultsType": {
             "type": "string",
-            "enum": ["comments"]
+            "enum": [
+              "comments"
+            ]
           },
           "resultsLimit": {
             "type": "integer",
@@ -252,7 +299,9 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "directUrls": ["https://www.instagram.com/p/C3TTthZLoQK/"],
+        "directUrls": [
+          "https://www.instagram.com/p/C3TTthZLoQK/"
+        ],
         "resultsType": "comments",
         "resultsLimit": 25
       },

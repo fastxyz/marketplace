@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "Facebook Ad Library Scraper",
-    "bio": "Marketplace-hosted Facebook Ad Library scraping powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifyfacebookadslibrary.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "Facebook Ad Library Scraper",
     "tagline": "Extract Meta Ad Library results and page-level ads through a Fast-native async proxy.",
     "about": "Facebook Ad Library Scraper exposes an Apify-backed ad intelligence workflow through the marketplace for competitor research, creative monitoring, and paid social analysis from Ad Library searches or known page URLs.",
-    "categories": ["Social", "Marketing", "Research"],
+    "categories": [
+      "Social",
+      "Marketing",
+      "Research"
+    ],
     "promptIntro": "I want to use the Facebook Ad Library Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -56,10 +60,14 @@
         },
         "anyOf": [
           {
-            "required": ["searchPageUrl"]
+            "required": [
+              "searchPageUrl"
+            ]
           },
           {
-            "required": ["pageUrls"]
+            "required": [
+              "pageUrls"
+            ]
           }
         ],
         "additionalProperties": true

@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "LinkedIn Jobs Scraper",
-    "bio": "Marketplace-hosted LinkedIn job search scraping powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifylinkedinjobs.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "LinkedIn Jobs Scraper",
     "tagline": "Search LinkedIn jobs by title and location through a Fast-native async proxy.",
     "about": "LinkedIn Jobs Scraper exposes an Apify-backed LinkedIn job search workflow through the marketplace for labor market research, job monitoring, and competitive hiring analysis.",
-    "categories": ["Jobs", "Research", "Recruiting"],
+    "categories": [
+      "Jobs",
+      "Research",
+      "Recruiting"
+    ],
     "promptIntro": "I want to use the LinkedIn Jobs Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -37,7 +41,10 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["title", "location"],
+        "required": [
+          "title",
+          "location"
+        ],
         "properties": {
           "title": {
             "type": "string",

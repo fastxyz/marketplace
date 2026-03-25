@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "Web Scraper",
-    "bio": "Marketplace-hosted browser automation scraping powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifywebscraper.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "Web Scraper",
     "tagline": "Run browser-based crawling and custom page extraction through a Fast-native async proxy.",
     "about": "Web Scraper exposes an Apify-backed browser crawler through the marketplace. It is suited to dynamic sites that need JavaScript execution, recursive crawling, and custom extraction with a provided page function.",
-    "categories": ["Developer Tools", "Automation", "Research"],
+    "categories": [
+      "Developer Tools",
+      "Automation",
+      "Research"
+    ],
     "promptIntro": "I want to use the Web Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -37,14 +41,19 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["startUrls", "pageFunction"],
+        "required": [
+          "startUrls",
+          "pageFunction"
+        ],
         "properties": {
           "startUrls": {
             "type": "array",
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["url"],
+              "required": [
+                "url"
+              ],
               "properties": {
                 "url": {
                   "type": "string",

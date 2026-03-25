@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "Website Content Crawler",
-    "bio": "Marketplace-hosted website content extraction powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifywebsitecontent.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "Website Content Crawler",
     "tagline": "Deep crawl websites and extract cleaned text or Markdown through a Fast-native async proxy.",
     "about": "Website Content Crawler exposes an Apify-backed website crawling workflow through the marketplace for documentation indexing, RAG ingestion, knowledge-base sync, and content extraction from blogs or help centers.",
-    "categories": ["AI", "Research", "Developer Tools"],
+    "categories": [
+      "AI",
+      "Research",
+      "Developer Tools"
+    ],
     "promptIntro": "I want to use the Website Content Crawler service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -37,14 +41,18 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["startUrls"],
+        "required": [
+          "startUrls"
+        ],
         "properties": {
           "startUrls": {
             "type": "array",
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["url"],
+              "required": [
+                "url"
+              ],
               "properties": {
                 "url": {
                   "type": "string",

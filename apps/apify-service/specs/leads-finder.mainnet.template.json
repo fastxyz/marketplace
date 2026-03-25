@@ -1,8 +1,8 @@
 {
   "profile": {
-    "displayName": "Leads Finder",
-    "bio": "Marketplace-hosted B2B lead generation powered by Apify.",
-    "websiteUrl": "https://fastmainnetapifyleadsfinder.8o.vc",
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
     "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
@@ -12,7 +12,11 @@
     "name": "Leads Finder",
     "tagline": "Generate B2B contact lists with title, geography, and firmographic filters through a Fast-native async proxy.",
     "about": "Leads Finder exposes an Apify-backed B2B lead generation workflow through the marketplace for outbound prospecting, TAM discovery, and filtered contact list generation with email and company enrichment.",
-    "categories": ["Lead Generation", "Sales", "Research"],
+    "categories": [
+      "Lead Generation",
+      "Sales",
+      "Research"
+    ],
     "promptIntro": "I want to use the Leads Finder service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
@@ -37,7 +41,9 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
-        "required": ["contact_job_title"],
+        "required": [
+          "contact_job_title"
+        ],
         "properties": {
           "contact_job_title": {
             "type": "array",
@@ -87,10 +93,18 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "contact_job_title": ["Marketing Manager"],
-        "contact_location": ["United States"],
-        "company_industry": ["SaaS"],
-        "seniority_level": ["Manager"],
+        "contact_job_title": [
+          "Marketing Manager"
+        ],
+        "contact_location": [
+          "United States"
+        ],
+        "company_industry": [
+          "SaaS"
+        ],
+        "seniority_level": [
+          "Manager"
+        ],
         "fetch_count": 250
       },
       "responseExample": {
