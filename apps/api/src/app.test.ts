@@ -68,6 +68,7 @@ async function createTestApp(
     providers?: Parameters<typeof createMarketplaceApi>[0]["providers"];
     refundService?: Parameters<typeof createMarketplaceApi>[0]["refundService"];
     baseUrl?: string;
+    webBaseUrl?: string;
   } = {}
 ) {
   const buyer = await createTestWallet();
@@ -100,10 +101,10 @@ async function createTestApp(
         async issueRefund() {
           return { txHash: "0xrefund" };
         }
-      },
+    },
     providers: input.providers,
     baseUrl: input.baseUrl,
-    webBaseUrl: "https://marketplace.example.com"
+    webBaseUrl: input.webBaseUrl ?? "https://marketplace.example.com"
   });
 
   if (previousNetwork === undefined) {
@@ -312,6 +313,21 @@ describe("marketplace api", () => {
     expect(response.headers["access-control-allow-origin"]).toBe("https://marketplace.example.com");
     expect(response.headers["access-control-allow-headers"]).toContain("PAYMENT-IDENTIFIER");
     expect(response.headers["access-control-expose-headers"]).toContain("PAYMENT-REQUIRED");
+  });
+
+  it("allows browser CORS requests from any configured web origin alias", async () => {
+    const { app } = await createTestApp({
+      webBaseUrl: "https://fast.8o.vc, https://marketplace.fast.xyz"
+    });
+
+    const response = await request(app)
+      .options("/auth/wallet/challenge")
+      .set("Origin", "https://marketplace.fast.xyz")
+      .set("Access-Control-Request-Method", "POST")
+      .set("Access-Control-Request-Headers", "content-type");
+
+    expect(response.status).toBe(204);
+    expect(response.headers["access-control-allow-origin"]).toBe("https://marketplace.fast.xyz");
   });
 
   it("accepts legacy X-PAYMENT on a sync route", async () => {

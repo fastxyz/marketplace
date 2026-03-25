@@ -337,7 +337,7 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
   const providers = options.providers ?? createDefaultProviderRegistry();
   const baseUrl = options.baseUrl ?? "http://localhost:3000";
   const webBaseUrl = options.webBaseUrl ?? baseUrl;
-  const allowedWebOrigin = safeOrigin(webBaseUrl);
+  const allowedWebOrigins = parseAllowedOrigins(webBaseUrl);
   const networkConfig = getDefaultMarketplaceNetworkConfig();
   const secretsKey = options.secretsKey;
 
@@ -349,7 +349,7 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
   }));
   app.use((req, res, next) => {
     const origin = req.header("origin");
-    if (origin && origin === allowedWebOrigin) {
+    if (origin && allowedWebOrigins.has(origin)) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Vary", "Origin");
       res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
@@ -3897,4 +3897,14 @@ function safeOrigin(value: string): string {
   } catch {
     return value;
   }
+}
+
+function parseAllowedOrigins(value: string): Set<string> {
+  return new Set(
+    value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0)
+      .map((entry) => safeOrigin(entry))
+  );
 }
