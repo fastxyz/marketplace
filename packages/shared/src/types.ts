@@ -987,7 +987,7 @@ export interface MarketplaceStore {
   saveSyncIdempotency(input: SaveSyncIdempotencyInput): Promise<IdempotencyRecord>;
   saveAsyncAcceptance(input: SaveAsyncAcceptanceInput): Promise<{ idempotency: IdempotencyRecord; job: JobRecord }>;
   getJob(jobToken: string): Promise<JobRecord | null>;
-  listPendingJobs(limit: number): Promise<JobRecord[]>;
+  listPendingJobs(input: { limit: number; now?: string }): Promise<JobRecord[]>;
   updateJobPending(input: { jobToken: string; providerState?: Record<string, unknown> | null; nextPollAt?: string | null }): Promise<JobRecord>;
   completeJob(jobToken: string, body: unknown): Promise<JobRecord>;
   failJob(jobToken: string, error: string): Promise<JobRecord>;

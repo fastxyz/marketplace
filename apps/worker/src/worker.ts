@@ -28,13 +28,17 @@ export interface MarketplaceWorkerOptions {
 
 export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOptions): Promise<void> {
   const providers = options.providers ?? createDefaultProviderRegistry();
-  const jobs = await options.store.listPendingJobs(options.limit ?? 10);
-  const now = Date.now();
+  const now = new Date();
+  const jobs = await options.store.listPendingJobs({
+    limit: options.limit ?? 10,
+    now: now.toISOString()
+  });
+  const nowMs = now.getTime();
 
   for (const job of jobs) {
     const route = job.routeSnapshot;
 
-    if (job.timeoutAt && Date.parse(job.timeoutAt) <= now) {
+    if (job.timeoutAt && Date.parse(job.timeoutAt) <= nowMs) {
       await options.store.recordProviderAttempt({
         jobToken: job.jobToken,
         routeId: job.routeId,
@@ -57,7 +61,7 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
       continue;
     }
 
-    if (job.nextPollAt && Date.parse(job.nextPollAt) > now) {
+    if (job.nextPollAt && Date.parse(job.nextPollAt) > nowMs) {
       continue;
     }
 
@@ -67,9 +71,40 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
 
     let pollResult: PollResult;
 
-    if (route.executorKind === "mock") {
-      const provider = providers[route.provider];
-      if (!provider) {
+    try {
+      if (route.executorKind === "mock") {
+        const provider = providers[route.provider];
+        if (!provider) {
+          await options.store.recordProviderAttempt({
+            jobToken: job.jobToken,
+            routeId: job.routeId,
+            requestId: job.requestId,
+            phase: "poll",
+            status: "failed",
+            requestPayload: {
+              providerJobId: job.providerJobId,
+              providerState: job.providerState
+            },
+            errorMessage: `Missing provider adapter: ${route.provider}`
+          });
+          await expireAsyncPrepaidReservation(options.store, job);
+          await resolveAsyncJobFailure({
+            store: options.store,
+            refundService: options.refundService,
+            job,
+            error: `Missing provider adapter: ${route.provider}`
+          });
+          continue;
+        }
+
+        pollResult = await provider.poll({ route, job });
+      } else if (route.executorKind === "http") {
+        pollResult = await pollHttpRoute({
+          job,
+          store: options.store,
+          secretsKey: options.secretsKey
+        });
+      } else {
         await options.store.recordProviderAttempt({
           jobToken: job.jobToken,
           routeId: job.routeId,
@@ -80,46 +115,24 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
             providerJobId: job.providerJobId,
             providerState: job.providerState
           },
-          errorMessage: `Missing provider adapter: ${route.provider}`
+          errorMessage: `Unsupported async executor: ${route.executorKind}`
         });
         await expireAsyncPrepaidReservation(options.store, job);
         await resolveAsyncJobFailure({
           store: options.store,
           refundService: options.refundService,
           job,
-          error: `Missing provider adapter: ${route.provider}`
+          error: `Unsupported async executor: ${route.executorKind}`
         });
         continue;
       }
-
-      pollResult = await provider.poll({ route, job });
-    } else if (route.executorKind === "http") {
-      pollResult = await pollHttpRoute({
-        job,
-        store: options.store,
-        secretsKey: options.secretsKey
-      });
-    } else {
-      await options.store.recordProviderAttempt({
-        jobToken: job.jobToken,
-        routeId: job.routeId,
-        requestId: job.requestId,
-        phase: "poll",
+    } catch (error) {
+      pollResult = {
         status: "failed",
-        requestPayload: {
-          providerJobId: job.providerJobId,
-          providerState: job.providerState
-        },
-        errorMessage: `Unsupported async executor: ${route.executorKind}`
-      });
-      await expireAsyncPrepaidReservation(options.store, job);
-      await resolveAsyncJobFailure({
-        store: options.store,
-        refundService: options.refundService,
-        job,
-        error: `Unsupported async executor: ${route.executorKind}`
-      });
-      continue;
+        permanent: true,
+        error: error instanceof Error ? error.message : `Async poll failed for ${job.routeId}.`,
+        providerState: job.providerState ?? undefined
+      };
     }
 
     await options.store.recordProviderAttempt({
@@ -171,7 +184,7 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
   await expireStaleCreditReservations({
     store: options.store,
     limit: options.limit ?? 10,
-    now: new Date(now).toISOString()
+    now: now.toISOString()
   });
 
   await recoverStalePendingPayments({

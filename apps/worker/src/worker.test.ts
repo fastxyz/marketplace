@@ -5,7 +5,8 @@ import {
   PAYMENT_EXECUTION_RECOVERY_MS,
   buildMarketplaceRoutes,
   createDefaultProviderRegistry,
-  resolveMarketplaceNetworkConfig
+  resolveMarketplaceNetworkConfig,
+  type ProviderRegistry
 } from "@marketplace/shared";
 
 import { runMarketplaceWorkerCycle } from "./worker.js";
@@ -480,5 +481,263 @@ describe("marketplace worker", () => {
 
     expect(refunds).toEqual([{ wallet: buyerWallet, amount: "125000" }]);
     expect((await store.getRefundByPaymentId("stale_payment_refund_1"))?.txHash).toBe("0xstale-refund");
+  });
+
+  it("processes due poll jobs even when older webhook and deferred jobs are pending", async () => {
+    const networkConfig = resolveMarketplaceNetworkConfig({
+      deploymentNetwork: "testnet"
+    });
+    const store = new InMemoryMarketplaceStore(networkConfig);
+    const registry = createDefaultProviderRegistry();
+    const asyncRoute = buildMarketplaceRoutes(networkConfig).find((route) => route.routeId === "mock.async-report.v1");
+
+    if (!asyncRoute) {
+      throw new Error("Missing async seeded route.");
+    }
+
+    await store.saveAsyncAcceptance({
+      paymentId: "worker_payment_webhook_1",
+      normalizedRequestHash: "hash-webhook",
+      buyerWallet: "fast1buyerwebhook0000000000000000000000000000000000000000000000",
+      route: {
+        ...asyncRoute,
+        asyncConfig: {
+          strategy: "webhook",
+          timeoutMs: 60_000,
+          pollPath: null
+        }
+      },
+      quotedPrice: "0",
+      payoutSplit: buildEscrowSplit({
+        providerAccountId: "mock",
+        providerWallet: null,
+        marketplaceBps: 10000,
+        marketplaceAmount: "0",
+        providerBps: 0,
+        providerAmount: "0"
+      }),
+      paymentPayload: "payload-webhook",
+      facilitatorResponse: { auth: "wallet_session" },
+      jobToken: "job_worker_webhook_1",
+      requestId: "request_worker_webhook_1",
+      providerJobId: "provider_worker_webhook_1",
+      requestBody: { topic: "webhook report" },
+      providerState: {
+        topic: "webhook report",
+        readyAt: Date.now() + 60_000
+      },
+      nextPollAt: new Date(Date.now() - 5_000).toISOString(),
+      timeoutAt: new Date(Date.now() + 60_000).toISOString(),
+      responseBody: {
+        jobToken: "job_worker_webhook_1",
+        status: "pending"
+      },
+      responseHeaders: {}
+    });
+
+    await store.saveAsyncAcceptance({
+      paymentId: "worker_payment_deferred_1",
+      normalizedRequestHash: "hash-deferred",
+      buyerWallet: "fast1buyerdeferred00000000000000000000000000000000000000000000",
+      route: asyncRoute,
+      quotedPrice: "0",
+      payoutSplit: buildEscrowSplit({
+        providerAccountId: "mock",
+        providerWallet: null,
+        marketplaceBps: 10000,
+        marketplaceAmount: "0",
+        providerBps: 0,
+        providerAmount: "0"
+      }),
+      paymentPayload: "payload-deferred",
+      facilitatorResponse: { auth: "wallet_session" },
+      jobToken: "job_worker_deferred_1",
+      requestId: "request_worker_deferred_1",
+      providerJobId: "provider_worker_deferred_1",
+      requestBody: { topic: "deferred report" },
+      providerState: {
+        topic: "deferred report",
+        readyAt: Date.now() + 60_000
+      },
+      nextPollAt: new Date(Date.now() + 60_000).toISOString(),
+      timeoutAt: new Date(Date.now() + 120_000).toISOString(),
+      responseBody: {
+        jobToken: "job_worker_deferred_1",
+        status: "pending"
+      },
+      responseHeaders: {}
+    });
+
+    await store.saveAsyncAcceptance({
+      paymentId: "worker_payment_due_1",
+      normalizedRequestHash: "hash-due",
+      buyerWallet: "fast1buyerdue000000000000000000000000000000000000000000000000",
+      route: asyncRoute,
+      quotedPrice: "0",
+      payoutSplit: buildEscrowSplit({
+        providerAccountId: "mock",
+        providerWallet: null,
+        marketplaceBps: 10000,
+        marketplaceAmount: "0",
+        providerBps: 0,
+        providerAmount: "0"
+      }),
+      paymentPayload: "payload-due",
+      facilitatorResponse: { auth: "wallet_session" },
+      jobToken: "job_worker_due_1",
+      requestId: "request_worker_due_1",
+      providerJobId: "provider_worker_due_1",
+      requestBody: { topic: "due report" },
+      providerState: {
+        topic: "due report",
+        readyAt: Date.now() - 10
+      },
+      nextPollAt: new Date(Date.now() - 5_000).toISOString(),
+      timeoutAt: new Date(Date.now() + 60_000).toISOString(),
+      responseBody: {
+        jobToken: "job_worker_due_1",
+        status: "pending"
+      },
+      responseHeaders: {}
+    });
+
+    await runMarketplaceWorkerCycle({
+      store,
+      providers: registry,
+      secretsKey: "test-secrets-key",
+      limit: 1,
+      refundService: {
+        async issueRefund() {
+          return { txHash: "0xrefund" };
+        }
+      }
+    });
+
+    expect((await store.getJob("job_worker_webhook_1"))?.status).toBe("pending");
+    expect((await store.getJob("job_worker_deferred_1"))?.status).toBe("pending");
+    expect((await store.getJob("job_worker_due_1"))?.status).toBe("completed");
+  });
+
+  it("continues processing later jobs when a provider poll throws", async () => {
+    const networkConfig = resolveMarketplaceNetworkConfig({
+      deploymentNetwork: "testnet"
+    });
+    const store = new InMemoryMarketplaceStore(networkConfig);
+    const asyncRoute = buildMarketplaceRoutes(networkConfig).find((route) => route.routeId === "mock.async-report.v1");
+
+    if (!asyncRoute) {
+      throw new Error("Missing async seeded route.");
+    }
+
+    const registry = {
+      mock: {
+        async execute() {
+          throw new Error("execute should not be called in worker tests");
+        },
+        async poll({ job }) {
+          if (job.jobToken === "job_worker_throw_1") {
+            throw new Error("Malformed provider poll response.");
+          }
+
+          return {
+            status: "completed" as const,
+            body: {
+              provider: "mock",
+              operation: "async-report",
+              topic: "completed report"
+            }
+          };
+        }
+      }
+    } satisfies ProviderRegistry;
+
+    await store.saveAsyncAcceptance({
+      paymentId: "worker_payment_throw_1",
+      normalizedRequestHash: "hash-throw-1",
+      buyerWallet: "fast1buyerthrow10000000000000000000000000000000000000000000000",
+      route: {
+        ...asyncRoute,
+        billing: { type: "free" },
+        price: "Free"
+      },
+      quotedPrice: "0",
+      payoutSplit: buildEscrowSplit({
+        providerAccountId: "mock",
+        providerWallet: null,
+        marketplaceBps: 10000,
+        marketplaceAmount: "0",
+        providerBps: 0,
+        providerAmount: "0"
+      }),
+      paymentPayload: "payload-throw-1",
+      facilitatorResponse: { auth: "wallet_session" },
+      jobToken: "job_worker_throw_1",
+      requestId: "request_worker_throw_1",
+      providerJobId: "provider_worker_throw_1",
+      requestBody: { topic: "throwing report" },
+      providerState: {
+        topic: "throwing report",
+        readyAt: Date.now() - 10
+      },
+      nextPollAt: new Date(Date.now() - 1_000).toISOString(),
+      timeoutAt: new Date(Date.now() + 60_000).toISOString(),
+      responseBody: {
+        jobToken: "job_worker_throw_1",
+        status: "pending"
+      },
+      responseHeaders: {}
+    });
+
+    await store.saveAsyncAcceptance({
+      paymentId: "worker_payment_throw_2",
+      normalizedRequestHash: "hash-throw-2",
+      buyerWallet: "fast1buyerthrow20000000000000000000000000000000000000000000000",
+      route: {
+        ...asyncRoute,
+        billing: { type: "free" },
+        price: "Free"
+      },
+      quotedPrice: "0",
+      payoutSplit: buildEscrowSplit({
+        providerAccountId: "mock",
+        providerWallet: null,
+        marketplaceBps: 10000,
+        marketplaceAmount: "0",
+        providerBps: 0,
+        providerAmount: "0"
+      }),
+      paymentPayload: "payload-throw-2",
+      facilitatorResponse: { auth: "wallet_session" },
+      jobToken: "job_worker_throw_2",
+      requestId: "request_worker_throw_2",
+      providerJobId: "provider_worker_throw_2",
+      requestBody: { topic: "completed report" },
+      providerState: {
+        topic: "completed report",
+        readyAt: Date.now() - 10
+      },
+      nextPollAt: new Date(Date.now() - 1_000).toISOString(),
+      timeoutAt: new Date(Date.now() + 60_000).toISOString(),
+      responseBody: {
+        jobToken: "job_worker_throw_2",
+        status: "pending"
+      },
+      responseHeaders: {}
+    });
+
+    await runMarketplaceWorkerCycle({
+      store,
+      providers: registry,
+      secretsKey: "test-secrets-key",
+      refundService: {
+        async issueRefund() {
+          return { txHash: "0xrefund" };
+        }
+      }
+    });
+
+    expect((await store.getJob("job_worker_throw_1"))?.status).toBe("failed");
+    expect((await store.getJob("job_worker_throw_1"))?.errorMessage).toBe("Malformed provider poll response.");
+    expect((await store.getJob("job_worker_throw_2"))?.status).toBe("completed");
   });
 });

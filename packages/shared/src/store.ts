@@ -79,6 +79,39 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function isPendingJobTimedOut(job: Pick<JobRecord, "timeoutAt">, nowMs: number): boolean {
+  if (!job.timeoutAt) {
+    return false;
+  }
+
+  const timeoutMs = Date.parse(job.timeoutAt);
+  return !Number.isNaN(timeoutMs) && timeoutMs <= nowMs;
+}
+
+function isPendingJobActionable(
+  job: Pick<JobRecord, "status" | "nextPollAt" | "timeoutAt" | "routeSnapshot">,
+  nowMs: number
+): boolean {
+  if (job.status !== "pending") {
+    return false;
+  }
+
+  if (isPendingJobTimedOut(job, nowMs)) {
+    return true;
+  }
+
+  if (job.routeSnapshot.asyncConfig?.strategy === "webhook") {
+    return false;
+  }
+
+  if (!job.nextPollAt) {
+    return true;
+  }
+
+  const nextPollMs = Date.parse(job.nextPollAt);
+  return Number.isNaN(nextPollMs) || nextPollMs <= nowMs;
+}
+
 function normalizeAsyncConfig(value: unknown): RouteAsyncConfig | null {
   if (!value || typeof value !== "object") {
     return null;
@@ -843,11 +876,25 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     return clone(this.jobsByToken.get(jobToken) ?? null);
   }
 
-  async listPendingJobs(limit: number): Promise<JobRecord[]> {
+  async listPendingJobs(input: { limit: number; now?: string }): Promise<JobRecord[]> {
+    if (input.limit <= 0) {
+      return [];
+    }
+
+    const nowMs = Date.parse(input.now ?? timestamp());
     return clone(
       Array.from(this.jobsByToken.values())
-        .filter((job) => job.status === "pending")
-        .slice(0, limit)
+        .filter((job) => isPendingJobActionable(job, nowMs))
+        .sort((left, right) => {
+          const leftTimedOut = isPendingJobTimedOut(left, nowMs);
+          const rightTimedOut = isPendingJobTimedOut(right, nowMs);
+          if (leftTimedOut !== rightTimedOut) {
+            return leftTimedOut ? -1 : 1;
+          }
+
+          return Date.parse(left.createdAt) - Date.parse(right.createdAt);
+        })
+        .slice(0, input.limit)
     );
   }
 
@@ -4551,10 +4598,30 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     return result.rowCount ? mapJobRow(result.rows[0]) : null;
   }
 
-  async listPendingJobs(limit: number): Promise<JobRecord[]> {
+  async listPendingJobs(input: { limit: number; now?: string }): Promise<JobRecord[]> {
+    if (input.limit <= 0) {
+      return [];
+    }
+
+    const now = input.now ?? new Date().toISOString();
     const result = await this.pool.query(
-      "SELECT * FROM jobs WHERE status = 'pending' ORDER BY created_at ASC LIMIT $1",
-      [limit]
+      `
+      SELECT *
+      FROM jobs
+      WHERE status = 'pending'
+        AND (
+          (timeout_at IS NOT NULL AND timeout_at <= $1::timestamptz)
+          OR (
+            COALESCE(route_snapshot->'asyncConfig'->>'strategy', '') <> 'webhook'
+            AND (next_poll_at IS NULL OR next_poll_at <= $1::timestamptz)
+          )
+        )
+      ORDER BY
+        CASE WHEN timeout_at IS NOT NULL AND timeout_at <= $1::timestamptz THEN 0 ELSE 1 END,
+        created_at ASC
+      LIMIT $2
+      `,
+      [now, input.limit]
     );
     return result.rows.map(mapJobRow);
   }
