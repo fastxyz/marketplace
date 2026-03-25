@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { AlertCircle, LoaderCircle, LogOut, PlugZap, Wallet } from "lucide-react";
+import { AlertCircle, LoaderCircle, LogOut, Wallet } from "lucide-react";
 import type { MarketplaceDeploymentNetwork } from "@marketplace/shared";
 
 import { Badge } from "@/components/ui/badge";
@@ -177,9 +177,11 @@ export function WalletLoginButton({
   return (
     <div className="flex flex-col items-end gap-2">
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <Badge variant="outline" className="rounded-pill">
-          {networkLabel}
-        </Badge>
+        {networkLabel !== "Mainnet" ? (
+          <Badge variant="outline" className="rounded-pill">
+            {networkLabel}
+          </Badge>
+        ) : null}
         {session ? (
           <>
             <div className="inline-flex items-center gap-2 rounded-pill border border-border bg-muted px-4 py-3 text-sm font-medium tracking-headline">
@@ -192,9 +194,36 @@ export function WalletLoginButton({
             </Button>
           </>
         ) : (
-          <Button type="button" size="sm" onClick={() => void connectWallet()} disabled={pending}>
-            {pending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <PlugZap className="h-4 w-4" />}
-            Connect Wallet
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => void connectWallet()}
+            disabled={pending}
+            aria-label="Connect to Fast"
+          >
+            {pending ? (
+              <LoaderCircle className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <span>Connect to</span>
+                <img
+                  src="/brand/fast-logo-dark.svg"
+                  alt=""
+                  aria-hidden="true"
+                  width={146}
+                  height={52}
+                  className="block h-4 w-auto dark:hidden"
+                />
+                <img
+                  src="/brand/fast-logo-light.svg"
+                  alt=""
+                  aria-hidden="true"
+                  width={146}
+                  height={52}
+                  className="hidden h-4 w-auto dark:block"
+                />
+              </>
+            )}
           </Button>
         )}
       </div>

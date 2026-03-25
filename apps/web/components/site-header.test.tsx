@@ -32,6 +32,18 @@ describe("SiteHeader", () => {
     expect(screen.getByText("SKILL.md")).toBeTruthy();
     expect(screen.getByText("Testnet")).toBeTruthy();
     expect(screen.getByRole("button", { name: /toggle color theme/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /connect wallet/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /connect to fast/i })).toBeTruthy();
+  });
+
+  it("does not render the mainnet badge in the navbar", () => {
+    render(
+      <SiteHeader
+        apiBaseUrl="https://api.marketplace.example.com"
+        deploymentNetwork="mainnet"
+        networkLabel="Mainnet"
+      />
+    );
+
+    expect(screen.queryByText("Mainnet")).toBeNull();
   });
 });
