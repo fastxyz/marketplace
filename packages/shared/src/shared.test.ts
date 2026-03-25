@@ -6,6 +6,7 @@ import {
   PostgresMarketplaceStore,
   buildPriceRange,
   buildMarketplaceRoutes,
+  buildPaymentRequirementForRoute,
   buildServiceDetail,
   buildOpenApiDocument,
   buildPayoutSplit,
@@ -64,7 +65,7 @@ function buildEscrowSplit(input: {
   providerBps: number;
 }) {
   return {
-    currency: "fastUSDC" as const,
+    currency: "USDC" as const,
     settlementMode: "verified_escrow" as const,
     paymentDestinationWallet: "fast1market",
     usesTreasurySettlement: true,
@@ -364,7 +365,7 @@ describe("shared marketplace helpers", () => {
 
     expect(detail.summary.priceRange).toBe("Free");
     expect(detail.useThisServicePrompt).toContain("(Free)");
-    expect(detail.useThisServicePrompt).not.toContain("(Free fastUSDC)");
+    expect(detail.useThisServicePrompt).not.toContain("(Free USDC)");
     expect(detail.useThisServicePrompt).toContain("No payment headers are required.");
   });
 
@@ -494,6 +495,38 @@ describe("shared marketplace helpers", () => {
     expect(routes[0]?.network).toBe("fast-testnet");
   });
 
+  it("pins Fast network asset ids in payment requirements", () => {
+    const mainnetConfig = resolveMarketplaceNetworkConfig({
+      deploymentNetwork: "mainnet"
+    });
+    const testnetConfig = resolveMarketplaceNetworkConfig({
+      deploymentNetwork: "testnet"
+    });
+    const baseRoute = TESTNET_MARKETPLACE_ROUTES[0];
+    if (!baseRoute) {
+      throw new Error("Mock seeded route is missing.");
+    }
+
+    const mainnetRequirement = buildPaymentRequirementForRoute(
+      {
+        ...baseRoute,
+        network: mainnetConfig.paymentNetwork
+      },
+      "fast1market"
+    );
+    const testnetRequirement = buildPaymentRequirementForRoute(
+      {
+        ...baseRoute,
+        network: testnetConfig.paymentNetwork
+      },
+      "fast1market"
+    );
+
+    expect(mainnetConfig.tokenSymbol).toBe("USDC");
+    expect(mainnetRequirement.asset).toBe("0xc655a12330da6af361d281b197996d2bc135aaed3b66278e729c2222291e9130");
+    expect(testnetRequirement.asset).toBe("0xd73a0679a2be46981e2a8aedecd951c8b6690e7d5f8502b34ed3ff4cc2163b46");
+  });
+
   it("does not seed mock marketplace services on mainnet", () => {
     const mainnetConfig = resolveMarketplaceNetworkConfig({
       deploymentNetwork: "mainnet"
@@ -537,13 +570,13 @@ describe("shared marketplace helpers", () => {
       webBaseUrl: "https://marketplace.example.com"
     });
 
-    expect(buildPriceRange(endpoints)).toBe("$0.05 fastUSDC - $0.15 fastUSDC");
+    expect(buildPriceRange(endpoints)).toBe("$0.05 USDC - $0.15 USDC");
     expect(detail.skillUrl).toBe("https://marketplace.example.com/skill.md");
     expect(detail.summary.endpointCount).toBe(2);
-    expect(detail.summary.settlementToken).toBe("fastUSDC");
+    expect(detail.summary.settlementToken).toBe("USDC");
     expect(detail.useThisServicePrompt).toContain('I want to use the "Mock Research Signals" service');
     expect(detail.useThisServicePrompt).toContain("https://api.marketplace.example.com/api/mock/quick-insight");
-    expect(detail.useThisServicePrompt).toContain("($0.05 fastUSDC)");
+    expect(detail.useThisServicePrompt).toContain("($0.05 USDC)");
   });
 
   it("computes service analytics and provider request queue state in the in-memory store", async () => {
@@ -1004,7 +1037,7 @@ describe("shared marketplace helpers", () => {
     const topup = await store.createCreditTopup({
       serviceId,
       buyerWallet,
-      currency: "fastUSDC",
+      currency: "USDC",
       amount: "1000000",
       paymentId: "payment_credit_1"
     });
@@ -1014,7 +1047,7 @@ describe("shared marketplace helpers", () => {
     const reserved = await store.reserveCredit({
       serviceId,
       buyerWallet,
-      currency: "fastUSDC",
+      currency: "USDC",
       amount: "600000",
       idempotencyKey: "reserve_1",
       providerReference: "amazon-order-1",
@@ -1026,7 +1059,7 @@ describe("shared marketplace helpers", () => {
     const repeatedReserve = await store.reserveCredit({
       serviceId,
       buyerWallet,
-      currency: "fastUSDC",
+      currency: "USDC",
       amount: "600000",
       idempotencyKey: "reserve_1",
       providerReference: "amazon-order-1",
@@ -1048,7 +1081,7 @@ describe("shared marketplace helpers", () => {
     const releasable = await store.reserveCredit({
       serviceId,
       buyerWallet,
-      currency: "fastUSDC",
+      currency: "USDC",
       amount: "100000",
       idempotencyKey: "reserve_2",
       expiresAt: new Date(Date.now() + 60_000).toISOString()
@@ -1062,7 +1095,7 @@ describe("shared marketplace helpers", () => {
     const expirable = await store.reserveCredit({
       serviceId,
       buyerWallet,
-      currency: "fastUSDC",
+      currency: "USDC",
       amount: "50000",
       idempotencyKey: "reserve_3",
       expiresAt: new Date(Date.now() - 1_000).toISOString()
@@ -1075,7 +1108,7 @@ describe("shared marketplace helpers", () => {
       store.reserveCredit({
         serviceId,
         buyerWallet,
-        currency: "fastUSDC",
+        currency: "USDC",
         amount: "700000",
         idempotencyKey: "reserve_4",
         expiresAt: new Date(Date.now() + 60_000).toISOString()
@@ -1091,7 +1124,7 @@ describe("shared marketplace helpers", () => {
     const first = await store.createCreditTopup({
       serviceId,
       buyerWallet,
-      currency: "fastUSDC",
+      currency: "USDC",
       amount: "250000",
       paymentId: "payment_credit_dedupe_1",
       metadata: {
@@ -1102,7 +1135,7 @@ describe("shared marketplace helpers", () => {
     const second = await store.createCreditTopup({
       serviceId,
       buyerWallet,
-      currency: "fastUSDC",
+      currency: "USDC",
       amount: "999999",
       paymentId: "payment_credit_dedupe_1",
       metadata: {

@@ -24,6 +24,8 @@ function jsonResponse(status: number, body: unknown, headers?: Record<string, st
   } as Response;
 }
 
+const FAST_MAINNET_USDC_ASSET_ID = "0xc655a12330da6af361d281b197996d2bc135aaed3b66278e729c2222291e9130";
+
 describe("marketplace cli", () => {
   const mockCatalogResponse = jsonResponse(200, {
     routes: [
@@ -153,7 +155,7 @@ describe("marketplace cli", () => {
                 network: "fast-mainnet",
                 maxAmountRequired: "0.05",
                 payTo: "fast19cjwajufyuqv883ydlvrp8xrhxejuvfe40pxq5dsrv675zgh89sqg9txs8",
-                asset: "0xb4cf1b9e227bb6a21b959338895dfb39b8d2a96dfa1ce5dd633561c193124cb5"
+                asset: "0xc655a12330da6af361d281b197996d2bc135aaed3b66278e729c2222291e9130"
               }
             ]
           });
@@ -166,11 +168,33 @@ describe("marketplace cli", () => {
         );
       }
 
-      const body = JSON.parse(String(init?.body ?? "{}")) as { method?: string };
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        method?: string;
+        params?: {
+          transaction?: unknown;
+          signature?: unknown;
+        };
+      };
       if (body.method === "proxy_getAccountInfo") {
         return jsonResponse(200, {
           result: {
             next_nonce: 1
+          }
+        });
+      }
+
+      if (body.method === "proxy_getTokenInfo") {
+        return jsonResponse(200, {
+          result: {
+            requested_token_metadata: [
+              [
+                Array.from(Buffer.from(FAST_MAINNET_USDC_ASSET_ID.slice(2), "hex")),
+                {
+                  token_name: "USDC",
+                  decimals: 6
+                }
+              ]
+            ]
           }
         });
       }
@@ -180,9 +204,10 @@ describe("marketplace cli", () => {
           result: {
             Success: {
               envelope: {
-                transaction: {}
+                transaction: body.params?.transaction,
+                signature: body.params?.signature
               },
-              signatures: [1]
+              signatures: [[[1], [2]]]
             }
           }
         });
@@ -244,7 +269,7 @@ describe("marketplace cli", () => {
                 network: "fast-mainnet",
                 maxAmountRequired: "0.05",
                 payTo: "fast19cjwajufyuqv883ydlvrp8xrhxejuvfe40pxq5dsrv675zgh89sqg9txs8",
-                asset: "0xb4cf1b9e227bb6a21b959338895dfb39b8d2a96dfa1ce5dd633561c193124cb5"
+                asset: "0xc655a12330da6af361d281b197996d2bc135aaed3b66278e729c2222291e9130"
               }
             ]
           });
@@ -256,11 +281,33 @@ describe("marketplace cli", () => {
         });
       }
 
-      const body = JSON.parse(String(init?.body ?? "{}")) as { method?: string };
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        method?: string;
+        params?: {
+          transaction?: unknown;
+          signature?: unknown;
+        };
+      };
       if (body.method === "proxy_getAccountInfo") {
         return jsonResponse(200, {
           result: {
             next_nonce: 1
+          }
+        });
+      }
+
+      if (body.method === "proxy_getTokenInfo") {
+        return jsonResponse(200, {
+          result: {
+            requested_token_metadata: [
+              [
+                Array.from(Buffer.from(FAST_MAINNET_USDC_ASSET_ID.slice(2), "hex")),
+                {
+                  token_name: "USDC",
+                  decimals: 6
+                }
+              ]
+            ]
           }
         });
       }
@@ -270,9 +317,10 @@ describe("marketplace cli", () => {
           result: {
             Success: {
               envelope: {
-                transaction: {}
+                transaction: body.params?.transaction,
+                signature: body.params?.signature
               },
-              signatures: [1]
+              signatures: [[[1], [2]]]
             }
           }
         });

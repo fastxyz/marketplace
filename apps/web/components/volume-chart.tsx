@@ -9,7 +9,7 @@ export interface VolumePoint {
 
 export function VolumeChart({
   points,
-  tokenSymbol = "fastUSDC",
+  tokenSymbol = "USDC",
   className
 }: {
   points: VolumePoint[];

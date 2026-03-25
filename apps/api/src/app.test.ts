@@ -2686,7 +2686,7 @@ describe("marketplace api", () => {
       })
     );
 
-    const creditAccount = await store.getCreditAccount(serviceId, buyer.address, "fastUSDC");
+    const creditAccount = await store.getCreditAccount(serviceId, buyer.address, "USDC");
     expect(creditAccount?.availableAmount).toBe("12500000");
     expect(creditAccount?.reservedAmount).toBe("0");
   });
@@ -2934,7 +2934,7 @@ describe("marketplace api", () => {
     expect(reservedJobToken).toBe(accepted.body.jobToken);
 
     const reservation = await store.getCreditReservationByJobToken(serviceId, accepted.body.jobToken);
-    const creditAccount = await store.getCreditAccount(serviceId, buyer.address, "fastUSDC");
+    const creditAccount = await store.getCreditAccount(serviceId, buyer.address, "USDC");
     const job = await store.getJob(accepted.body.jobToken);
 
     expect(reservation?.status).toBe("reserved");
@@ -4471,7 +4471,7 @@ describe("marketplace api", () => {
     expect(toppedUpReplay.status).toBe(200);
     expect(toppedUpReplay.body).toEqual(toppedUp.body);
 
-    const creditAccount = await store.getCreditAccount(serviceId, buyer.address, "fastUSDC");
+    const creditAccount = await store.getCreditAccount(serviceId, buyer.address, "USDC");
     expect(creditAccount?.availableAmount).toBe("12500000");
     expect(creditAccount?.reservedAmount).toBe("0");
 

@@ -50,7 +50,7 @@ Before acting, identify:
 - whether they want browser login only, browser execution, or a CLI/agent-wallet flow
 - whether they already have a funded Fast wallet
 - which Fast network the deployment is using: mainnet or testnet
-- which settlement token the published marketplace route expects for that deployment; marketplace deployments currently use `fastUSDC` on mainnet and `testUSDC` on testnet
+- which settlement token the published marketplace route expects for that deployment; marketplace deployments currently use `USDC` on mainnet and `testUSDC` on testnet
 - whether they need website session auth, API-scoped wallet session auth, job retrieval auth, or admin token auth
 - for provider flows: service metadata, payout wallet, website URL, endpoint schemas/examples, and upstream execution details
 
@@ -97,7 +97,7 @@ The marketplace is Fast-native and wallet-first.
 
 ### Fixed x402
 
-1. Use a persistent local Fast wallet funded with the settlement token shown by the published marketplace route. Marketplace deployments currently use `fastUSDC` on mainnet and `testUSDC` on testnet.
+1. Use a persistent local Fast wallet funded with the settlement token shown by the published marketplace route. Marketplace deployments currently use `USDC` on mainnet and `testUSDC` on testnet.
 2. Send the first request without payment proof.
 3. Read the `402` response and payment requirements.
 4. Authorize payment from the wallet.

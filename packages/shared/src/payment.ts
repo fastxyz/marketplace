@@ -17,6 +17,7 @@ import {
   PAYMENT_RESPONSE_HEADER,
   PAYMENT_SIGNATURE_HEADER
 } from "./constants.js";
+import { getMarketplaceAssetId } from "./network.js";
 import type { MarketplaceRoute } from "./types.js";
 
 export interface NormalizedPaymentHeaders {
@@ -52,7 +53,8 @@ export function buildPaymentRequirementForRoute(route: MarketplaceRoute, payTo: 
       network: route.network,
       config: {
         description: route.description,
-        mimeType: "application/json"
+        mimeType: "application/json",
+        asset: getMarketplaceAssetId(route.network)
       }
     },
     `/api/${route.provider}/${route.operation}`
@@ -67,7 +69,8 @@ export function buildPaymentRequiredResponse(route: MarketplaceRoute, payTo: str
       network: route.network,
       config: {
         description: route.description,
-        mimeType: "application/json"
+        mimeType: "application/json",
+        asset: getMarketplaceAssetId(route.network)
       }
     },
     `/api/${route.provider}/${route.operation}`

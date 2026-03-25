@@ -3070,7 +3070,7 @@ async function persistProviderPayoutSafely(
       providerAmount: string;
       providerWallet: string | null;
       providerAccountId: string;
-      currency: "fastUSDC" | "testUSDC";
+      currency: "USDC" | "testUSDC";
     };
     sourceKind: "route_charge" | "credit_topup";
     sourceId: string;

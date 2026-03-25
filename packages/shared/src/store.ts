@@ -1610,7 +1610,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
   async createCreditTopup(input: {
     serviceId: string;
     buyerWallet: string;
-    currency: "fastUSDC" | "testUSDC";
+    currency: "USDC" | "testUSDC";
     amount: string;
     paymentId: string;
     metadata?: Record<string, unknown>;
@@ -1699,7 +1699,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     };
   }
 
-  async getCreditAccount(serviceId: string, buyerWallet: string, currency: "fastUSDC" | "testUSDC"): Promise<CreditAccountRecord | null> {
+  async getCreditAccount(serviceId: string, buyerWallet: string, currency: "USDC" | "testUSDC"): Promise<CreditAccountRecord | null> {
     const accountId = this.creditAccountIdByKey.get(creditAccountKey(serviceId, buyerWallet, currency));
     return clone(accountId ? this.creditAccountsById.get(accountId) ?? null : null);
   }
@@ -1707,7 +1707,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
   async reserveCredit(input: {
     serviceId: string;
     buyerWallet: string;
-    currency: "fastUSDC" | "testUSDC";
+    currency: "USDC" | "testUSDC";
     amount: string;
     idempotencyKey: string;
     jobToken?: string | null;
@@ -3992,6 +3992,30 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       SET method = 'POST'
       WHERE method IS NULL;
 
+      UPDATE provider_payouts
+      SET currency = 'USDC'
+      WHERE currency = 'fastUSDC';
+
+      UPDATE credit_accounts
+      SET currency = 'USDC'
+      WHERE currency = 'fastUSDC';
+
+      UPDATE credit_reservations
+      SET currency = 'USDC'
+      WHERE currency = 'fastUSDC';
+
+      UPDATE credit_ledger_entries
+      SET currency = 'USDC'
+      WHERE currency = 'fastUSDC';
+
+      UPDATE idempotency_records
+      SET payout_split = jsonb_set(payout_split, '{currency}', '"USDC"'::jsonb)
+      WHERE payout_split->>'currency' = 'fastUSDC';
+
+      UPDATE jobs
+      SET payout_split = jsonb_set(payout_split, '{currency}', '"USDC"'::jsonb)
+      WHERE payout_split->>'currency' = 'fastUSDC';
+
       ALTER TABLE refunds
       ALTER COLUMN job_token DROP NOT NULL;
 
@@ -5678,7 +5702,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
   async createCreditTopup(input: {
     serviceId: string;
     buyerWallet: string;
-    currency: "fastUSDC" | "testUSDC";
+    currency: "USDC" | "testUSDC";
     amount: string;
     paymentId: string;
     metadata?: Record<string, unknown>;
@@ -5825,7 +5849,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     };
   }
 
-  async getCreditAccount(serviceId: string, buyerWallet: string, currency: "fastUSDC" | "testUSDC"): Promise<CreditAccountRecord | null> {
+  async getCreditAccount(serviceId: string, buyerWallet: string, currency: "USDC" | "testUSDC"): Promise<CreditAccountRecord | null> {
     const result = await this.pool.query(
       `
       SELECT *
@@ -5841,7 +5865,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
   async reserveCredit(input: {
     serviceId: string;
     buyerWallet: string;
-    currency: "fastUSDC" | "testUSDC";
+    currency: "USDC" | "testUSDC";
     amount: string;
     idempotencyKey: string;
     jobToken?: string | null;

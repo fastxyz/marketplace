@@ -139,7 +139,7 @@ Optional frontend variables:
 export MARKETPLACE_API_BASE_URL=http://localhost:3000
 ```
 
-`MARKETPLACE_FAST_NETWORK` supports `mainnet` or `testnet`. The deployment token is `fastUSDC` on mainnet and `testUSDC` on testnet.
+`MARKETPLACE_FAST_NETWORK` supports `mainnet` or `testnet`. The deployment token is `USDC` on mainnet and `testUSDC` on testnet.
 
 3. Run the facilitator:
 

@@ -98,7 +98,7 @@ describe("EndpointBrowserRunner", () => {
           description: "Read one prepaid order.",
           price: "Prepaid credit",
           billingType: "prepaid_credit",
-          tokenSymbol: "fastUSDC",
+          tokenSymbol: "USDC",
           mode: "sync",
           method: "GET",
           path: "/api/orders/lookup",

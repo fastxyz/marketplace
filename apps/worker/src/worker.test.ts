@@ -21,7 +21,7 @@ function buildEscrowSplit(input: {
   providerBps: number;
 }) {
   return {
-    currency: "fastUSDC" as const,
+    currency: "USDC" as const,
     settlementMode: "verified_escrow" as const,
     paymentDestinationWallet:
       input.paymentDestinationWallet ?? "fast1marketplacetreasury000000000000000000000000000000000000",
@@ -188,7 +188,7 @@ describe("marketplace worker", () => {
     await store.createCreditTopup({
       serviceId,
       buyerWallet,
-      currency: "fastUSDC",
+      currency: "USDC",
       amount: "500000",
       paymentId: "topup_payment_1"
     });
@@ -196,7 +196,7 @@ describe("marketplace worker", () => {
     await store.reserveCredit({
       serviceId,
       buyerWallet,
-      currency: "fastUSDC",
+      currency: "USDC",
       amount: "125000",
       idempotencyKey: "reserve_request_1",
       jobToken: "job_worker_prepaid_1",
@@ -252,7 +252,7 @@ describe("marketplace worker", () => {
       }
     });
 
-    const account = await store.getCreditAccount(serviceId, buyerWallet, "fastUSDC");
+    const account = await store.getCreditAccount(serviceId, buyerWallet, "USDC");
     const reservation = await store.getCreditReservationByJobToken(serviceId, "job_worker_prepaid_1");
     const job = await store.getJob("job_worker_prepaid_1");
     const refund = await store.getRefundByJobToken("job_worker_prepaid_1");
@@ -323,7 +323,7 @@ describe("marketplace worker", () => {
       sourceId: "sync_payment_1",
       providerAccountId: "provider_1",
       providerWallet,
-      currency: "fastUSDC",
+      currency: "USDC",
       amount: "300000"
     });
 

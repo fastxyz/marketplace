@@ -4,7 +4,7 @@ export function resolveWebDeploymentNetwork(input: string | undefined | null): {
   deploymentNetwork: WebDeploymentNetwork;
   networkLabel: string;
   paymentNetwork: "fast-mainnet" | "fast-testnet";
-  tokenSymbol: "fastUSDC" | "testUSDC";
+  tokenSymbol: "USDC" | "testUSDC";
 } {
   if (input === "testnet") {
     return {
@@ -19,6 +19,6 @@ export function resolveWebDeploymentNetwork(input: string | undefined | null): {
     deploymentNetwork: "mainnet",
     networkLabel: "Mainnet",
     paymentNetwork: "fast-mainnet",
-    tokenSymbol: "fastUSDC"
+    tokenSymbol: "USDC"
   };
 }

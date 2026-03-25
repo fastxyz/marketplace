@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     "agent APIs",
     "data APIs",
     "x402",
-    "fastUSDC",
+    "USDC",
     "marketplace"
   ],
   applicationName: "Fast Marketplace",
