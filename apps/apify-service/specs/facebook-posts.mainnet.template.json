@@ -10,13 +10,13 @@
     "slug": "apify-facebook-posts-scraper",
     "apiNamespace": "apify-facebook-posts",
     "name": "Facebook Posts Scraper",
-    "tagline": "Run Apify Facebook post scraping through a Fast-native async proxy.",
-    "about": "Facebook Posts Scraper starts the Apify Facebook posts actor through a marketplace-hosted async wrapper. Buyers pay on Fast and retrieve the completed dataset through the marketplace job flow.",
+    "tagline": "Scrape Facebook page posts, videos, transcripts, and date-bounded archives through a Fast-native async proxy.",
+    "about": "Facebook Posts Scraper exposes multiple Apify-backed Facebook page workflows through the marketplace, including baseline post extraction, transcript-enabled video scraping, and date-range constrained backfills.",
     "categories": ["Social", "Research", "Marketing"],
     "promptIntro": "I want to use the Facebook Posts Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
-      "Call the paid run route with your actor input.",
+      "Choose the paid Facebook route that matches your workflow.",
       "Keep the returned job token and poll the marketplace job route for completion."
     ],
     "websiteUrl": "https://fastmainnetapifyfacebookposts.8o.vc",
@@ -25,9 +25,9 @@
   "endpoints": [
     {
       "endpointType": "marketplace_proxy",
-      "operation": "run",
-      "title": "Run Scraper",
-      "description": "Start an async Facebook post scraping job through the Apify wrapper.",
+      "operation": "page-posts",
+      "title": "Page Posts",
+      "description": "Scrape posts from one or more public Facebook pages.",
       "billingType": "fixed_x402",
       "price": "$0.25",
       "method": "POST",
@@ -37,6 +37,28 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
+        "required": ["startUrls"],
+        "properties": {
+          "startUrls": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["url"],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "resultsLimit": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
         "additionalProperties": true
       },
       "responseSchemaJson": {
@@ -44,7 +66,11 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "startUrls": ["https://www.facebook.com/meta"],
+        "startUrls": [
+          {
+            "url": "https://www.facebook.com/cern/"
+          }
+        ],
         "resultsLimit": 25
       },
       "responseExample": {
@@ -52,13 +78,237 @@
         "status": "SUCCEEDED",
         "items": [
           {
-            "text": "Example Facebook post"
+            "pageName": "cern",
+            "text": "Example Facebook post",
+            "likes": 146
           }
         ]
       },
-      "usageNotes": "The marketplace returns a job token immediately and stores the completed actor output on the job record.",
+      "usageNotes": "This is the default route for page post extraction and engagement analysis.",
       "upstreamBaseUrl": "https://fastmainnetapifyfacebookposts.8o.vc",
-      "upstreamPath": "/run",
+      "upstreamPath": "/page-posts",
+      "upstreamAuthMode": "none"
+    },
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "video-posts",
+      "title": "Video Posts",
+      "description": "Scrape Facebook page posts and include video transcripts when available.",
+      "billingType": "fixed_x402",
+      "price": "$0.30",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["startUrls"],
+        "properties": {
+          "startUrls": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["url"],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "resultsLimit": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "captionText": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "startUrls": [
+          {
+            "url": "https://www.facebook.com/cern/"
+          }
+        ],
+        "resultsLimit": 10,
+        "captionText": true
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "pageName": "cern",
+            "text": "Example video post",
+            "media": [
+              {
+                "__typename": "Video"
+              }
+            ]
+          }
+        ]
+      },
+      "usageNotes": "Enable captionText on this route when you need video transcript extraction.",
+      "upstreamBaseUrl": "https://fastmainnetapifyfacebookposts.8o.vc",
+      "upstreamPath": "/video-posts",
+      "upstreamAuthMode": "none"
+    },
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "posts-by-date",
+      "title": "Posts By Date",
+      "description": "Scrape Facebook posts constrained to newer and older date boundaries.",
+      "billingType": "fixed_x402",
+      "price": "$0.30",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["startUrls"],
+        "properties": {
+          "startUrls": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["url"],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "resultsLimit": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "onlyPostsNewerThan": {
+            "type": "string"
+          },
+          "onlyPostsOlderThan": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "startUrls": [
+          {
+            "url": "https://www.facebook.com/cern/"
+          }
+        ],
+        "resultsLimit": 25,
+        "onlyPostsNewerThan": "2026-01-01",
+        "onlyPostsOlderThan": "2026-02-01"
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "pageName": "cern",
+            "time": "2026-01-20T13:00:05.000Z",
+            "text": "Example dated post"
+          }
+        ]
+      },
+      "usageNotes": "Use this for bounded historical backfills instead of full-page crawls.",
+      "upstreamBaseUrl": "https://fastmainnetapifyfacebookposts.8o.vc",
+      "upstreamPath": "/posts-by-date",
+      "upstreamAuthMode": "none"
+    },
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "page-posts-with-transcripts",
+      "title": "Page Posts With Transcripts",
+      "description": "Scrape public Facebook page posts and request transcript extraction for video posts.",
+      "billingType": "fixed_x402",
+      "price": "$0.30",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["startUrls"],
+        "properties": {
+          "startUrls": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["url"],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "resultsLimit": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "captionText": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "startUrls": [
+          {
+            "url": "https://www.facebook.com/cern/"
+          }
+        ],
+        "resultsLimit": 25,
+        "captionText": true
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "pageName": "cern",
+            "text": "Example post with transcript",
+            "media": [
+              {
+                "__typename": "Video"
+              }
+            ]
+          }
+        ]
+      },
+      "usageNotes": "This route keeps transcript extraction explicit so buyers can choose the higher-cost workflow only when they need it.",
+      "upstreamBaseUrl": "https://fastmainnetapifyfacebookposts.8o.vc",
+      "upstreamPath": "/page-posts-with-transcripts",
       "upstreamAuthMode": "none"
     }
   ]

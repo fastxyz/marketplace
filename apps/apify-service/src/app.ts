@@ -1,5 +1,6 @@
 import express, { type Express } from "express";
 
+import { getApifyProxyRoutes } from "./operations.js";
 import { buildApifyOpenApiDocument } from "./openapi.js";
 
 export interface ApifyServiceOptions {
@@ -36,6 +37,7 @@ export function createApifyServiceApp(options: ApifyServiceOptions): Express {
   const serviceDescription = options.serviceDescription?.trim() || DEFAULT_SERVICE_DESCRIPTION;
   const datasetItemLimit = Math.max(1, options.datasetItemLimit ?? DEFAULT_DATASET_ITEM_LIMIT);
   const defaultPollAfterMs = Math.max(1000, options.defaultPollAfterMs ?? DEFAULT_POLL_AFTER_MS);
+  const proxyRoutes = getApifyProxyRoutes(options.actorId);
 
   app.use(express.json({ limit: "1mb" }));
 
@@ -49,19 +51,10 @@ export function createApifyServiceApp(options: ApifyServiceOptions): Express {
 
   app.get("/openapi.json", (_req, res) => {
     res.json(buildApifyOpenApiDocument({
+      actorId: options.actorId,
       serviceName,
       serviceDescription,
-      operationId: "run",
-      requestExample: {
-        startUrls: [
-          {
-            url: "https://example.com"
-          }
-        ]
-      },
-      responseExample: {
-        actorId: options.actorId
-      }
+      routes: proxyRoutes
     }));
   });
 
@@ -73,7 +66,7 @@ export function createApifyServiceApp(options: ApifyServiceOptions): Express {
     return res.type("text/plain").send(options.verificationToken);
   });
 
-  app.post("/run", async (req, res) => {
+  const runHandler: express.RequestHandler = async (req, res) => {
     let response: globalThis.Response;
     try {
       response = await fetch(buildActorRunUrl(upstreamBaseUrl, options.actorId), {
@@ -112,7 +105,16 @@ export function createApifyServiceApp(options: ApifyServiceOptions): Express {
         keyValueStoreId: run.defaultKeyValueStoreId ?? null
       }
     });
-  });
+  };
+
+  app.post("/run", runHandler);
+  for (const route of proxyRoutes) {
+    if (route.path === "/run") {
+      continue;
+    }
+
+    app.post(route.path, runHandler);
+  }
 
   app.post("/runs/poll", async (req, res) => {
     const providerJobId = typeof req.body?.providerJobId === "string" ? req.body.providerJobId.trim() : "";
