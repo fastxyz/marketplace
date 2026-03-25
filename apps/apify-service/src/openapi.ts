@@ -1,9 +1,10 @@
+import type { ApifyProxyRouteDefinition } from "./operations.js";
+
 export interface BuildApifyOpenApiDocumentInput {
+  actorId: string;
   serviceName: string;
   serviceDescription: string;
-  operationId: string;
-  requestExample: Record<string, unknown>;
-  responseExample: Record<string, unknown>;
+  routes: ApifyProxyRouteDefinition[];
 }
 
 export function buildApifyOpenApiDocument(input: BuildApifyOpenApiDocumentInput): Record<string, unknown> {
@@ -19,79 +20,83 @@ export function buildApifyOpenApiDocument(input: BuildApifyOpenApiDocumentInput)
         url: "/"
       }
     ],
-    paths: {
-      "/run": {
-        post: {
-          operationId: input.operationId,
-          summary: `Run ${input.serviceName}`,
-          description: input.serviceDescription,
-          requestBody: {
-            required: true,
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  additionalProperties: true
-                },
-                example: input.requestExample
-              }
-            }
-          },
-          responses: {
-            "202": {
-              description: "Async run accepted.",
+    paths: Object.fromEntries(
+      input.routes.map((route) => [
+        route.path,
+        {
+          post: {
+            operationId: route.operationId,
+            summary: route.summary,
+            description: route.description,
+            requestBody: {
+              required: true,
               content: {
                 "application/json": {
-                  schema: {
-                    type: "object",
-                    required: ["status", "providerJobId"],
-                    properties: {
-                      status: {
-                        type: "string",
-                        enum: ["accepted"]
-                      },
-                      providerJobId: {
-                        type: "string"
-                      },
-                      pollAfterMs: {
-                        type: "integer"
-                      },
-                      providerState: {
-                        type: "object",
-                        additionalProperties: true
-                      }
-                    },
-                    additionalProperties: false
-                  },
-                  example: {
-                    status: "accepted",
-                    providerJobId: "apify_run_123",
-                    pollAfterMs: 5000,
-                    providerState: input.responseExample
-                  }
+                  schema: route.requestSchemaJson,
+                  example: route.requestExample
                 }
               }
             },
-            "502": {
-              description: "Upstream Apify request failure.",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    required: ["error"],
-                    properties: {
-                      error: {
-                        type: "string"
-                      }
+            responses: {
+              "202": {
+                description: "Async run accepted.",
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "object",
+                      required: ["status", "providerJobId"],
+                      properties: {
+                        status: {
+                          type: "string",
+                          enum: ["accepted"]
+                        },
+                        providerJobId: {
+                          type: "string"
+                        },
+                        pollAfterMs: {
+                          type: "integer"
+                        },
+                        providerState: {
+                          type: "object",
+                          additionalProperties: true
+                        }
+                      },
+                      additionalProperties: false
                     },
-                    additionalProperties: false
+                    example: {
+                      status: "accepted",
+                      providerJobId: "apify_run_123",
+                      pollAfterMs: 5000,
+                      providerState: {
+                        actorId: input.actorId,
+                        datasetId: "dataset_123",
+                        keyValueStoreId: "store_123"
+                      }
+                    }
+                  }
+                }
+              },
+              "502": {
+                description: "Upstream Apify request failure.",
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "object",
+                      required: ["error"],
+                      properties: {
+                        error: {
+                          type: "string"
+                        }
+                      },
+                      additionalProperties: false
+                    }
                   }
                 }
               }
             }
           }
         }
-      }
-    }
+      ])
+    )
   };
 }

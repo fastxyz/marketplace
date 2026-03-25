@@ -10,13 +10,13 @@
     "slug": "apify-youtube-scraper",
     "apiNamespace": "apify-youtube",
     "name": "YouTube Scraper",
-    "tagline": "Run Apify YouTube scraping through a Fast-native async proxy.",
-    "about": "YouTube Scraper starts the Apify YouTube actor through a marketplace-hosted async wrapper. Buyers pay on Fast and retrieve the completed dataset through the marketplace job flow.",
+    "tagline": "Search YouTube, scrape channels and playlists, and fetch subtitles through a Fast-native async proxy.",
+    "about": "YouTube Scraper exposes multiple Apify-backed YouTube workflows through the marketplace, including search result retrieval, channel and playlist scraping, and video subtitle extraction.",
     "categories": ["Video", "Research", "Marketing"],
     "promptIntro": "I want to use the YouTube Scraper service on Fast Marketplace.",
     "setupInstructions": [
       "Fund a Fast wallet on mainnet.",
-      "Call the paid run route with your actor input.",
+      "Choose the paid YouTube route that matches your workflow.",
       "Keep the returned job token and poll the marketplace job route for completion."
     ],
     "websiteUrl": "https://fastmainnetapifyyoutube.8o.vc",
@@ -25,9 +25,9 @@
   "endpoints": [
     {
       "endpointType": "marketplace_proxy",
-      "operation": "run",
-      "title": "Run Scraper",
-      "description": "Start an async YouTube scraping job through the Apify wrapper.",
+      "operation": "search-videos",
+      "title": "Search Videos",
+      "description": "Search YouTube by term and return regular videos, shorts, or streams.",
       "billingType": "fixed_x402",
       "price": "$0.25",
       "method": "POST",
@@ -37,6 +37,29 @@
       "pollPath": "/runs/poll",
       "requestSchemaJson": {
         "type": "object",
+        "required": ["searchQueries"],
+        "properties": {
+          "searchQueries": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "maxResults": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "maxResultsShorts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "maxResultStreams": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
         "additionalProperties": true
       },
       "responseSchemaJson": {
@@ -44,7 +67,74 @@
         "additionalProperties": true
       },
       "requestExample": {
-        "startUrls": ["https://www.youtube.com/@example"],
+        "searchQueries": ["fast blockchain"],
+        "maxResults": 10,
+        "maxResultsShorts": 0,
+        "maxResultStreams": 0
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "title": "Example YouTube video",
+            "channelName": "Example Channel"
+          }
+        ]
+      },
+      "usageNotes": "Use this route for topic discovery and search result monitoring.",
+      "upstreamBaseUrl": "https://fastmainnetapifyyoutube.8o.vc",
+      "upstreamPath": "/search-videos",
+      "upstreamAuthMode": "none"
+    },
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "channel-videos",
+      "title": "Channel Videos",
+      "description": "Scrape regular videos from a YouTube channel URL.",
+      "billingType": "fixed_x402",
+      "price": "$0.25",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["startUrls"],
+        "properties": {
+          "startUrls": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["url"],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "maxResults": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "startUrls": [
+          {
+            "url": "https://www.youtube.com/@example"
+          }
+        ],
         "maxResults": 25
       },
       "responseExample": {
@@ -52,13 +142,155 @@
         "status": "SUCCEEDED",
         "items": [
           {
-            "title": "Example YouTube video"
+            "channelName": "Example Channel",
+            "title": "Latest example upload"
           }
         ]
       },
-      "usageNotes": "The marketplace returns a job token immediately and stores the completed actor output on the job record.",
+      "usageNotes": "This route is for channel-centric monitoring and channel archive pulls.",
       "upstreamBaseUrl": "https://fastmainnetapifyyoutube.8o.vc",
-      "upstreamPath": "/run",
+      "upstreamPath": "/channel-videos",
+      "upstreamAuthMode": "none"
+    },
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "playlist-videos",
+      "title": "Playlist Videos",
+      "description": "Scrape videos from one or more YouTube playlist URLs.",
+      "billingType": "fixed_x402",
+      "price": "$0.25",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["startUrls"],
+        "properties": {
+          "startUrls": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["url"],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "maxResults": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "startUrls": [
+          {
+            "url": "https://www.youtube.com/playlist?list=PLObrtcm1Kw6PmbXg8bmfJN-o2Hgx8sidf"
+          }
+        ],
+        "maxResults": 25
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "channelName": "Stanford",
+            "fromYTUrl": "https://www.youtube.com/playlist?list=PLObrtcm1Kw6PmbXg8bmfJN-o2Hgx8sidf"
+          }
+        ]
+      },
+      "usageNotes": "Use this route when the playlist itself is the unit of collection rather than a whole channel or a search term.",
+      "upstreamBaseUrl": "https://fastmainnetapifyyoutube.8o.vc",
+      "upstreamPath": "/playlist-videos",
+      "upstreamAuthMode": "none"
+    },
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "video-subtitles",
+      "title": "Video Subtitles",
+      "description": "Scrape YouTube video details and download subtitles when available.",
+      "billingType": "fixed_x402",
+      "price": "$0.30",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["startUrls"],
+        "properties": {
+          "startUrls": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["url"],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "downloadSubtitles": {
+            "type": "boolean"
+          },
+          "subtitlesLanguage": {
+            "type": "string"
+          },
+          "subtitlesFormat": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "startUrls": [
+          {
+            "url": "https://www.youtube.com/watch?v=RjHzznQy6hI"
+          }
+        ],
+        "downloadSubtitles": true,
+        "subtitlesLanguage": "en",
+        "subtitlesFormat": "srt"
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "title": "Example YouTube video",
+            "subtitles": [
+              {
+                "language": "en"
+              }
+            ]
+          }
+        ]
+      },
+      "usageNotes": "Turn this on when transcript or subtitle extraction is required for downstream NLP or QA workflows.",
+      "upstreamBaseUrl": "https://fastmainnetapifyyoutube.8o.vc",
+      "upstreamPath": "/video-subtitles",
       "upstreamAuthMode": "none"
     }
   ]

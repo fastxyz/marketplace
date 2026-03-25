@@ -68,6 +68,53 @@ describe("apify service", () => {
     );
   });
 
+  it("registers actor-specific operation routes and advertises them in OpenAPI", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      data: {
+        id: "run_456",
+        status: "RUNNING",
+        defaultDatasetId: "dataset_456",
+        defaultKeyValueStoreId: "store_456"
+      }
+    }), {
+      status: 201,
+      headers: {
+        "content-type": "application/json"
+      }
+    }));
+
+    const app = createApifyServiceApp({
+      apifyApiToken: "apify-test-token",
+      actorId: "apify/instagram-scraper"
+    });
+
+    const openapi = await request(app).get("/openapi.json");
+    expect(openapi.status).toBe(200);
+    expect(Object.keys(openapi.body.paths)).toEqual([
+      "/profile-posts",
+      "/hashtag-posts",
+      "/place-posts",
+      "/post-comments"
+    ]);
+
+    const response = await request(app)
+      .post("/profile-posts")
+      .send({
+        directUrls: ["https://www.instagram.com/example/"],
+        resultsType: "posts",
+        resultsLimit: 25
+      });
+
+    expect(response.status).toBe(202);
+    expect(response.body.providerJobId).toBe("run_456");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.apify.com/v2/acts/apify%2Finstagram-scraper/runs",
+      expect.objectContaining({
+        method: "POST"
+      })
+    );
+  });
+
   it("polls an Apify run and returns completed dataset items", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
