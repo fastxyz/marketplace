@@ -1,6 +1,7 @@
 import {
   MARKETPLACE_JOB_TOKEN_HEADER,
   PAYMENT_EXECUTION_RECOVERY_MS,
+  computeTimeoutAt,
   buildMarketplaceIdentityHeaders,
   computeNextPollAt,
   createDefaultProviderRegistry,
@@ -8,6 +9,7 @@ import {
   decryptSecret,
   isPrepaidCreditBilling,
   resolveAsyncJobFailure,
+  type AsyncExecuteResult,
   type JobRecord,
   type MarketplaceStore,
   type PollResult,
@@ -36,32 +38,41 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
   const nowMs = now.getTime();
 
   for (const job of jobs) {
-    const route = job.routeSnapshot;
+    let currentJob = job;
+    if (!currentJob.providerJobId && currentJob.routeSnapshot.asyncConfig?.strategy === "poll") {
+      const repairedJob = await recoverAcceptedPollPlaceholder(options.store, currentJob);
+      if (!repairedJob) {
+        continue;
+      }
+      currentJob = repairedJob;
+    }
 
-    if (job.timeoutAt && Date.parse(job.timeoutAt) <= nowMs) {
+    const route = currentJob.routeSnapshot;
+
+    if (currentJob.timeoutAt && Date.parse(currentJob.timeoutAt) <= nowMs) {
       await options.store.recordProviderAttempt({
-        jobToken: job.jobToken,
-        routeId: job.routeId,
-        requestId: job.requestId,
+        jobToken: currentJob.jobToken,
+        routeId: currentJob.routeId,
+        requestId: currentJob.requestId,
         phase: "poll",
         status: "failed",
         requestPayload: {
-          providerJobId: job.providerJobId,
-          providerState: job.providerState
+          providerJobId: currentJob.providerJobId,
+          providerState: currentJob.providerState
         },
-        errorMessage: `Async job timed out: ${job.jobToken}`
+        errorMessage: `Async job timed out: ${currentJob.jobToken}`
       });
-      await expireAsyncPrepaidReservation(options.store, job);
+      await expireAsyncPrepaidReservation(options.store, currentJob);
       await resolveAsyncJobFailure({
         store: options.store,
         refundService: options.refundService,
-        job,
-        error: `Async job timed out for ${job.routeId}.`
+        job: currentJob,
+        error: `Async job timed out for ${currentJob.routeId}.`
       });
       continue;
     }
 
-    if (job.nextPollAt && Date.parse(job.nextPollAt) > nowMs) {
+    if (currentJob.nextPollAt && Date.parse(currentJob.nextPollAt) > nowMs) {
       continue;
     }
 
@@ -76,52 +87,52 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
         const provider = providers[route.provider];
         if (!provider) {
           await options.store.recordProviderAttempt({
-            jobToken: job.jobToken,
-            routeId: job.routeId,
-            requestId: job.requestId,
+            jobToken: currentJob.jobToken,
+            routeId: currentJob.routeId,
+            requestId: currentJob.requestId,
             phase: "poll",
             status: "failed",
             requestPayload: {
-              providerJobId: job.providerJobId,
-              providerState: job.providerState
+              providerJobId: currentJob.providerJobId,
+              providerState: currentJob.providerState
             },
             errorMessage: `Missing provider adapter: ${route.provider}`
           });
-          await expireAsyncPrepaidReservation(options.store, job);
+          await expireAsyncPrepaidReservation(options.store, currentJob);
           await resolveAsyncJobFailure({
             store: options.store,
             refundService: options.refundService,
-            job,
+            job: currentJob,
             error: `Missing provider adapter: ${route.provider}`
           });
           continue;
         }
 
-        pollResult = await provider.poll({ route, job });
+        pollResult = await provider.poll({ route, job: currentJob });
       } else if (route.executorKind === "http") {
         pollResult = await pollHttpRoute({
-          job,
+          job: currentJob,
           store: options.store,
           secretsKey: options.secretsKey
         });
       } else {
         await options.store.recordProviderAttempt({
-          jobToken: job.jobToken,
-          routeId: job.routeId,
-          requestId: job.requestId,
+          jobToken: currentJob.jobToken,
+          routeId: currentJob.routeId,
+          requestId: currentJob.requestId,
           phase: "poll",
           status: "failed",
           requestPayload: {
-            providerJobId: job.providerJobId,
-            providerState: job.providerState
+            providerJobId: currentJob.providerJobId,
+            providerState: currentJob.providerState
           },
           errorMessage: `Unsupported async executor: ${route.executorKind}`
         });
-        await expireAsyncPrepaidReservation(options.store, job);
+        await expireAsyncPrepaidReservation(options.store, currentJob);
         await resolveAsyncJobFailure({
           store: options.store,
           refundService: options.refundService,
-          job,
+          job: currentJob,
           error: `Unsupported async executor: ${route.executorKind}`
         });
         continue;
@@ -130,20 +141,20 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
       pollResult = {
         status: "failed",
         permanent: true,
-        error: error instanceof Error ? error.message : `Async poll failed for ${job.routeId}.`,
-        providerState: job.providerState ?? undefined
+        error: error instanceof Error ? error.message : `Async poll failed for ${currentJob.routeId}.`,
+        providerState: currentJob.providerState ?? undefined
       };
     }
 
     await options.store.recordProviderAttempt({
-      jobToken: job.jobToken,
-      routeId: job.routeId,
-      requestId: job.requestId,
+      jobToken: currentJob.jobToken,
+      routeId: currentJob.routeId,
+      requestId: currentJob.requestId,
       phase: "poll",
       status: pollResult.status === "failed" ? "failed" : "succeeded",
       requestPayload: {
-        providerJobId: job.providerJobId,
-        providerState: job.providerState
+        providerJobId: currentJob.providerJobId,
+        providerState: currentJob.providerState
       },
       responsePayload: pollResult,
       errorMessage: pollResult.status === "failed" ? pollResult.error : undefined
@@ -151,32 +162,32 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
 
     if (pollResult.status === "pending") {
       await options.store.updateJobPending({
-        jobToken: job.jobToken,
-        providerState: pollResult.providerState ?? job.providerState,
+        jobToken: currentJob.jobToken,
+        providerState: pollResult.providerState ?? currentJob.providerState,
         nextPollAt: computeNextPollAt(pollResult.pollAfterMs)
       });
       continue;
     }
 
     if (pollResult.status === "completed") {
-      await options.store.completeJob(job.jobToken, pollResult.body);
+      await options.store.completeJob(currentJob.jobToken, pollResult.body);
       continue;
     }
 
     if (!pollResult.permanent) {
       await options.store.updateJobPending({
-        jobToken: job.jobToken,
-        providerState: pollResult.providerState ?? job.providerState,
+        jobToken: currentJob.jobToken,
+        providerState: pollResult.providerState ?? currentJob.providerState,
         nextPollAt: computeNextPollAt()
       });
       continue;
     }
 
-    await expireAsyncPrepaidReservation(options.store, job);
+    await expireAsyncPrepaidReservation(options.store, currentJob);
     await resolveAsyncJobFailure({
       store: options.store,
       refundService: options.refundService,
-      job,
+      job: currentJob,
       error: pollResult.error
     });
   }
@@ -205,6 +216,48 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
       limit: options.limit ?? 10
     });
   }
+}
+
+async function recoverAcceptedPollPlaceholder(
+  store: MarketplaceStore,
+  job: JobRecord
+): Promise<JobRecord | null> {
+  const attempt = await store.getLatestSuccessfulProviderExecuteAttempt(job.jobToken);
+  const accepted = parseAcceptedAsyncExecuteAttempt(attempt?.responsePayload);
+  if (!accepted) {
+    return null;
+  }
+
+  return store.savePendingAsyncJob({
+    jobToken: job.jobToken,
+    paymentId: job.paymentId,
+    buyerWallet: job.buyerWallet,
+    route: job.routeSnapshot,
+    quotedPrice: job.quotedPrice,
+    payoutSplit: job.payoutSplit,
+    serviceId: job.serviceId,
+    requestId: job.requestId,
+    providerJobId: accepted.providerJobId,
+    requestBody: job.requestBody,
+    providerState: accepted.providerState,
+    nextPollAt: computeNextPollAt(accepted.pollAfterMs),
+    timeoutAt: computeTimeoutAt(job.routeSnapshot)
+  });
+}
+
+function parseAcceptedAsyncExecuteAttempt(payload: unknown): AsyncExecuteResult | null {
+  if (!isJsonObject(payload) || payload.kind !== "async" || typeof payload.providerJobId !== "string") {
+    return null;
+  }
+
+  return {
+    kind: "async",
+    providerJobId: payload.providerJobId,
+    providerState: isJsonObject(payload.providerState) ? payload.providerState : undefined,
+    pollAfterMs: typeof payload.pollAfterMs === "number" && Number.isFinite(payload.pollAfterMs)
+      ? payload.pollAfterMs
+      : undefined
+  };
 }
 
 async function pollHttpRoute(input: {

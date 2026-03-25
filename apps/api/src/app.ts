@@ -1881,7 +1881,6 @@ async function handleWalletSessionRoute(input: {
   const requestId = randomUUID();
   const jobToken = input.route.mode === "async" ? createOpaqueToken("job") : null;
   const asyncAccessPaymentId = jobToken ? createOpaqueToken("wallet") : null;
-  const pendingAsyncNextPollAt = jobToken ? computeTimeoutAt(input.route) : null;
   let paymentDestinationWallet: string | null = null;
   let asyncPayoutSplit: ReturnType<typeof buildPayoutSplit> | null = null;
 
@@ -1904,7 +1903,7 @@ async function handleWalletSessionRoute(input: {
         serviceId: input.route.serviceId,
         requestId,
         requestBody: input.requestInput,
-        nextPollAt: pendingAsyncNextPollAt,
+        nextPollAt: null,
         timeoutAt: null
       });
       await input.store.createAccessGrant({
@@ -1996,6 +1995,16 @@ async function handleWalletSessionRoute(input: {
     pollAfterMs: executeResult.pollAfterMs ?? 5_000
   };
 
+  await recordProviderAttemptSafely(input.store, {
+    jobToken: acceptedBody.jobToken,
+    routeId: input.route.routeId,
+    requestId,
+    phase: "execute",
+    status: "succeeded",
+    requestPayload: input.requestInput,
+    responsePayload: executeResult
+  });
+
   try {
     await input.store.savePendingAsyncJob({
       jobToken: acceptedBody.jobToken,
@@ -2018,30 +2027,9 @@ async function handleWalletSessionRoute(input: {
       timeoutAt: computeTimeoutAt(input.route)
     });
   } catch (error) {
-    await recordProviderAttemptSafely(input.store, {
-      routeId: input.route.routeId,
-      requestId,
-      responseStatusCode: 500,
-      phase: "execute",
-      status: "failed",
-      requestPayload: input.requestInput,
-      errorMessage: error instanceof Error ? error.message : "Async acceptance persistence failed."
-    });
-
-    return input.res.status(500).json({
-      error: error instanceof Error ? error.message : "Async acceptance persistence failed."
-    });
+    console.error("Failed to persist wallet-session async acceptance:", error);
+    return input.res.status(202).json(acceptedBody);
   }
-
-  await recordProviderAttemptSafely(input.store, {
-    jobToken: acceptedBody.jobToken,
-    routeId: input.route.routeId,
-    requestId,
-    phase: "execute",
-    status: "succeeded",
-    requestPayload: input.requestInput,
-    responsePayload: executeResult
-  });
 
   return input.res.status(202).json(acceptedBody);
 }
@@ -2310,7 +2298,6 @@ async function handleX402Route(input: {
 
   const requestId = existing.requestId ?? randomUUID();
   const asyncJobToken = input.route.mode === "async" ? (existing.jobToken ?? createOpaqueToken("job")) : null;
-  const pendingAsyncNextPollAt = input.route.mode === "async" ? computeTimeoutAt(input.route) : null;
 
   if (isTopupX402Billing(input.route)) {
     try {
@@ -2384,7 +2371,7 @@ async function handleX402Route(input: {
         serviceId: input.route.serviceId,
         requestId,
         requestBody,
-        nextPollAt: pendingAsyncNextPollAt,
+        nextPollAt: null,
         timeoutAt: null
       });
     } catch (error) {
@@ -2563,6 +2550,16 @@ async function handleX402Route(input: {
     pollAfterMs: executeResult.pollAfterMs ?? 5_000
   };
 
+  await recordProviderAttemptSafely(input.store, {
+    jobToken: acceptedBody.jobToken,
+    routeId: input.route.routeId,
+    requestId,
+    phase: "execute",
+    status: "succeeded",
+    requestPayload: requestBody,
+    responsePayload: executeResult
+  });
+
   try {
     await input.store.savePendingAsyncJob({
       jobToken: acceptedBody.jobToken,
@@ -2600,20 +2597,21 @@ async function handleX402Route(input: {
       responseHeaders: paymentResponseHeaders
     });
   } catch (error) {
-    return input.res.status(500).json({
-      error: error instanceof Error ? error.message : "Async acceptance persistence failed."
+    const recovered = await persistAcceptedAsyncPaymentFallback({
+      store: input.store,
+      paymentId: paymentHeaders.paymentId,
+      buyerWallet,
+      routeId: input.route.routeId,
+      jobToken: acceptedBody.jobToken,
+      responseBody: acceptedBody,
+      responseHeaders: paymentResponseHeaders
     });
+    if (!recovered) {
+      return input.res.status(500).json({
+        error: error instanceof Error ? error.message : "Async acceptance persistence failed."
+      });
+    }
   }
-
-  await recordProviderAttemptSafely(input.store, {
-    jobToken: acceptedBody.jobToken,
-    routeId: input.route.routeId,
-    requestId,
-    phase: "execute",
-    status: "succeeded",
-    requestPayload: requestBody,
-    responsePayload: executeResult
-  });
 
   return input.res.status(202).set(paymentResponseHeaders).json(acceptedBody);
 }
@@ -2639,6 +2637,38 @@ async function failPendingAsyncJobSafely(store: MarketplaceStore, jobToken: stri
     await store.failJob(jobToken, errorMessage);
   } catch (error) {
     console.error("Failed to fail pending async job:", error);
+  }
+}
+
+async function persistAcceptedAsyncPaymentFallback(input: {
+  store: MarketplaceStore;
+  paymentId: string;
+  buyerWallet: string;
+  routeId: string;
+  jobToken: string;
+  responseBody: unknown;
+  responseHeaders: Record<string, string>;
+}) {
+  try {
+    await input.store.completePendingJobExecution({
+      paymentId: input.paymentId,
+      jobToken: input.jobToken,
+      responseBody: input.responseBody,
+      responseHeaders: input.responseHeaders
+    });
+    await input.store.createAccessGrant({
+      resourceType: "job",
+      resourceId: input.jobToken,
+      wallet: input.buyerWallet,
+      paymentId: input.paymentId,
+      metadata: {
+        routeId: input.routeId
+      }
+    });
+    return true;
+  } catch (error) {
+    console.error("Failed to persist accepted async payment fallback:", error);
+    return false;
   }
 }
 

@@ -545,11 +545,27 @@ describe("marketplace worker", () => {
       }),
       serviceId: "service_stale_async_recovery_1",
       requestId: "request-stale-async-1",
-      providerJobId: "provider_stale_async_recovery_1",
       requestBody: { topic: "recovery" },
-      providerState: { topic: "recovery" },
-      nextPollAt: new Date(Date.now() + 60_000).toISOString(),
-      timeoutAt: new Date(Date.now() + 120_000).toISOString()
+      nextPollAt: null,
+      timeoutAt: null
+    });
+
+    await store.recordProviderAttempt({
+      jobToken: "job_stale_async_recovery_1",
+      routeId: asyncRoute.routeId,
+      requestId: "request-stale-async-1",
+      phase: "execute",
+      status: "succeeded",
+      requestPayload: { topic: "recovery" },
+      responsePayload: {
+        kind: "async",
+        providerJobId: "provider_stale_async_recovery_1",
+        pollAfterMs: 5_000,
+        providerState: {
+          topic: "recovery",
+          readyAt: Date.now() + 60_000
+        }
+      }
     });
 
     const idempotencyByPaymentId = (store as unknown as {
@@ -582,9 +598,15 @@ describe("marketplace worker", () => {
 
     const payment = await store.getIdempotencyByPaymentId("stale_payment_async_recovery_1");
     const refund = await store.getRefundByPaymentId("stale_payment_async_recovery_1");
+    const job = await store.getJob("job_stale_async_recovery_1");
 
     expect(refundCalls).toBe(0);
     expect(refund).toBeNull();
+    expect(job?.providerJobId).toBe("provider_stale_async_recovery_1");
+    expect(job?.providerState).toEqual({
+      topic: "recovery",
+      readyAt: expect.any(Number)
+    });
     expect(payment?.executionStatus).toBe("completed");
     expect(payment?.responseKind).toBe("job");
     expect(payment?.jobToken).toBe("job_stale_async_recovery_1");

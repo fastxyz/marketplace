@@ -1033,6 +1033,7 @@ export interface MarketplaceStore {
     responsePayload?: unknown;
     errorMessage?: string;
   }): Promise<ProviderAttemptRecord>;
+  getLatestSuccessfulProviderExecuteAttempt(jobToken: string): Promise<ProviderAttemptRecord | null>;
   createRefund(input: {
     jobToken?: string | null;
     paymentId: string;

@@ -97,16 +97,16 @@ function isPendingJobActionable(
     return false;
   }
 
-  if (!job.providerJobId) {
-    return false;
-  }
-
   if (isPendingJobTimedOut(job, nowMs)) {
     return true;
   }
 
   if (job.routeSnapshot.asyncConfig?.strategy === "webhook") {
     return false;
+  }
+
+  if (!job.providerJobId) {
+    return true;
   }
 
   if (!job.nextPollAt) {
@@ -1124,6 +1124,19 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
 
     this.attempts.push(record);
     return clone(record);
+  }
+
+  async getLatestSuccessfulProviderExecuteAttempt(jobToken: string): Promise<ProviderAttemptRecord | null> {
+    return clone(
+      [...this.attempts]
+        .filter((attempt) =>
+          attempt.jobToken === jobToken
+          && attempt.phase === "execute"
+          && attempt.status === "succeeded"
+        )
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]
+        ?? null
+    );
   }
 
   async createRefund(input: {
@@ -5079,6 +5092,23 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     );
 
     return mapAttemptRow(result.rows[0]);
+  }
+
+  async getLatestSuccessfulProviderExecuteAttempt(jobToken: string): Promise<ProviderAttemptRecord | null> {
+    const result = await this.pool.query(
+      `
+      SELECT *
+      FROM provider_attempts
+      WHERE job_token = $1
+        AND phase = 'execute'
+        AND status = 'succeeded'
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [jobToken]
+    );
+
+    return result.rowCount ? mapAttemptRow(result.rows[0]) : null;
   }
 
   async createRefund(input: {

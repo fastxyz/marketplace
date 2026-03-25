@@ -535,7 +535,7 @@ describe("marketplace api", () => {
     expect(job?.payoutSplit.providerAccountId).toBe("provider_marketplace");
   });
 
-  it("recovers a stale pending async acceptance without changing the marketplace request id", async () => {
+  it("keeps accepted async payments replayable when saveAsyncAcceptance fails after upstream acceptance", async () => {
     class FlakyAsyncStore extends InMemoryMarketplaceStore {
       private failNextAcceptanceWrite = true;
 
@@ -566,7 +566,7 @@ describe("marketplace api", () => {
               kind: "async" as const,
               providerJobId: `provider_${context.requestId}`,
               pollAfterMs: 5_000,
-              state: {
+              providerState: {
                 requestId: context.requestId
               }
             };
@@ -575,7 +575,7 @@ describe("marketplace api", () => {
             return {
               status: "pending" as const,
               pollAfterMs: 5_000,
-              state: {}
+              providerState: {}
             };
           }
         }
@@ -588,7 +588,8 @@ describe("marketplace api", () => {
       .set("PAYMENT-IDENTIFIER", "payment_async_recovery_1")
       .send({ topic: "market depth", delayMs: 60_000 });
 
-    expect(first.status).toBe(500);
+    expect(first.status).toBe(202);
+    expect(first.body.jobToken).toBeDefined();
     expect(requestIds).toHaveLength(1);
 
     const second = await request(app)
@@ -598,40 +599,15 @@ describe("marketplace api", () => {
       .send({ topic: "market depth", delayMs: 60_000 });
 
     expect(second.status).toBe(202);
-    expect(second.body.status).toBe("processing");
+    expect(second.body).toEqual(first.body);
     expect(requestIds).toHaveLength(1);
-
-    const idempotencyByPaymentId = (store as unknown as {
-      idempotencyByPaymentId: Map<string, {
-        updatedAt: string;
-      }>;
-    }).idempotencyByPaymentId;
-    const pending = idempotencyByPaymentId.get("payment_async_recovery_1");
-    if (!pending) {
-      throw new Error("Missing pending async idempotency record.");
-    }
-    idempotencyByPaymentId.set("payment_async_recovery_1", {
-      ...pending,
-      updatedAt: new Date(Date.now() - 20_000).toISOString()
-    });
-
-    const recovered = await request(app)
-      .post("/api/mock/async-report")
-      .set("X-PAYMENT", Buffer.from(JSON.stringify({ paid: true })).toString("base64"))
-      .set("PAYMENT-IDENTIFIER", "payment_async_recovery_1")
-      .send({ topic: "market depth", delayMs: 60_000 });
-
-    expect(recovered.status).toBe(202);
-    expect(recovered.body.jobToken).toBeDefined();
-    expect(requestIds).toHaveLength(2);
-    expect(new Set(requestIds).size).toBe(1);
 
     const challenge = await request(app)
       .post("/auth/challenge")
       .send({
         wallet: buyer.address,
         resourceType: "job",
-        resourceId: recovered.body.jobToken
+        resourceId: first.body.jobToken
       });
 
     expect(challenge.status).toBe(200);
@@ -639,7 +615,7 @@ describe("marketplace api", () => {
     const record = await store.getIdempotencyByPaymentId("payment_async_recovery_1");
     expect(record?.executionStatus).toBe("completed");
     expect(record?.requestId).toBe(requestIds[0]);
-    expect(record?.jobToken).toBe(recovered.body.jobToken);
+    expect(record?.jobToken).toBe(first.body.jobToken);
   });
 
   it("repairs a missing async job access grant when replaying an existing payment", async () => {
@@ -1860,6 +1836,267 @@ describe("marketplace api", () => {
     expect(retrieved.status).toBe(200);
     expect(retrieved.body.status).toBe("completed");
     expect(retrieved.body.result).toEqual({ items: ["alpha"] });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://provider.example.com/api/search",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ query: "FAST" })
+      })
+    );
+  });
+
+  it("returns the wallet-session job token and lets the worker repair poll metadata when the accepted placeholder update fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    class WalletSessionPendingStore extends InMemoryMarketplaceStore {
+      private failAcceptedPlaceholderWrite = true;
+
+      override async savePendingAsyncJob(input: Parameters<InMemoryMarketplaceStore["savePendingAsyncJob"]>[0]) {
+        if (this.failAcceptedPlaceholderWrite && input.providerJobId) {
+          this.failAcceptedPlaceholderWrite = false;
+          throw new Error("accepted wallet-session placeholder write failed");
+        }
+
+        return super.savePendingAsyncJob(input);
+      }
+    }
+
+    const providerWallet = await createTestWallet(PROVIDER_PRIVATE_KEY);
+    const store = new WalletSessionPendingStore(
+      resolveMarketplaceNetworkConfig({
+        deploymentNetwork: "mainnet"
+      })
+    );
+    const { app } = await createTestApp({
+      baseUrl: "https://marketplace.example.com",
+      store
+    });
+    const providerToken = await createSiteSession(app, providerWallet);
+
+    expect(
+      await request(app)
+        .post("/provider/me")
+        .set("Authorization", `Bearer ${providerToken}`)
+        .send({
+          displayName: "Signal Labs Wallet Pending Repair",
+          websiteUrl: "https://provider.example.com"
+        })
+    ).toMatchObject({ status: 201 });
+
+    const createdService = await request(app)
+      .post("/provider/services")
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({
+        serviceType: "marketplace_proxy",
+        slug: "signals-free-async-wallet-repair",
+        apiNamespace: "signals-free-async-wallet-repair",
+        name: "Signal Labs Wallet Pending Repair",
+        tagline: "Wallet-session async survives accepted placeholder write failures",
+        about: "Provider-authored signal endpoints.",
+        categories: ["Research"],
+        promptIntro: 'I want to use the "Signal Labs Wallet Pending Repair" service on Fast Marketplace.',
+        setupInstructions: ["Use a funded Fast wallet."],
+        websiteUrl: "https://provider.example.com",
+        payoutWallet: providerWallet.address
+      });
+
+    expect(createdService.status).toBe(201);
+    const serviceId = createdService.body.service.id as string;
+
+    const runtimeKeyResponse = await request(app)
+      .post(`/provider/services/${serviceId}/runtime-key`)
+      .set("Authorization", `Bearer ${providerToken}`)
+      .send({});
+
+    expect(runtimeKeyResponse.status).toBe(201);
+    const runtimeKey = runtimeKeyResponse.body.plaintextKey as string;
+
+    expect(
+      await request(app)
+        .post(`/provider/services/${serviceId}/endpoints`)
+        .set("Authorization", `Bearer ${providerToken}`)
+        .send({
+          endpointType: "marketplace_proxy",
+          operation: "search",
+          method: "POST",
+          title: "Search",
+          description: "Return a free async signal snapshot.",
+          billingType: "free",
+          mode: "async",
+          asyncStrategy: "poll",
+          asyncTimeoutMs: 300000,
+          pollPath: "/api/poll",
+          requestSchemaJson: {
+            type: "object",
+            properties: {
+              query: { type: "string", minLength: 1 }
+            },
+            required: ["query"],
+            additionalProperties: false
+          },
+          responseSchemaJson: {
+            type: "object",
+            properties: {
+              items: {
+                type: "array",
+                items: { type: "string" }
+              }
+            },
+            required: ["items"],
+            additionalProperties: false
+          },
+          requestExample: {
+            query: "FAST"
+          },
+          responseExample: {
+            items: ["alpha"]
+          },
+          upstreamBaseUrl: "https://provider.example.com",
+          upstreamPath: "/api/search",
+          upstreamAuthMode: "none"
+        })
+    ).toMatchObject({ status: 201 });
+
+    const verificationChallenge = await request(app)
+      .post(`/provider/services/${serviceId}/verification-challenge`)
+      .set("Authorization", `Bearer ${providerToken}`);
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === verificationChallenge.body.expectedUrl) {
+        return new Response(verificationChallenge.body.token, { status: 200 });
+      }
+
+      if (url === "https://provider.example.com/api/search") {
+        const headers = Object.fromEntries(new Headers(init?.headers).entries());
+        const identity = verifyMarketplaceIdentityHeaders({
+          headers,
+          signingSecret: runtimeKey
+        });
+
+        expect(identity.serviceId).toBe(serviceId);
+        expect(identity.buyerWallet).toBe(providerWallet.address);
+
+        return new Response(JSON.stringify({
+          status: "accepted",
+          providerJobId: "provider_job_wallet_repair_1",
+          pollAfterMs: 5_000,
+          providerState: {
+            query: "FAST",
+            readyAt: Date.now() + 60_000
+          }
+        }), {
+          status: 202,
+          headers: {
+            "content-type": "application/json"
+          }
+        });
+      }
+
+      return new Response("not found", { status: 404 });
+    });
+
+    expect(
+      await request(app)
+        .post(`/provider/services/${serviceId}/verify`)
+        .set("Authorization", `Bearer ${providerToken}`)
+    ).toMatchObject({ status: 200 });
+    expect(
+      await request(app)
+        .post(`/provider/services/${serviceId}/submit`)
+        .set("Authorization", `Bearer ${providerToken}`)
+    ).toMatchObject({ status: 202 });
+    expect(
+      await request(app)
+        .post(`/internal/provider-services/${serviceId}/publish`)
+        .set("Authorization", "Bearer test-admin-token")
+        .send({
+          reviewerIdentity: "ops@test",
+          settlementMode: "verified_escrow"
+        })
+    ).toMatchObject({ status: 200 });
+
+    const challenge = await request(app)
+      .post("/auth/challenge")
+      .send({
+        wallet: providerWallet.address,
+        resourceType: "api",
+        resourceId: "signals-free-async-wallet-repair.search.v1"
+      });
+
+    expect(challenge.status).toBe(200);
+
+    const signed = await providerWallet.wallet.sign({ message: challenge.body.message });
+    const apiSession = await request(app)
+      .post("/auth/session")
+      .send({
+        wallet: providerWallet.address,
+        resourceType: "api",
+        resourceId: "signals-free-async-wallet-repair.search.v1",
+        nonce: challenge.body.nonce,
+        expiresAt: challenge.body.expiresAt,
+        signature: signed.signature
+      });
+
+    expect(apiSession.status).toBe(200);
+
+    const accepted = await request(app)
+      .post("/api/signals-free-async-wallet-repair/search")
+      .set("Authorization", `Bearer ${apiSession.body.accessToken}`)
+      .send({ query: "FAST" });
+
+    expect(accepted.status).toBe(202);
+    expect(accepted.body.jobToken).toBeDefined();
+
+    const challengeJob = await request(app)
+      .post("/auth/challenge")
+      .send({
+        wallet: providerWallet.address,
+        resourceType: "job",
+        resourceId: accepted.body.jobToken
+      });
+
+    expect(challengeJob.status).toBe(200);
+
+    const signedJob = await providerWallet.wallet.sign({ message: challengeJob.body.message });
+    const jobSession = await request(app)
+      .post("/auth/session")
+      .send({
+        wallet: providerWallet.address,
+        resourceType: "job",
+        resourceId: accepted.body.jobToken,
+        nonce: challengeJob.body.nonce,
+        expiresAt: challengeJob.body.expiresAt,
+        signature: signedJob.signature
+      });
+
+    expect(jobSession.status).toBe(200);
+
+    const pendingJob = await request(app)
+      .get(`/api/jobs/${accepted.body.jobToken}`)
+      .set("Authorization", `Bearer ${jobSession.body.accessToken}`);
+
+    expect(pendingJob.status).toBe(200);
+    expect(pendingJob.body.status).toBe("pending");
+
+    expect((await store.getJob(accepted.body.jobToken))?.providerJobId).toBeNull();
+
+    await runMarketplaceWorkerCycle({
+      store,
+      secretsKey: "test-secrets-key",
+      refundService: {
+        async issueRefund() {
+          return { txHash: "0xwallet-repair-refund" };
+        }
+      }
+    });
+
+    const repairedJob = await store.getJob(accepted.body.jobToken);
+    expect(repairedJob?.providerJobId).toBe("provider_job_wallet_repair_1");
+    expect(repairedJob?.providerState).toEqual({
+      query: "FAST",
+      readyAt: expect.any(Number)
+    });
     expect(fetchMock).toHaveBeenCalledWith(
       "https://provider.example.com/api/search",
       expect.objectContaining({
