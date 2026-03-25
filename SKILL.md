@@ -60,6 +60,20 @@ Before acting, identify:
 2. If the flow is website-based, connect the Fast browser wallet from the site header and sign the website challenge.
 3. Use the role-specific flow below.
 
+## CLI setup
+
+Before using CLI commands from this skill:
+
+1. Run `npm install` at the repo root.
+2. Use `npm run cli -- ...` from this workspace as the default invocation path.
+3. Treat `fast-marketplace ...` as the command name exposed by the CLI itself; if the package is installed globally or linked into `$PATH`, the same subcommands can be run directly as `fast-marketplace ...`.
+
+Examples:
+
+- `npm run cli -- wallet init`
+- `npm run cli -- auth api-session <provider> <operation>`
+- `npm run cli -- provider sync --spec ./provider-spec.json`
+
 ## Buyer workflow
 
 1. Open the marketplace UI at `https://marketplace.example.com` and locate the relevant service.
@@ -68,7 +82,7 @@ Before acting, identify:
 4. If the user is delegating the task to another agent, copy the service page's "Use this service" block or the canonical skill URL.
 5. For `fixed_x402` routes outside the browser panel, send the first request without payment proof, read the `402 Payment Required` response, pay from the funded wallet, and retry the same request with the payment proof headers.
 6. For `topup_x402_variable` routes, include the requested amount in the request body, expect a `402` quote for that exact amount, pay it, and persist the credited response details.
-7. For `prepaid_credit` routes, create an API-scoped wallet session through `/auth/challenge` and `/auth/session` or use `fast-marketplace auth api-session`; then invoke the route with the bearer token instead of x402 proof.
+7. For `prepaid_credit` routes, create an API-scoped wallet session through `/auth/challenge` and `/auth/session` or use `npm run cli -- auth api-session <provider> <operation>`; then invoke the route with the bearer token instead of x402 proof.
 8. If the route returns `202 Accepted`, store the `jobToken` and switch to wallet-bound retrieval.
 9. If the marketplace does not have the needed capability, submit a suggestion for an endpoint or source.
 
@@ -100,7 +114,7 @@ The marketplace is Fast-native and wallet-first.
 ### Prepaid credit
 
 1. Fund service credit first through the service's `topup_x402_variable` route.
-2. Create an API-scoped wallet session through `/auth/challenge` and `/auth/session`, or use `fast-marketplace auth api-session <provider> <operation>`.
+2. Create an API-scoped wallet session through `/auth/challenge` and `/auth/session`, or use `npm run cli -- auth api-session <provider> <operation>`.
 3. Invoke the `prepaid_credit` route with the bearer token.
 4. If using the CLI, `fast-marketplace invoke` will automatically switch to wallet-session auth when the route requires it.
 
@@ -154,7 +168,7 @@ Important constraints:
 
 ## Provider workflow
 
-1. Prefer the CLI path for agent-driven provider onboarding: create a spec JSON and run `fast-marketplace provider sync --spec <path>`.
+1. Prefer the CLI path for agent-driven provider onboarding: create a spec JSON and run `npm run cli -- provider sync --spec <path>`.
 2. The provider commands default to `AGENT_WALLET_KEY` from repo-root `.env`; use `--keyfile` only when you need to override that wallet.
 3. `provider sync` upserts the provider profile, creates or updates the owned service draft by slug, reconciles endpoint drafts, and creates a runtime key only when a `marketplace_proxy` service does not already have one.
 4. New provider services default to `community_direct`; providers cannot self-assign `verified_escrow` in v1.
@@ -163,10 +177,10 @@ Important constraints:
 7. For `topup_x402_variable` endpoints, set `minAmount` and `maxAmount`; the marketplace owns the top-up crediting flow.
 8. For async HTTP endpoints, require a provider runtime key and implement the marketplace async contract: execute returns `202` with `providerJobId`, poll routes expose `pollPath`, and webhook routes complete through the marketplace callback endpoint.
 9. For `prepaid_credit` endpoints, verify marketplace identity headers upstream and use the provider runtime credit APIs to reserve, capture, release, and when needed extend buyer credit reservations.
-10. Run `fast-marketplace provider verify --service <slug-or-id>` to mint a fresh verification challenge and show the exact URL and token the website must serve.
+10. Run `npm run cli -- provider verify --service <slug-or-id>` to mint a fresh verification challenge and show the exact URL and token the website must serve.
 11. If verification requires touching deploy, DNS, or cloud env outside this repo, ask the user before taking that action. For arbitrary external sites, the agent should hand off the token and wait for confirmation rather than mutating infrastructure on its own.
 12. After the user confirms the verification token is live, continue the same `provider verify` flow so the marketplace performs the ownership check.
-13. Run `fast-marketplace provider submit --service <slug-or-id>` only after verification succeeds; this flow stops at `pending_review`, not admin publish.
+13. Run `npm run cli -- provider submit --service <slug-or-id>` only after verification succeeds; this flow stops at `pending_review`, not admin publish.
 14. If building from marketplace demand, review provider-visible request intake and claim the request you want to build before syncing the draft.
 15. After admin publish, use the public service page and paid proxy routes as the canonical execution surface.
 
