@@ -879,6 +879,118 @@ describe("marketplace worker", () => {
     expect((await store.getIdempotencyByPaymentId(paymentId))?.executionStatus).toBe("completed");
   });
 
+  it("does not refund a stale async payment when the job completes during refund fencing", async () => {
+    class CompletionDuringFenceStore extends InMemoryMarketplaceStore {
+      override async failJob(jobToken: string, error: string) {
+        await super.completeJob(jobToken, { ok: true, source: "late-completion" });
+        return super.failJob(jobToken, error);
+      }
+    }
+
+    const networkConfig = resolveMarketplaceNetworkConfig({
+      deploymentNetwork: "testnet"
+    });
+    const store = new CompletionDuringFenceStore(networkConfig);
+    const asyncRoute = buildMarketplaceRoutes(networkConfig).find((route) => route.routeId === "mock.async-report.v1");
+
+    if (!asyncRoute) {
+      throw new Error("Missing async seeded route.");
+    }
+
+    const paymentId = "stale_payment_race_completion_1";
+    const jobToken = "job_stale_race_completion_1";
+    const buyerWallet = "fast1buyerracecomplete00000000000000000000000000000000000000000";
+
+    await store.claimPaymentExecution({
+      paymentId,
+      normalizedRequestHash: "stale-race-completion-hash-1",
+      buyerWallet,
+      routeId: asyncRoute.routeId,
+      routeVersion: asyncRoute.version,
+      pendingRecoveryAction: "refund",
+      quotedPrice: "150000",
+      payoutSplit: buildEscrowSplit({
+        providerAccountId: "mock",
+        providerWallet: "fast1providerracecomplete000000000000000000000000000000000000",
+        marketplaceBps: 5000,
+        marketplaceAmount: "75000",
+        providerBps: 5000,
+        providerAmount: "75000"
+      }),
+      paymentPayload: "payload-race-completion-1",
+      facilitatorResponse: { isValid: true },
+      responseKind: "job",
+      requestId: "request-race-completion-1",
+      jobToken,
+      responseBody: { status: "processing" },
+      responseHeaders: {}
+    });
+
+    await store.savePendingAsyncJob({
+      jobToken,
+      paymentId,
+      buyerWallet,
+      route: {
+        ...asyncRoute,
+        executorKind: "http",
+        asyncConfig: {
+          strategy: "poll",
+          timeoutMs: 60_000,
+          pollPath: "/api/poll"
+        }
+      },
+      quotedPrice: "150000",
+      payoutSplit: buildEscrowSplit({
+        providerAccountId: "mock",
+        providerWallet: "fast1providerracecomplete000000000000000000000000000000000000",
+        marketplaceBps: 5000,
+        marketplaceAmount: "75000",
+        providerBps: 5000,
+        providerAmount: "75000"
+      }),
+      serviceId: "service_race_completion_1",
+      requestId: "request-race-completion-1",
+      requestBody: { topic: "late completion" },
+      nextPollAt: null,
+      timeoutAt: null
+    });
+
+    const idempotencyByPaymentId = (store as unknown as {
+      idempotencyByPaymentId: Map<string, { updatedAt: string }>;
+    }).idempotencyByPaymentId;
+    const pending = idempotencyByPaymentId.get(paymentId);
+    if (!pending) {
+      throw new Error("Missing pending payment record.");
+    }
+
+    idempotencyByPaymentId.set(paymentId, {
+      ...pending,
+      updatedAt: new Date(Date.now() - PAYMENT_EXECUTION_RECOVERY_MS - 1_000).toISOString()
+    });
+
+    let refundCalls = 0;
+    await runMarketplaceWorkerCycle({
+      store,
+      secretsKey: "test-secrets-key",
+      refundService: {
+        async issueRefund() {
+          refundCalls += 1;
+          return { txHash: "0xunexpected-race-refund" };
+        }
+      }
+    });
+
+    const payment = await store.getIdempotencyByPaymentId(paymentId);
+    const refund = await store.getRefundByPaymentId(paymentId);
+    const job = await store.getJob(jobToken);
+
+    expect(refundCalls).toBe(0);
+    expect(refund).toBeNull();
+    expect(job?.status).toBe("completed");
+    expect(payment?.executionStatus).toBe("completed");
+    expect(payment?.responseKind).toBe("job");
+  });
+
   it("attaches stale-payment refunds to async jobs and excludes refunded jobs from payout recovery", async () => {
     const networkConfig = resolveMarketplaceNetworkConfig({
       deploymentNetwork: "testnet"
@@ -1259,6 +1371,80 @@ describe("marketplace worker", () => {
     expect(job?.providerJobId).toBeNull();
     expect(job?.nextPollAt).not.toBeNull();
     expect(refundCalls).toBe(0);
+  });
+
+  it("fails stale wallet-session async placeholders that never reach acceptance", async () => {
+    const networkConfig = resolveMarketplaceNetworkConfig({
+      deploymentNetwork: "testnet"
+    });
+    const store = new InMemoryMarketplaceStore(networkConfig);
+    const asyncRoute = buildMarketplaceRoutes(networkConfig).find((route) => route.routeId === "mock.async-report.v1");
+
+    if (!asyncRoute) {
+      throw new Error("Missing async seeded route.");
+    }
+
+    await store.savePendingAsyncJob({
+      jobToken: "job_wallet_placeholder_stale_1",
+      paymentId: "wallet_access_stale_1",
+      buyerWallet: "fast1buyerwalletstale000000000000000000000000000000000000000000",
+      route: {
+        ...asyncRoute,
+        billing: { type: "free" },
+        price: "Free",
+        executorKind: "http",
+        asyncConfig: {
+          strategy: "poll",
+          timeoutMs: 60_000,
+          pollPath: "/api/poll"
+        }
+      },
+      quotedPrice: "0",
+      payoutSplit: buildEscrowSplit({
+        providerAccountId: "mock",
+        providerWallet: null,
+        marketplaceBps: 10000,
+        marketplaceAmount: "0",
+        providerBps: 0,
+        providerAmount: "0"
+      }),
+      serviceId: "service_wallet_placeholder_stale_1",
+      requestId: "request_wallet_placeholder_stale_1",
+      requestBody: { topic: "wallet placeholder" },
+      nextPollAt: new Date(Date.now() - 1_000).toISOString(),
+      timeoutAt: null
+    });
+
+    const jobsByToken = (store as unknown as {
+      jobsByToken: Map<string, { createdAt: string; updatedAt: string }>;
+    }).jobsByToken;
+    const existing = jobsByToken.get("job_wallet_placeholder_stale_1");
+    if (!existing) {
+      throw new Error("Missing wallet placeholder job.");
+    }
+    jobsByToken.set("job_wallet_placeholder_stale_1", {
+      ...existing,
+      createdAt: new Date(Date.now() - PAYMENT_EXECUTION_RECOVERY_MS - 1_000).toISOString(),
+      updatedAt: new Date(Date.now() - PAYMENT_EXECUTION_RECOVERY_MS - 1_000).toISOString()
+    });
+
+    let refundCalls = 0;
+    await runMarketplaceWorkerCycle({
+      store,
+      secretsKey: "test-secrets-key",
+      refundService: {
+        async issueRefund() {
+          refundCalls += 1;
+          return { txHash: "0xwallet-placeholder-refund" };
+        }
+      }
+    });
+
+    const job = await store.getJob("job_wallet_placeholder_stale_1");
+    expect(job?.status).toBe("failed");
+    expect(job?.errorMessage).toContain("never accepted upstream");
+    expect(refundCalls).toBe(0);
+    expect(await store.getRefundByJobToken("job_wallet_placeholder_stale_1")).toBeNull();
   });
 
   it("prioritizes accepted due poll jobs ahead of older pre-accept placeholders", async () => {

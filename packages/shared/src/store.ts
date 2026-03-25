@@ -1046,6 +1046,10 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       throw new Error(`Job not found: ${jobToken}`);
     }
 
+    if (existing.status !== "pending") {
+      return clone(existing);
+    }
+
     const updated: JobRecord = {
       ...existing,
       status: "completed",
@@ -1063,6 +1067,10 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     const existing = this.jobsByToken.get(jobToken);
     if (!existing) {
       throw new Error(`Job not found: ${jobToken}`);
+    }
+
+    if (existing.status !== "pending") {
+      return clone(existing);
     }
 
     const updated: JobRecord = {
@@ -5055,10 +5063,18 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
   async completeJob(jobToken: string, body: unknown): Promise<JobRecord> {
     const result = await this.pool.query(
       `
-      UPDATE jobs
-      SET status = 'completed', result_body = $2::jsonb, error_message = NULL, next_poll_at = NULL, updated_at = NOW()
+      WITH updated AS (
+        UPDATE jobs
+        SET status = 'completed', result_body = $2::jsonb, error_message = NULL, next_poll_at = NULL, updated_at = NOW()
+        WHERE job_token = $1
+          AND status = 'pending'
+        RETURNING *
+      )
+      SELECT * FROM updated
+      UNION ALL
+      SELECT * FROM jobs
       WHERE job_token = $1
-      RETURNING *
+        AND NOT EXISTS (SELECT 1 FROM updated)
       `,
       [jobToken, JSON.stringify(body)]
     );
@@ -5069,10 +5085,18 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
   async failJob(jobToken: string, error: string): Promise<JobRecord> {
     const result = await this.pool.query(
       `
-      UPDATE jobs
-      SET status = 'failed', error_message = $2, next_poll_at = NULL, updated_at = NOW()
+      WITH updated AS (
+        UPDATE jobs
+        SET status = 'failed', error_message = $2, next_poll_at = NULL, updated_at = NOW()
+        WHERE job_token = $1
+          AND status = 'pending'
+        RETURNING *
+      )
+      SELECT * FROM updated
+      UNION ALL
+      SELECT * FROM jobs
       WHERE job_token = $1
-      RETURNING *
+        AND NOT EXISTS (SELECT 1 FROM updated)
       `,
       [jobToken, error]
     );

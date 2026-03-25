@@ -921,6 +921,81 @@ describe("shared marketplace helpers", () => {
     expect(job?.timeoutAt).toBe("2026-03-20T00:10:00.000Z");
   });
 
+  it("does not overwrite terminal async jobs when duplicate terminal updates race", async () => {
+    const store = new InMemoryMarketplaceStore(TESTNET_NETWORK_CONFIG);
+    const asyncRoute = TESTNET_MARKETPLACE_ROUTES.find((route) => route.routeId === "mock.async-report.v1");
+
+    if (!asyncRoute) {
+      throw new Error("Missing async seeded route.");
+    }
+
+    await store.saveAsyncAcceptance({
+      paymentId: "payment_terminal_sticky_1",
+      normalizedRequestHash: "hash_terminal_sticky_1",
+      buyerWallet: "fast1buyerterminalsticky0000000000000000000000000000000000000000",
+      route: asyncRoute,
+      quotedPrice: "150000",
+      payoutSplit: buildEscrowSplit({
+        providerAccountId: "mock",
+        providerWallet: null,
+        marketplaceBps: 10000,
+        marketplaceAmount: "150000",
+        providerBps: 0,
+        providerAmount: "0"
+      }),
+      paymentPayload: "payload-terminal-sticky-1",
+      facilitatorResponse: { isValid: true },
+      jobToken: "job_terminal_sticky_1",
+      requestId: "request_terminal_sticky_1",
+      providerJobId: "provider_terminal_sticky_1",
+      requestBody: { topic: "terminal sticky" },
+      responseBody: {
+        jobToken: "job_terminal_sticky_1",
+        status: "pending"
+      },
+      responseHeaders: {}
+    });
+
+    await store.completeJob("job_terminal_sticky_1", { ok: true });
+    const stillCompleted = await store.failJob("job_terminal_sticky_1", "late failure should not overwrite");
+    expect(stillCompleted.status).toBe("completed");
+    expect(stillCompleted.resultBody).toEqual({ ok: true });
+    expect(stillCompleted.errorMessage).toBeNull();
+
+    await store.saveAsyncAcceptance({
+      paymentId: "payment_terminal_sticky_2",
+      normalizedRequestHash: "hash_terminal_sticky_2",
+      buyerWallet: "fast1buyerterminalsticky200000000000000000000000000000000000000",
+      route: asyncRoute,
+      quotedPrice: "150000",
+      payoutSplit: buildEscrowSplit({
+        providerAccountId: "mock",
+        providerWallet: null,
+        marketplaceBps: 10000,
+        marketplaceAmount: "150000",
+        providerBps: 0,
+        providerAmount: "0"
+      }),
+      paymentPayload: "payload-terminal-sticky-2",
+      facilitatorResponse: { isValid: true },
+      jobToken: "job_terminal_sticky_2",
+      requestId: "request_terminal_sticky_2",
+      providerJobId: "provider_terminal_sticky_2",
+      requestBody: { topic: "terminal sticky" },
+      responseBody: {
+        jobToken: "job_terminal_sticky_2",
+        status: "pending"
+      },
+      responseHeaders: {}
+    });
+
+    await store.failJob("job_terminal_sticky_2", "permanent failure");
+    const stillFailed = await store.completeJob("job_terminal_sticky_2", { ok: true });
+    expect(stillFailed.status).toBe("failed");
+    expect(stillFailed.errorMessage).toBe("permanent failure");
+    expect(stillFailed.resultBody).toBeNull();
+  });
+
   it("tracks prepaid credit balances across topup, reserve, capture, release, and expiry", async () => {
     const store = new InMemoryMarketplaceStore();
     const serviceId = "service_credit_1";

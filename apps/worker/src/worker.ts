@@ -45,6 +45,25 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
     if (!currentJob.providerJobId) {
       const repairedJob = await recoverAcceptedAsyncPlaceholder(options.store, currentJob);
       if (!repairedJob) {
+        if (isExpiredUnacceptedPlaceholder(currentJob, nowMs)) {
+          await options.store.recordProviderAttempt({
+            jobToken: currentJob.jobToken,
+            routeId: currentJob.routeId,
+            requestId: currentJob.requestId,
+            phase: "poll",
+            status: "failed",
+            requestPayload: currentJob.requestBody,
+            errorMessage: `Async job was never accepted upstream: ${currentJob.jobToken}`
+          });
+          await expireAsyncPrepaidReservation(options.store, currentJob);
+          await resolveAsyncJobFailure({
+            store: options.store,
+            refundService: options.refundService,
+            job: currentJob,
+            error: `Async job was never accepted upstream for ${currentJob.routeId}.`
+          });
+          continue;
+        }
         await backoffUnacceptedPlaceholder(options.store, currentJob);
         continue;
       }
@@ -260,6 +279,11 @@ async function backoffUnacceptedPlaceholder(store: MarketplaceStore, job: JobRec
     jobToken: job.jobToken,
     nextPollAt: computeNextPollAt()
   });
+}
+
+function isExpiredUnacceptedPlaceholder(job: JobRecord, nowMs: number): boolean {
+  const createdAtMs = Date.parse(job.createdAt);
+  return !Number.isNaN(createdAtMs) && createdAtMs <= nowMs - PAYMENT_EXECUTION_RECOVERY_MS;
 }
 
 function parseAttemptCreatedAt(createdAt: string | undefined): Date {
@@ -575,16 +599,25 @@ async function recoverStalePendingPayments(input: {
       }
     }
 
+    if (job) {
+      job = await fenceRefundedAsyncJob(input.store, payment.paymentId, job);
+      if (canRecoverPendingJobExecution(job, acceptedExecuteAttempt)) {
+        await input.store.completePendingJobExecution({
+          paymentId: payment.paymentId,
+          jobToken: job.jobToken,
+          responseBody: buildRecoveredAsyncJobResponse(job),
+          responseHeaders: payment.responseHeaders
+        });
+        continue;
+      }
+    }
+
     const refund = await input.store.createRefund({
       jobToken: payment.jobToken ?? undefined,
       paymentId: payment.paymentId,
       wallet: payment.buyerWallet,
       amount: payment.quotedPrice
     });
-
-    if (job) {
-      await fenceRefundedAsyncJob(input.store, payment.paymentId, job);
-    }
 
     if (refund.status === "sent" || refund.status === "failed") {
       await finalizeRecoveredRefundedPayment(input.store, payment, refund, latestExecuteAttempt);
@@ -612,10 +645,6 @@ async function fenceRefundedAsyncJob(
   paymentId: string,
   job: JobRecord
 ) {
-  if (job.status !== "pending") {
-    return job;
-  }
-
   return store.failJob(
     job.jobToken,
     `Automatic recovery refund started for unresolved paid request ${paymentId}.`
