@@ -29,7 +29,7 @@ npm run dev:apify-service
 
 ## Deployment Shape
 
-Deploy the same app six times in Coolify with different env:
+Deploy the same app once per actor in Coolify with different env. The original six are already live, and the expanded batch in `specs/SERVICES.md` covers the additional actors we want to onboard next.
 
 - `APIFY_ACTOR_ID=compass/crawler-google-places`
 - `APIFY_ACTOR_ID=clockworks/tiktok-scraper`
@@ -37,6 +37,19 @@ Deploy the same app six times in Coolify with different env:
 - `APIFY_ACTOR_ID=apidojo/tweet-scraper`
 - `APIFY_ACTOR_ID=apify/facebook-posts-scraper`
 - `APIFY_ACTOR_ID=streamers/youtube-scraper`
+- `APIFY_ACTOR_ID=apify/website-content-crawler`
+- `APIFY_ACTOR_ID=apify/web-scraper`
+- `APIFY_ACTOR_ID=dev_fusion/linkedin-profile-scraper`
+- `APIFY_ACTOR_ID=vdrmota/contact-info-scraper`
+- `APIFY_ACTOR_ID=code_crafter/leads-finder`
+- `APIFY_ACTOR_ID=curious_coder/facebook-ads-library-scraper`
+- `APIFY_ACTOR_ID=bebity/linkedin-jobs-scraper`
+- `APIFY_ACTOR_ID=apify/e-commerce-scraping-tool`
+- `APIFY_ACTOR_ID=harvestapi/linkedin-company-employees`
+- `APIFY_ACTOR_ID=misceres/indeed-scraper`
+- `APIFY_ACTOR_ID=powerai/g2-product-reviews-scraper`
+- `APIFY_ACTOR_ID=apify/cheerio-scraper`
+- `APIFY_ACTOR_ID=junglee/amazon-crawler`
 
 Each deployment should get:
 
@@ -44,7 +57,7 @@ Each deployment should get:
 - its own provider service in the marketplace
 - `verified_escrow` on publish
 
-Provider-spec templates for those six services live in [specs/](/Users/chris/Documents/Workspace/ai-agent-marketplace/apps/apify-service/specs/).
+Provider-spec templates for all supported Apify services live in [specs/](/Users/chris/Documents/Workspace/ai-agent-marketplace/apps/apify-service/specs/).
 
 ## Marketplace Notes
 

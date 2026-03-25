@@ -1,0 +1,83 @@
+{
+  "profile": {
+    "displayName": "LinkedIn Jobs Scraper",
+    "bio": "Marketplace-hosted LinkedIn job search scraping powered by Apify.",
+    "websiteUrl": "https://fastmainnetapifylinkedinjobs.8o.vc",
+    "contactEmail": "marketplace@fast.xyz"
+  },
+  "service": {
+    "serviceType": "marketplace_proxy",
+    "slug": "apify-linkedin-jobs-scraper",
+    "apiNamespace": "apify-linkedin-jobs",
+    "name": "LinkedIn Jobs Scraper",
+    "tagline": "Search LinkedIn jobs by title and location through a Fast-native async proxy.",
+    "about": "LinkedIn Jobs Scraper exposes an Apify-backed LinkedIn job search workflow through the marketplace for labor market research, job monitoring, and competitive hiring analysis.",
+    "categories": ["Jobs", "Research", "Recruiting"],
+    "promptIntro": "I want to use the LinkedIn Jobs Scraper service on Fast Marketplace.",
+    "setupInstructions": [
+      "Fund a Fast wallet on mainnet.",
+      "Provide a job title, location, and the number of rows you want returned.",
+      "Keep the returned job token and poll the marketplace job route for completion."
+    ],
+    "websiteUrl": "https://fastmainnetapifylinkedinjobs.8o.vc",
+    "payoutWallet": "fast1rv8wsdd5pnkwt4u637g2yj4tpuyq26rzw8380rfhpnsnljz7v3tqv4njuq"
+  },
+  "endpoints": [
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "search-jobs",
+      "title": "Search Jobs",
+      "description": "Search LinkedIn jobs by title and location and return job listing results.",
+      "billingType": "fixed_x402",
+      "price": "$0.40",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["title", "location"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "location": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rows": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "title": "Staff Product Manager",
+        "location": "San Francisco Bay Area",
+        "rows": 25
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "title": "Staff Product Manager",
+            "company": "Example Corp",
+            "location": "San Francisco Bay Area"
+          }
+        ]
+      },
+      "usageNotes": "Use this for direct LinkedIn job discovery when the unit of search is a title and place rather than a company page or external job board.",
+      "upstreamBaseUrl": "https://fastmainnetapifylinkedinjobs.8o.vc",
+      "upstreamPath": "/search-jobs",
+      "upstreamAuthMode": "none"
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "profile": {
+    "displayName": "G2 Product Reviews Scraper",
+    "bio": "Marketplace-hosted G2 review extraction powered by Apify.",
+    "websiteUrl": "https://fastmainnetapifyg2reviews.8o.vc",
+    "contactEmail": "marketplace@fast.xyz"
+  },
+  "service": {
+    "serviceType": "marketplace_proxy",
+    "slug": "apify-g2-product-reviews-scraper",
+    "apiNamespace": "apify-g2-reviews",
+    "name": "G2 Product Reviews Scraper",
+    "tagline": "Collect software product reviews from G2 through a Fast-native async proxy.",
+    "about": "G2 Product Reviews Scraper exposes an Apify-backed review extraction workflow through the marketplace for voice-of-customer analysis, competitive product research, and review summarization from G2 product slugs.",
+    "categories": ["Reviews", "Research", "Lead Generation"],
+    "promptIntro": "I want to use the G2 Product Reviews Scraper service on Fast Marketplace.",
+    "setupInstructions": [
+      "Fund a Fast wallet on mainnet.",
+      "Provide the G2 product slug and the maximum number of reviews to fetch.",
+      "Keep the returned job token and poll the marketplace job route for completion."
+    ],
+    "websiteUrl": "https://fastmainnetapifyg2reviews.8o.vc",
+    "payoutWallet": "fast1rv8wsdd5pnkwt4u637g2yj4tpuyq26rzw8380rfhpnsnljz7v3tqv4njuq"
+  },
+  "endpoints": [
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "product-reviews",
+      "title": "Product Reviews",
+      "description": "Collect G2 review content, ratings, and reviewer metadata for a software product slug.",
+      "billingType": "fixed_x402",
+      "price": "$0.35",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["product"],
+        "properties": {
+          "product": {
+            "type": "string",
+            "minLength": 1
+          },
+          "max_reviews": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "product": "postman",
+        "max_reviews": 200
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "product": "postman",
+            "rating": 5,
+            "reviewText": "Great API collaboration workflow."
+          }
+        ]
+      },
+      "usageNotes": "Use product slugs from G2 when you want review text and rating signals for customer feedback or competitor analysis.",
+      "upstreamBaseUrl": "https://fastmainnetapifyg2reviews.8o.vc",
+      "upstreamPath": "/product-reviews",
+      "upstreamAuthMode": "none"
+    }
+  ]
+}

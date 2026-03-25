@@ -3,7 +3,7 @@
     "displayName": "Instagram Scraper",
     "bio": "Marketplace-hosted Instagram scraping powered by Apify.",
     "websiteUrl": "https://fastmainnetapifyinstagram.8o.vc",
-    "contactEmail": "replace-with-provider-email@example.com"
+    "contactEmail": "marketplace@fast.xyz"
   },
   "service": {
     "serviceType": "marketplace_proxy",
@@ -20,7 +20,7 @@
       "Keep the returned job token and poll the marketplace job route for completion."
     ],
     "websiteUrl": "https://fastmainnetapifyinstagram.8o.vc",
-    "payoutWallet": "replace-with-mainnet-fast-wallet"
+    "payoutWallet": "fast1rv8wsdd5pnkwt4u637g2yj4tpuyq26rzw8380rfhpnsnljz7v3tqv4njuq"
   },
   "endpoints": [
     {

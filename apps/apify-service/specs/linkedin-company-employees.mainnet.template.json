@@ -1,0 +1,110 @@
+{
+  "profile": {
+    "displayName": "LinkedIn Company Employees Scraper",
+    "bio": "Marketplace-hosted LinkedIn employee list extraction powered by Apify.",
+    "websiteUrl": "https://fastmainnetapifylinkedinemployees.8o.vc",
+    "contactEmail": "marketplace@fast.xyz"
+  },
+  "service": {
+    "serviceType": "marketplace_proxy",
+    "slug": "apify-linkedin-company-employees",
+    "apiNamespace": "apify-linkedin-employees",
+    "name": "LinkedIn Company Employees Scraper",
+    "tagline": "Extract employee lists for LinkedIn company pages through a Fast-native async proxy.",
+    "about": "LinkedIn Company Employees Scraper exposes an Apify-backed LinkedIn people search workflow through the marketplace for company talent mapping, recruiting research, and account intelligence with optional location and job-title filters.",
+    "categories": ["Lead Generation", "Recruiting", "Research"],
+    "promptIntro": "I want to use the LinkedIn Company Employees Scraper service on Fast Marketplace.",
+    "setupInstructions": [
+      "Fund a Fast wallet on mainnet.",
+      "Provide one or more LinkedIn company URLs and optional location or title filters.",
+      "Keep the returned job token and poll the marketplace job route for completion."
+    ],
+    "websiteUrl": "https://fastmainnetapifylinkedinemployees.8o.vc",
+    "payoutWallet": "fast1rv8wsdd5pnkwt4u637g2yj4tpuyq26rzw8380rfhpnsnljz7v3tqv4njuq"
+  },
+  "endpoints": [
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "company-employees",
+      "title": "Company Employees",
+      "description": "Extract LinkedIn employee lists for one or more companies with optional location, title, and query filters.",
+      "billingType": "fixed_x402",
+      "price": "$0.90",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["companies"],
+        "properties": {
+          "companies": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "profileScraperMode": {
+            "type": "string"
+          },
+          "locations": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "query": {
+            "type": "string"
+          },
+          "jobTitles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "maxItems": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "startPage": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "companies": ["https://www.linkedin.com/company/google"],
+        "profileScraperMode": "Short ($4 per 1k)",
+        "locations": ["New York"],
+        "jobTitles": ["Software Engineer"],
+        "maxItems": 100
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "linkedinUrl": "https://www.linkedin.com/in/example",
+            "firstName": "Jane",
+            "lastName": "Example",
+            "companyName": "Google"
+          }
+        ]
+      },
+      "usageNotes": "Use this when the starting point is a target account and you need employee discovery rather than direct profile enrichment.",
+      "upstreamBaseUrl": "https://fastmainnetapifylinkedinemployees.8o.vc",
+      "upstreamPath": "/company-employees",
+      "upstreamAuthMode": "none"
+    }
+  ]
+}
