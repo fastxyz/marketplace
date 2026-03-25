@@ -2430,6 +2430,19 @@ async function handleX402Route(input: {
   } catch (error) {
     if (asyncJobToken) {
       await failPendingAsyncJobSafely(input.store, asyncJobToken, error instanceof Error ? error.message : "Route execution failed.");
+      await recordProviderAttemptSafely(input.store, {
+        jobToken: asyncJobToken,
+        routeId: input.route.routeId,
+        requestId,
+        responseStatusCode: 500,
+        phase: "execute",
+        status: "failed",
+        requestPayload: requestBody,
+        responsePayload: {
+          error: error instanceof Error ? error.message : "Route execution failed."
+        },
+        errorMessage: error instanceof Error ? error.message : "Route execution failed."
+      });
     }
     const failedResponse = await buildRejectedSyncResponse({
       executeResult: {
@@ -2467,6 +2480,21 @@ async function handleX402Route(input: {
   }
 
   if (executeResult.kind === "sync") {
+    if (asyncJobToken) {
+      await recordProviderAttemptSafely(input.store, {
+        jobToken: asyncJobToken,
+        routeId: input.route.routeId,
+        requestId,
+        responseStatusCode: executeResult.statusCode,
+        phase: "execute",
+        status: executeResult.statusCode >= 200 && executeResult.statusCode < 400 ? "succeeded" : "failed",
+        requestPayload: requestBody,
+        responsePayload: executeResult.body,
+        errorMessage: executeResult.statusCode >= 200 && executeResult.statusCode < 400
+          ? undefined
+          : `Async route failed with status ${executeResult.statusCode} before acceptance.`
+      });
+    }
     if (asyncJobToken) {
       await failPendingAsyncJobSafely(
         input.store,

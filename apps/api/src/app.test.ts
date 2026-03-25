@@ -4177,8 +4177,8 @@ describe("marketplace api", () => {
       .set("PAYMENT-IDENTIFIER", "payment_provider_sync_recovery_1")
       .send({ symbol: "FAST" });
 
-    expect(refunded.status).toBe(409);
-    expect(refunded.body.error).toContain("refund handling has started");
+    expect(refunded.status).toBe(500);
+    expect(refunded.body.error).toContain("not durably recorded");
     expect(refunded.body.refund.status).toBe("sent");
     expect(refunded.body.refund.txHash).toBe("0xmanualrecoveryrefund");
     expect(upstreamExecutions).toBe(1);

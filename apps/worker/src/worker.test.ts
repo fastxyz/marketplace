@@ -483,6 +483,117 @@ describe("marketplace worker", () => {
     expect((await store.getRefundByPaymentId("stale_payment_refund_1"))?.txHash).toBe("0xstale-refund");
   });
 
+  it("finalizes already-refunded stale payments so they do not starve later recovery work", async () => {
+    const store = new InMemoryMarketplaceStore();
+    const buyerWallet = "fast1buyerstalequeue000000000000000000000000000000000000000000000000";
+
+    await store.claimPaymentExecution({
+      paymentId: "stale_payment_already_refunded_1",
+      normalizedRequestHash: "stale-queue-hash-1",
+      buyerWallet,
+      routeId: "mock.quick-insight.v1",
+      routeVersion: "v1",
+      pendingRecoveryAction: "refund",
+      quotedPrice: "125000",
+      payoutSplit: buildEscrowSplit({
+        providerAccountId: "mock",
+        providerWallet: null,
+        marketplaceBps: 10000,
+        marketplaceAmount: "125000",
+        providerBps: 0,
+        providerAmount: "0"
+      }),
+      paymentPayload: "payload-stale-queue-1",
+      facilitatorResponse: { isValid: true },
+      responseKind: "sync",
+      requestId: "request-stale-queue-1",
+      responseHeaders: {}
+    });
+
+    const existingRefund = await store.createRefund({
+      paymentId: "stale_payment_already_refunded_1",
+      wallet: buyerWallet,
+      amount: "125000"
+    });
+    await store.markRefundSent(existingRefund.id, "0xexisting-refund");
+
+    await store.claimPaymentExecution({
+      paymentId: "stale_payment_waiting_behind_refund_1",
+      normalizedRequestHash: "stale-queue-hash-2",
+      buyerWallet,
+      routeId: "mock.quick-insight.v1",
+      routeVersion: "v1",
+      pendingRecoveryAction: "refund",
+      quotedPrice: "125000",
+      payoutSplit: buildEscrowSplit({
+        providerAccountId: "mock",
+        providerWallet: null,
+        marketplaceBps: 10000,
+        marketplaceAmount: "125000",
+        providerBps: 0,
+        providerAmount: "0"
+      }),
+      paymentPayload: "payload-stale-queue-2",
+      facilitatorResponse: { isValid: true },
+      responseKind: "sync",
+      requestId: "request-stale-queue-2",
+      responseHeaders: {}
+    });
+
+    const idempotencyByPaymentId = (store as unknown as {
+      idempotencyByPaymentId: Map<string, {
+        updatedAt: string;
+      }>;
+    }).idempotencyByPaymentId;
+
+    for (const [paymentId, offsetMs] of [
+      ["stale_payment_already_refunded_1", 2_000],
+      ["stale_payment_waiting_behind_refund_1", 1_000]
+    ] as const) {
+      const pending = idempotencyByPaymentId.get(paymentId);
+      if (!pending) {
+        throw new Error(`Missing stale payment record: ${paymentId}`);
+      }
+
+      idempotencyByPaymentId.set(paymentId, {
+        ...pending,
+        updatedAt: new Date(Date.now() - PAYMENT_EXECUTION_RECOVERY_MS - offsetMs).toISOString()
+      });
+    }
+
+    const refunds: Array<{ wallet: string; amount: string }> = [];
+
+    await runMarketplaceWorkerCycle({
+      store,
+      secretsKey: "test-secrets-key",
+      limit: 1,
+      refundService: {
+        async issueRefund({ wallet, amount }) {
+          refunds.push({ wallet, amount });
+          return { txHash: "0xnew-refund" };
+        }
+      }
+    });
+
+    expect((await store.getIdempotencyByPaymentId("stale_payment_already_refunded_1"))?.executionStatus).toBe("completed");
+    expect(refunds).toEqual([]);
+
+    await runMarketplaceWorkerCycle({
+      store,
+      secretsKey: "test-secrets-key",
+      limit: 1,
+      refundService: {
+        async issueRefund({ wallet, amount }) {
+          refunds.push({ wallet, amount });
+          return { txHash: "0xnew-refund" };
+        }
+      }
+    });
+
+    expect((await store.getRefundByPaymentId("stale_payment_waiting_behind_refund_1"))?.txHash).toBe("0xnew-refund");
+    expect(refunds).toEqual([{ wallet: buyerWallet, amount: "125000" }]);
+  });
+
   it("recovers stale accepted async poll payments from placeholder jobs without issuing a refund", async () => {
     const networkConfig = resolveMarketplaceNetworkConfig({
       deploymentNetwork: "testnet"
@@ -686,6 +797,20 @@ describe("marketplace worker", () => {
     });
 
     await store.failJob(jobToken, "Async route failed before acceptance.");
+    await store.recordProviderAttempt({
+      jobToken,
+      routeId: asyncRoute.routeId,
+      requestId: "request-preaccept-failure-1",
+      responseStatusCode: 502,
+      phase: "execute",
+      status: "failed",
+      requestPayload: { topic: "pre-accept failure" },
+      responsePayload: {
+        error: "upstream rejected",
+        details: "provider rejected request"
+      },
+      errorMessage: "Async route failed with status 502 before acceptance."
+    });
 
     const idempotencyByPaymentId = (store as unknown as {
       idempotencyByPaymentId: Map<string, {
@@ -720,8 +845,21 @@ describe("marketplace worker", () => {
     const job = await store.getJob(jobToken);
 
     expect(refundCalls).toBe(1);
-    expect(payment?.executionStatus).toBe("pending");
-    expect(payment?.responseKind).toBe("job");
+    expect(payment?.executionStatus).toBe("completed");
+    expect(payment?.responseKind).toBe("sync");
+    expect(payment?.responseStatusCode).toBe(502);
+    expect(payment?.responseBody).toEqual({
+      error: "Upstream request failed. Payment was refunded.",
+      upstreamStatus: 502,
+      upstreamBody: {
+        error: "upstream rejected",
+        details: "provider rejected request"
+      },
+      refund: {
+        status: "sent",
+        txHash: "0xpreaccept-refund"
+      }
+    });
     expect(refund?.status).toBe("sent");
     expect(job?.status).toBe("failed");
     expect(job?.providerJobId).toBeNull();
@@ -738,7 +876,7 @@ describe("marketplace worker", () => {
     });
 
     expect(refundCalls).toBe(1);
-    expect((await store.getIdempotencyByPaymentId(paymentId))?.executionStatus).toBe("pending");
+    expect((await store.getIdempotencyByPaymentId(paymentId))?.executionStatus).toBe("completed");
   });
 
   it("attaches stale-payment refunds to async jobs and excludes refunded jobs from payout recovery", async () => {

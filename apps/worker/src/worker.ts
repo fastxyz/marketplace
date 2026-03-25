@@ -10,12 +10,14 @@ import {
   isPrepaidCreditBilling,
   resolveAsyncJobFailure,
   type AsyncExecuteResult,
+  type IdempotencyRecord,
   type JobRecord,
   type MarketplaceStore,
   type PollResult,
   type PayoutService,
   type ProviderAttemptRecord,
   type ProviderRegistry,
+  type RefundRecord,
   type RefundService,
   type UpstreamAuthMode
 } from "@marketplace/shared";
@@ -548,10 +550,14 @@ async function recoverStalePendingPayments(input: {
 
     let job: JobRecord | null = null;
     let acceptedExecuteAttempt: ProviderAttemptRecord | null = null;
+    let latestExecuteAttempt: ProviderAttemptRecord | null = null;
     if (payment.responseKind === "job" && payment.jobToken) {
       job = await input.store.getJob(payment.jobToken);
+      latestExecuteAttempt = await input.store.getLatestProviderExecuteAttempt(payment.jobToken);
       if (job && !job.providerJobId) {
-        acceptedExecuteAttempt = await input.store.getLatestSuccessfulProviderExecuteAttempt(job.jobToken);
+        acceptedExecuteAttempt = latestExecuteAttempt?.status === "succeeded"
+          ? latestExecuteAttempt
+          : await input.store.getLatestSuccessfulProviderExecuteAttempt(job.jobToken);
         const repairedJob = await recoverAcceptedAsyncPlaceholder(input.store, job, acceptedExecuteAttempt);
         if (repairedJob) {
           job = repairedJob;
@@ -580,7 +586,8 @@ async function recoverStalePendingPayments(input: {
       await fenceRefundedAsyncJob(input.store, payment.paymentId, job);
     }
 
-    if (refund.status === "sent") {
+    if (refund.status === "sent" || refund.status === "failed") {
+      await finalizeRecoveredRefundedPayment(input.store, payment, refund, latestExecuteAttempt);
       continue;
     }
 
@@ -590,10 +597,12 @@ async function recoverStalePendingPayments(input: {
         amount: payment.quotedPrice,
         reason: `Automatic recovery refund for unresolved paid request ${payment.paymentId}.`
       });
-      await input.store.markRefundSent(refund.id, receipt.txHash);
+      const sentRefund = await input.store.markRefundSent(refund.id, receipt.txHash);
+      await finalizeRecoveredRefundedPayment(input.store, payment, sentRefund, latestExecuteAttempt);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown refund failure.";
-      await input.store.markRefundFailed(refund.id, message);
+      const failedRefund = await input.store.markRefundFailed(refund.id, message);
+      await finalizeRecoveredRefundedPayment(input.store, payment, failedRefund, latestExecuteAttempt);
     }
   }
 }
@@ -611,6 +620,110 @@ async function fenceRefundedAsyncJob(
     job.jobToken,
     `Automatic recovery refund started for unresolved paid request ${paymentId}.`
   );
+}
+
+async function finalizeRecoveredRefundedPayment(
+  store: MarketplaceStore,
+  payment: IdempotencyRecord,
+  refund: RefundRecord,
+  executeAttempt: ProviderAttemptRecord | null
+) {
+  const failure = buildRecoveredRefundFailureResponse(refund, executeAttempt);
+  await store.saveSyncIdempotency({
+    paymentId: payment.paymentId,
+    normalizedRequestHash: payment.normalizedRequestHash,
+    buyerWallet: payment.buyerWallet,
+    routeId: payment.routeId,
+    routeVersion: payment.routeVersion,
+    quotedPrice: payment.quotedPrice,
+    payoutSplit: payment.payoutSplit,
+    paymentPayload: payment.paymentPayload,
+    facilitatorResponse: payment.facilitatorResponse,
+    statusCode: failure.statusCode,
+    body: failure.body,
+    headers: failure.headers,
+    requestId: payment.requestId ?? undefined
+  });
+}
+
+function buildRecoveredRefundFailureResponse(
+  refund: RefundRecord,
+  executeAttempt: ProviderAttemptRecord | null
+): {
+  statusCode: number;
+  headers: Record<string, string>;
+  body: Record<string, unknown>;
+} {
+  const hasFailedExecuteAttempt = executeAttempt?.status === "failed";
+  const upstreamStatus = executeAttempt?.responseStatusCode ?? 500;
+  const upstreamBody = executeAttempt?.responsePayload
+    ?? (executeAttempt?.errorMessage ? { error: executeAttempt.errorMessage } : { error: "Upstream request failed." });
+
+  if (!hasFailedExecuteAttempt) {
+    if (refund.status === "sent") {
+      return {
+        statusCode: 500,
+        headers: {
+          "content-type": "application/json"
+        },
+        body: {
+          error: "Request outcome was not durably recorded. Payment was refunded.",
+          refund: {
+            status: refund.status,
+            txHash: refund.txHash
+          }
+        }
+      };
+    }
+
+    return {
+      statusCode: 500,
+      headers: {
+        "content-type": "application/json"
+      },
+      body: {
+        error: "Request outcome was not durably recorded and the automatic refund did not complete.",
+        refund: {
+          status: refund.status,
+          error: refund.errorMessage
+        }
+      }
+    };
+  }
+
+  if (refund.status === "sent") {
+    return {
+      statusCode: upstreamStatus,
+      headers: {
+        "content-type": "application/json"
+      },
+      body: {
+        error: "Upstream request failed. Payment was refunded.",
+        upstreamStatus,
+        upstreamBody,
+        refund: {
+          status: refund.status,
+          txHash: refund.txHash
+        }
+      }
+    };
+  }
+
+  return {
+    statusCode: upstreamStatus,
+    headers: {
+      "content-type": "application/json"
+    },
+    body: {
+      error: "Upstream request failed and the automatic refund did not complete.",
+      upstreamStatus,
+      upstreamBody,
+      refund: {
+        status: refund.status,
+        error: refund.errorMessage
+      }
+    }
+  };
 }
 
 async function backfillProviderPayouts(input: {
