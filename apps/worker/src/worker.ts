@@ -39,9 +39,10 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
 
   for (const job of jobs) {
     let currentJob = job;
-    if (!currentJob.providerJobId && currentJob.routeSnapshot.asyncConfig?.strategy === "poll") {
-      const repairedJob = await recoverAcceptedPollPlaceholder(options.store, currentJob);
+    if (!currentJob.providerJobId) {
+      const repairedJob = await recoverAcceptedAsyncPlaceholder(options.store, currentJob);
       if (!repairedJob) {
+        await backoffUnacceptedPlaceholder(options.store, currentJob);
         continue;
       }
       currentJob = repairedJob;
@@ -218,7 +219,7 @@ export async function runMarketplaceWorkerCycle(options: MarketplaceWorkerOption
   }
 }
 
-async function recoverAcceptedPollPlaceholder(
+async function recoverAcceptedAsyncPlaceholder(
   store: MarketplaceStore,
   job: JobRecord
 ): Promise<JobRecord | null> {
@@ -227,6 +228,11 @@ async function recoverAcceptedPollPlaceholder(
   if (!accepted) {
     return null;
   }
+
+  const acceptedAt = parseAttemptCreatedAt(attempt?.createdAt);
+  const nextPollAt = job.routeSnapshot.asyncConfig?.strategy === "poll"
+    ? computeNextPollAt(accepted.pollAfterMs, acceptedAt)
+    : null;
 
   return store.savePendingAsyncJob({
     jobToken: job.jobToken,
@@ -240,9 +246,21 @@ async function recoverAcceptedPollPlaceholder(
     providerJobId: accepted.providerJobId,
     requestBody: job.requestBody,
     providerState: accepted.providerState,
-    nextPollAt: computeNextPollAt(accepted.pollAfterMs),
-    timeoutAt: computeTimeoutAt(job.routeSnapshot)
+    nextPollAt,
+    timeoutAt: computeTimeoutAt(job.routeSnapshot, acceptedAt)
   });
+}
+
+async function backoffUnacceptedPlaceholder(store: MarketplaceStore, job: JobRecord) {
+  await store.updateJobPending({
+    jobToken: job.jobToken,
+    nextPollAt: computeNextPollAt()
+  });
+}
+
+function parseAttemptCreatedAt(createdAt: string | undefined): Date {
+  const parsed = createdAt ? Date.parse(createdAt) : Number.NaN;
+  return Number.isNaN(parsed) ? new Date() : new Date(parsed);
 }
 
 function parseAcceptedAsyncExecuteAttempt(payload: unknown): AsyncExecuteResult | null {

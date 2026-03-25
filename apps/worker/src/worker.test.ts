@@ -715,6 +715,91 @@ describe("marketplace worker", () => {
     expect((await store.getRefundByPaymentId("stale_payment_webhook_placeholder_1"))?.txHash).toBe("0xstale-webhook-refund");
   });
 
+  it("times out and refunds accepted webhook placeholders whose acceptance metadata must be repaired", async () => {
+    const networkConfig = resolveMarketplaceNetworkConfig({
+      deploymentNetwork: "testnet"
+    });
+    const store = new InMemoryMarketplaceStore(networkConfig);
+    const asyncRoute = buildMarketplaceRoutes(networkConfig).find((route) => route.routeId === "mock.async-report.v1");
+
+    if (!asyncRoute) {
+      throw new Error("Missing async seeded route.");
+    }
+
+    const buyerWallet = "fast1buyerwebhookrepair0000000000000000000000000000000000000000";
+
+    await store.savePendingAsyncJob({
+      jobToken: "job_webhook_accept_repair_1",
+      paymentId: "payment_webhook_accept_repair_1",
+      buyerWallet,
+      route: {
+        ...asyncRoute,
+        executorKind: "http",
+        asyncConfig: {
+          strategy: "webhook",
+          timeoutMs: 1_000,
+          pollPath: null
+        }
+      },
+      quotedPrice: "150000",
+      payoutSplit: buildEscrowSplit({
+        providerAccountId: "mock",
+        providerWallet: null,
+        marketplaceBps: 10000,
+        marketplaceAmount: "150000",
+        providerBps: 0,
+        providerAmount: "0"
+      }),
+      serviceId: "service_webhook_accept_repair_1",
+      requestId: "request_webhook_accept_repair_1",
+      requestBody: { topic: "webhook acceptance repair" },
+      nextPollAt: new Date(Date.now() - 1_000).toISOString(),
+      timeoutAt: null
+    });
+
+    await store.recordProviderAttempt({
+      jobToken: "job_webhook_accept_repair_1",
+      routeId: asyncRoute.routeId,
+      requestId: "request_webhook_accept_repair_1",
+      phase: "execute",
+      status: "succeeded",
+      requestPayload: { topic: "webhook acceptance repair" },
+      responsePayload: {
+        kind: "async",
+        providerJobId: "provider_webhook_accept_repair_1",
+        providerState: {
+          topic: "webhook acceptance repair"
+        }
+      }
+    });
+
+    const attempts = (store as unknown as {
+      attempts: Array<{ createdAt: string }>;
+    }).attempts;
+    attempts[0]!.createdAt = new Date(Date.now() - 10_000).toISOString();
+
+    const refunds: Array<{ wallet: string; amount: string }> = [];
+
+    await runMarketplaceWorkerCycle({
+      store,
+      secretsKey: "test-secrets-key",
+      refundService: {
+        async issueRefund({ wallet, amount }) {
+          refunds.push({ wallet, amount });
+          return { txHash: "0xwebhook-accept-repair-refund" };
+        }
+      }
+    });
+
+    const job = await store.getJob("job_webhook_accept_repair_1");
+    const refund = await store.getRefundByPaymentId("payment_webhook_accept_repair_1");
+
+    expect(job?.providerJobId).toBe("provider_webhook_accept_repair_1");
+    expect(job?.status).toBe("failed");
+    expect(refunds).toEqual([{ wallet: buyerWallet, amount: "150000" }]);
+    expect(refund?.txHash).toBe("0xwebhook-accept-repair-refund");
+  });
+
   it("does not process pre-accept async placeholder jobs before a provider job id is stored", async () => {
     const networkConfig = resolveMarketplaceNetworkConfig({
       deploymentNetwork: "testnet"
@@ -773,7 +858,101 @@ describe("marketplace worker", () => {
     const job = await store.getJob("job_preaccept_placeholder_1");
     expect(job?.status).toBe("pending");
     expect(job?.providerJobId).toBeNull();
+    expect(job?.nextPollAt).not.toBeNull();
     expect(refundCalls).toBe(0);
+  });
+
+  it("prioritizes accepted due poll jobs ahead of older pre-accept placeholders", async () => {
+    const networkConfig = resolveMarketplaceNetworkConfig({
+      deploymentNetwork: "testnet"
+    });
+    const store = new InMemoryMarketplaceStore(networkConfig);
+    const registry = createDefaultProviderRegistry();
+    const asyncRoute = buildMarketplaceRoutes(networkConfig).find((route) => route.routeId === "mock.async-report.v1");
+
+    if (!asyncRoute) {
+      throw new Error("Missing async seeded route.");
+    }
+
+    await store.savePendingAsyncJob({
+      jobToken: "job_preaccept_priority_1",
+      buyerWallet: "fast1buyerpriority0000000000000000000000000000000000000000000",
+      route: {
+        ...asyncRoute,
+        executorKind: "http",
+        upstreamBaseUrl: "https://provider.example.com",
+        upstreamPath: "/api/run",
+        upstreamAuthMode: "none",
+        asyncConfig: {
+          strategy: "poll",
+          timeoutMs: 60_000,
+          pollPath: "/api/poll"
+        }
+      },
+      quotedPrice: "0",
+      payoutSplit: buildEscrowSplit({
+        providerAccountId: "mock",
+        providerWallet: null,
+        marketplaceBps: 10000,
+        marketplaceAmount: "0",
+        providerBps: 0,
+        providerAmount: "0"
+      }),
+      serviceId: "service_preaccept_priority_1",
+      requestId: "request_preaccept_priority_1",
+      requestBody: { topic: "placeholder" },
+      nextPollAt: new Date(Date.now() - 1_000).toISOString(),
+      timeoutAt: null
+    });
+
+    await store.saveAsyncAcceptance({
+      paymentId: "worker_payment_priority_due_1",
+      normalizedRequestHash: "hash-priority-due",
+      buyerWallet: "fast1buyerduepriority00000000000000000000000000000000000000000",
+      route: asyncRoute,
+      quotedPrice: "0",
+      payoutSplit: buildEscrowSplit({
+        providerAccountId: "mock",
+        providerWallet: null,
+        marketplaceBps: 10000,
+        marketplaceAmount: "0",
+        providerBps: 0,
+        providerAmount: "0"
+      }),
+      paymentPayload: "payload-priority-due",
+      facilitatorResponse: { auth: "wallet_session" },
+      jobToken: "job_priority_due_1",
+      requestId: "request_priority_due_1",
+      providerJobId: "provider_priority_due_1",
+      requestBody: { topic: "due report" },
+      providerState: {
+        topic: "due report",
+        readyAt: Date.now() - 10
+      },
+      nextPollAt: new Date(Date.now() - 5_000).toISOString(),
+      timeoutAt: new Date(Date.now() + 60_000).toISOString(),
+      responseBody: {
+        jobToken: "job_priority_due_1",
+        status: "pending"
+      },
+      responseHeaders: {}
+    });
+
+    await runMarketplaceWorkerCycle({
+      store,
+      providers: registry,
+      secretsKey: "test-secrets-key",
+      limit: 1,
+      refundService: {
+        async issueRefund() {
+          return { txHash: "0xrefund" };
+        }
+      }
+    });
+
+    expect((await store.getJob("job_priority_due_1"))?.status).toBe("completed");
+    expect((await store.getJob("job_preaccept_priority_1"))?.status).toBe("pending");
+    expect((await store.getJob("job_preaccept_priority_1"))?.providerJobId).toBeNull();
   });
 
   it("processes due poll jobs even when older webhook and deferred jobs are pending", async () => {

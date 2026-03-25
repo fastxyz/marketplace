@@ -2080,6 +2080,10 @@ describe("marketplace api", () => {
     expect(pendingJob.body.status).toBe("pending");
 
     expect((await store.getJob(accepted.body.jobToken))?.providerJobId).toBeNull();
+    await store.updateJobPending({
+      jobToken: accepted.body.jobToken,
+      nextPollAt: new Date(Date.now() - 1_000).toISOString()
+    });
 
     await runMarketplaceWorkerCycle({
       store,

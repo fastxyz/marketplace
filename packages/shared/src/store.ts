@@ -101,12 +101,17 @@ function isPendingJobActionable(
     return true;
   }
 
-  if (job.routeSnapshot.asyncConfig?.strategy === "webhook") {
-    return false;
+  if (!job.providerJobId) {
+    if (!job.nextPollAt) {
+      return true;
+    }
+
+    const nextPollMs = Date.parse(job.nextPollAt);
+    return Number.isNaN(nextPollMs) || nextPollMs <= nowMs;
   }
 
-  if (!job.providerJobId) {
-    return true;
+  if (job.routeSnapshot.asyncConfig?.strategy === "webhook") {
+    return false;
   }
 
   if (!job.nextPollAt) {
@@ -1000,6 +1005,12 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
           const rightTimedOut = isPendingJobTimedOut(right, nowMs);
           if (leftTimedOut !== rightTimedOut) {
             return leftTimedOut ? -1 : 1;
+          }
+
+          const leftAccepted = Boolean(left.providerJobId);
+          const rightAccepted = Boolean(right.providerJobId);
+          if (leftAccepted !== rightAccepted) {
+            return leftAccepted ? -1 : 1;
           }
 
           return Date.parse(left.createdAt) - Date.parse(right.createdAt);
@@ -4948,12 +4959,18 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         AND (
           (timeout_at IS NOT NULL AND timeout_at <= $1::timestamptz)
           OR (
-            COALESCE(route_snapshot->'asyncConfig'->>'strategy', '') <> 'webhook'
+            provider_job_id IS NULL
+            AND (next_poll_at IS NULL OR next_poll_at <= $1::timestamptz)
+          )
+          OR (
+            provider_job_id IS NOT NULL
+            AND COALESCE(route_snapshot->'asyncConfig'->>'strategy', '') <> 'webhook'
             AND (next_poll_at IS NULL OR next_poll_at <= $1::timestamptz)
           )
         )
       ORDER BY
         CASE WHEN timeout_at IS NOT NULL AND timeout_at <= $1::timestamptz THEN 0 ELSE 1 END,
+        CASE WHEN provider_job_id IS NOT NULL THEN 0 ELSE 1 END,
         created_at ASC
       LIMIT $2
       `,

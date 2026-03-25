@@ -1881,6 +1881,7 @@ async function handleWalletSessionRoute(input: {
   const requestId = randomUUID();
   const jobToken = input.route.mode === "async" ? createOpaqueToken("job") : null;
   const asyncAccessPaymentId = jobToken ? createOpaqueToken("wallet") : null;
+  const pendingAsyncNextPollAt = jobToken ? computeNextPollAt() : null;
   let paymentDestinationWallet: string | null = null;
   let asyncPayoutSplit: ReturnType<typeof buildPayoutSplit> | null = null;
 
@@ -1903,7 +1904,7 @@ async function handleWalletSessionRoute(input: {
         serviceId: input.route.serviceId,
         requestId,
         requestBody: input.requestInput,
-        nextPollAt: null,
+        nextPollAt: pendingAsyncNextPollAt,
         timeoutAt: null
       });
       await input.store.createAccessGrant({
@@ -2298,6 +2299,7 @@ async function handleX402Route(input: {
 
   const requestId = existing.requestId ?? randomUUID();
   const asyncJobToken = input.route.mode === "async" ? (existing.jobToken ?? createOpaqueToken("job")) : null;
+  const pendingAsyncNextPollAt = input.route.mode === "async" ? computeNextPollAt() : null;
 
   if (isTopupX402Billing(input.route)) {
     try {
@@ -2371,7 +2373,7 @@ async function handleX402Route(input: {
         serviceId: input.route.serviceId,
         requestId,
         requestBody,
-        nextPollAt: null,
+        nextPollAt: pendingAsyncNextPollAt,
         timeoutAt: null
       });
     } catch (error) {
