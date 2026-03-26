@@ -46,7 +46,7 @@ jobs:
         run: npm run build
 
       - name: Create pull request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           commit-message: "chore: refresh Fast SDK dependencies"
           title: "chore: refresh Fast SDK dependencies"
