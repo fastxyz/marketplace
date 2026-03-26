@@ -15,7 +15,7 @@ import {
   PAYMENT_RESPONSE_HEADER,
   PAYMENT_SIGNATURE_HEADER
 } from "./constants.js";
-import { getDefaultMarketplaceNetworkConfig } from "./network.js";
+import { getDefaultMarketplaceNetworkConfig, getMarketplaceTokenSymbol } from "./network.js";
 import { serializeQueryInput } from "./request-input.js";
 import { settlementModeDescription, settlementModeLabel } from "./settlement.js";
 import type {
@@ -57,7 +57,7 @@ function roundToSingleDecimal(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-function formatPriceLabelFromRaw(rawAmount: string, tokenSymbol = getDefaultMarketplaceNetworkConfig().tokenSymbol): string {
+function formatPriceLabelFromRaw(rawAmount: string, tokenSymbol: MarketplaceServiceCatalogEndpoint["tokenSymbol"]): string {
   return `$${rawToDecimalString(rawAmount, 6)} ${tokenSymbol}`;
 }
 
@@ -202,8 +202,16 @@ export function formatRevenueLabel(rawAmount: string): string {
   return rawToDecimalString(rawAmount, 6);
 }
 
+function getRouteTokenSymbol(route: Pick<MarketplaceRoute, "network">): MarketplaceServiceCatalogEndpoint["tokenSymbol"] {
+  return getMarketplaceTokenSymbol(route.network);
+}
+
+function getRoutesTokenSymbol(routes: Array<Pick<MarketplaceRoute, "network">>): MarketplaceServiceCatalogEndpoint["tokenSymbol"] {
+  return routes[0] ? getRouteTokenSymbol(routes[0]) : getDefaultMarketplaceNetworkConfig().tokenSymbol;
+}
+
 export function buildPriceRange(routes: MarketplaceRoute[]): string {
-  const tokenSymbol = getDefaultMarketplaceNetworkConfig().tokenSymbol;
+  const tokenSymbol = getRoutesTokenSymbol(routes);
   const fixedRoutes = routes
     .filter(isFixedX402Billing)
     .map((route) => quotedPriceRaw(route))
@@ -246,7 +254,7 @@ export function buildMarketplaceServiceEndpoint(
   apiBaseUrl: string
 ): MarketplaceServiceCatalogEndpoint {
   const path = `/api/${route.provider}/${route.operation}`;
-  const tokenSymbol = getDefaultMarketplaceNetworkConfig().tokenSymbol;
+  const tokenSymbol = getRouteTokenSymbol(route);
 
   return {
     endpointType: "marketplace_proxy",
@@ -477,6 +485,7 @@ export function buildServiceSummary(input: {
 
   const routes = input.endpoints.filter(isMarketplaceEndpoint);
   const settlementMode = input.service.settlementMode ?? "verified_escrow";
+  const settlementToken = getRoutesTokenSymbol(routes);
 
   const summary: MarketplaceServiceSummary = {
     serviceType: "marketplace_proxy",
@@ -489,7 +498,7 @@ export function buildServiceSummary(input: {
     settlementLabel: settlementModeLabel(settlementMode),
     settlementDescription: settlementModeDescription(settlementMode),
     priceRange: buildPriceRange(routes),
-    settlementToken: getDefaultMarketplaceNetworkConfig().tokenSymbol,
+    settlementToken,
     endpointCount: routes.length,
     totalCalls: input.analytics.totalCalls,
     revenue: formatRevenueLabel(input.analytics.revenueRaw),

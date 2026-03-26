@@ -67,3 +67,7 @@ export function getDefaultMarketplaceNetworkConfig(): MarketplaceNetworkConfig {
 export function getMarketplaceAssetId(paymentNetwork: MarketplacePaymentNetwork): string {
   return paymentNetwork === "fast-testnet" ? FAST_TESTNET_USDC_ASSET_ID : FAST_MAINNET_USDC_ASSET_ID;
 }
+
+export function getMarketplaceTokenSymbol(paymentNetwork: MarketplacePaymentNetwork): MarketplaceTokenSymbol {
+  return paymentNetwork === "fast-testnet" ? "testUSDC" : "USDC";
+}

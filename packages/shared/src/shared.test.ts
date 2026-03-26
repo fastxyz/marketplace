@@ -573,13 +573,13 @@ describe("shared marketplace helpers", () => {
       webBaseUrl: "https://marketplace.example.com"
     });
 
-    expect(buildPriceRange(endpoints)).toBe("$0.05 USDC - $0.15 USDC");
+    expect(buildPriceRange(endpoints)).toBe("$0.05 testUSDC - $0.15 testUSDC");
     expect(detail.skillUrl).toBe("https://marketplace.example.com/skill.md");
     expect(detail.summary.endpointCount).toBe(2);
-    expect(detail.summary.settlementToken).toBe("USDC");
+    expect(detail.summary.settlementToken).toBe("testUSDC");
     expect(detail.useThisServicePrompt).toContain('I want to use the "Mock Research Signals" service');
     expect(detail.useThisServicePrompt).toContain("https://api.marketplace.example.com/api/mock/quick-insight");
-    expect(detail.useThisServicePrompt).toContain("($0.05 USDC)");
+    expect(detail.useThisServicePrompt).toContain("($0.05 testUSDC)");
   });
 
   it("derives explicit auth requirements for marketplace routes", () => {
@@ -660,7 +660,9 @@ describe("shared marketplace helpers", () => {
     expect(detail.authRequirement).toMatchObject({
       type: "x402"
     });
+    expect(detail.tokenSymbol).toBe("testUSDC");
     expect(detail.serviceSummary.slug).toBe("mock-research-signals");
+    expect(detail.serviceSummary.settlementToken).toBe("testUSDC");
   });
 
   it("builds mixed search results with deterministic ordering and filters", () => {
@@ -717,7 +719,8 @@ describe("shared marketplace helpers", () => {
     expect(fixedSearch[0]).toMatchObject({
       kind: "route",
       summary: {
-        ref: "mock.quick-insight"
+        ref: "mock.quick-insight",
+        tokenSymbol: "testUSDC"
       }
     });
     expect(fixedSearch[1]).toMatchObject({
@@ -729,6 +732,7 @@ describe("shared marketplace helpers", () => {
         kind: "route",
         summary: expect.objectContaining({
           ref: "mock.free-async-search",
+          tokenSymbol: "testUSDC",
           authRequirement: expect.objectContaining({
             type: "wallet_session"
           })

@@ -153,9 +153,12 @@ describe("marketplace api", () => {
     const detailResponse = await request(app).get("/catalog/services/mock-research-signals");
     expect(detailResponse.status).toBe(200);
     expect(detailResponse.body.summary.endpointCount).toBe(2);
+    expect(detailResponse.body.summary.settlementToken).toBe("testUSDC");
     expect(detailResponse.body.skillUrl).toBe("https://marketplace.example.com/skill.md");
     expect(detailResponse.body.useThisServicePrompt).toContain("https://marketplace.example.com/skill.md");
+    expect(detailResponse.body.useThisServicePrompt).toContain("testUSDC");
     expect(detailResponse.body.endpoints[0]?.authRequirement?.type).toBe("x402");
+    expect(detailResponse.body.endpoints[0]?.tokenSymbol).toBe("testUSDC");
   });
 
   it("returns mixed catalog search results with stable machine-readable filters", async () => {
@@ -176,6 +179,7 @@ describe("marketplace api", () => {
       kind: "route",
       summary: {
         ref: "mock.quick-insight",
+        tokenSymbol: "testUSDC",
         authRequirement: {
           type: "x402"
         }
@@ -203,11 +207,13 @@ describe("marketplace api", () => {
       ref: "mock.quick-insight",
       routeId: "mock.quick-insight.v1",
       billingType: "fixed_x402",
+      tokenSymbol: "testUSDC",
       authRequirement: {
         type: "x402"
       }
     });
     expect(response.body.serviceSummary.slug).toBe("mock-research-signals");
+    expect(response.body.serviceSummary.settlementToken).toBe("testUSDC");
   });
 
   it("returns 404 for unknown route detail", async () => {
