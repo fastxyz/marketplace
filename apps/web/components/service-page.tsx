@@ -74,13 +74,6 @@ export function ServicePage({
                     {isMarketplaceService ? service.summary.settlementDescription : service.summary.accessModelDescription}
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {service.summary.categories.map((category) => (
-                    <Badge key={category} variant="secondary">
-                      {category}
-                    </Badge>
-                  ))}
-                </div>
               </div>
 
               {isMarketplaceService ? (

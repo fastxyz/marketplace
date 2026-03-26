@@ -10,6 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
+function formatSummaryPriceRange(priceRange: string): string {
+  return priceRange === "Free" ? priceRange : `${priceRange} per call`;
+}
+
 export function MarketplaceHome({ services }: { services: ServiceSummary[] }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
@@ -63,7 +67,7 @@ export function MarketplaceHome({ services }: { services: ServiceSummary[] }) {
                     className="pl-12"
                   />
                 </label>
-                <div className="flex flex-wrap gap-2 lg:justify-end">
+                {/* <div className="flex flex-wrap gap-2 lg:justify-end">
                   {categories.map((item) => (
                     <button
                       key={item}
@@ -74,7 +78,7 @@ export function MarketplaceHome({ services }: { services: ServiceSummary[] }) {
                       {item}
                     </button>
                   ))}
-                </div>
+                </div> */}
               </div>
             </div>
           </div>
@@ -95,7 +99,9 @@ export function MarketplaceHome({ services }: { services: ServiceSummary[] }) {
                           <Badge variant={service.settlementMode === "verified_escrow" ? "default" : "secondary"}>
                             {service.settlementLabel}
                           </Badge>
-                          <span className="text-sm tracking-headline text-muted-foreground">{service.priceRange}</span>
+                          <span className="text-sm tracking-headline text-muted-foreground">
+                            {formatSummaryPriceRange(service.priceRange)}
+                          </span>
                         </>
                       ) : (
                         <Badge variant="secondary">{service.accessModelLabel}</Badge>
@@ -107,25 +113,18 @@ export function MarketplaceHome({ services }: { services: ServiceSummary[] }) {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-6">
-                    <div className="flex flex-wrap gap-2">
-                      {service.categories.map((item) => (
-                        <Badge key={item} variant="secondary">
-                          {item}
-                        </Badge>
-                      ))}
-                    </div>
-
                     <p className="text-sm leading-7 text-muted-foreground">
                       {service.serviceType === "marketplace_proxy" ? service.settlementDescription : service.accessModelDescription}
                     </p>
 
                     {service.serviceType === "marketplace_proxy" ? (
-                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                        <Metric label="Calls" value={String(service.totalCalls)} compact />
-                        <Metric label="Revenue" value={`$${service.revenue}`} compact />
-                        <Metric label="Endpoints" value={String(service.endpointCount)} compact />
-                        <Metric label="30d success" value={`${service.successRate30d.toFixed(1)}%`} compact />
-                      </div>
+                      // <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                      //   <Metric label="Calls" value={String(service.totalCalls)} compact />
+                      //   <Metric label="Revenue" value={`$${service.revenue}`} compact />
+                      //   <Metric label="Endpoints" value={String(service.endpointCount)} compact />
+                      //   <Metric label="30d success" value={`${service.successRate30d.toFixed(1)}%`} compact />
+                      // </div>
+                      null
                     ) : (
                       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                         <Metric label="Endpoints" value={String(service.endpointCount)} compact />
