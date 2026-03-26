@@ -1,14 +1,33 @@
 {
   "name": "@marketplace/cli",
   "private": true,
+  "version": "0.0.0",
   "type": "module",
+  "main": "./dist/index.js",
   "bin": {
-    "fast-marketplace": "./bin/fast-marketplace.mjs"
+    "fast-marketplace": "./dist/index.js"
   },
   "dependencies": {
-    "@marketplace/shared": "*"
+    "@fastxyz/sdk": "^0.2.5",
+    "@fastxyz/x402-client": "^0.1.2",
+    "@noble/ed25519": "^2.3.0",
+    "@noble/hashes": "^1.8.0",
+    "ajv": "^8.18.0",
+    "commander": "^13.1.0",
+    "dotenv": "^17.3.1",
+    "zod": "^3.24.4"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "prepack": "npm run build"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./dist/index.js"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
