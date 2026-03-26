@@ -95,7 +95,7 @@ export function createProgram(deps: CliDependencies = defaultCliDependencies()):
     .command("load")
     .option("--keyfile <path>")
     .option("--config <path>")
-    .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
+    .option("--network <network>", "Fast network (mainnet or testnet)")
     .action(async (options) => {
       const result = await walletAddress({
         keyfilePath: options.keyfile,
@@ -109,7 +109,7 @@ export function createProgram(deps: CliDependencies = defaultCliDependencies()):
     .command("address")
     .option("--keyfile <path>")
     .option("--config <path>")
-    .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
+    .option("--network <network>", "Fast network (mainnet or testnet)")
     .action(async (options) => {
       const result = await walletAddress({
         keyfilePath: options.keyfile,
@@ -123,7 +123,7 @@ export function createProgram(deps: CliDependencies = defaultCliDependencies()):
     .command("balance")
     .option("--keyfile <path>")
     .option("--config <path>")
-    .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
+    .option("--network <network>", "Fast network (mainnet or testnet)")
     .option("--token <symbol>", "Token symbol override")
     .action(async (options) => {
       const result = await walletBalance({
@@ -160,7 +160,7 @@ export function createProgram(deps: CliDependencies = defaultCliDependencies()):
     .argument("<ref>")
     .requiredOption("--input <json>")
     .option("--api-url <url>", "Marketplace API URL", "http://localhost:3000")
-    .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
+    .option("--network <network>", "Fast network (mainnet or testnet)")
     .option("--keyfile <path>")
     .option("--config <path>")
     .option("--approve-expensive", "Auto-approve expensive routes", false)
@@ -188,7 +188,7 @@ export function createProgram(deps: CliDependencies = defaultCliDependencies()):
     .command("get")
     .argument("<jobToken>")
     .option("--api-url <url>", "Marketplace API URL", "http://localhost:3000")
-    .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
+    .option("--network <network>", "Fast network (mainnet or testnet)")
     .option("--keyfile <path>")
     .option("--config <path>")
     .action(async (jobToken, options) => {
