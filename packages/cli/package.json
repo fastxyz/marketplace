@@ -2,6 +2,9 @@
   "name": "@marketplace/cli",
   "private": true,
   "type": "module",
+  "bin": {
+    "fast-marketplace": "./bin/fast-marketplace.mjs"
+  },
   "dependencies": {
     "@marketplace/shared": "*"
   },

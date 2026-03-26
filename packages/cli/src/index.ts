@@ -1,15 +1,19 @@
 #!/usr/bin/env node
+import { pathToFileURL } from "node:url";
+
 import { Command } from "commander";
 
 import {
-  createApiSession,
   defaultCliDependencies,
   fetchJobResult,
   initializeWallet,
-  invokePaidRoute,
+  searchMarketplace,
   setSpendControls,
+  showMarketplaceItem,
+  useMarketplaceRoute,
   walletAddress,
-  walletBalance
+  walletBalance,
+  type CliDependencies
 } from "./lib.js";
 import {
   submitProviderService,
@@ -17,239 +21,269 @@ import {
   verifyProviderService
 } from "./provider.js";
 
-const program = new Command();
-const deps = defaultCliDependencies();
+function parseJsonOption(value: string, label: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    throw new Error(`${label} must be valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
 
-program.name("fast-marketplace");
+export function createProgram(deps: CliDependencies = defaultCliDependencies()): Command {
+  const program = new Command();
+  program.name("fast-marketplace");
 
-const authProgram = program.command("auth");
+  program
+    .command("search")
+    .argument("[query]")
+    .option("--api-url <url>", "Marketplace API URL", "http://localhost:3000")
+    .option("--category <name>")
+    .option("--billing-type <type>")
+    .option("--mode <mode>")
+    .option("--settlement-mode <mode>")
+    .option("--limit <number>")
+    .action(async (query, options) => {
+      const result = await searchMarketplace(
+        {
+          apiUrl: options.apiUrl,
+          q: query,
+          category: options.category,
+          billingType: options.billingType,
+          mode: options.mode,
+          settlementMode: options.settlementMode,
+          limit: options.limit ? Number(options.limit) : undefined
+        },
+        deps
+      );
+      deps.print(JSON.stringify(result, null, 2));
+    });
 
-authProgram
-  .command("api-session")
-  .argument("<provider>")
-  .argument("<operation>")
-  .option("--api-url <url>", "Marketplace API URL", "http://localhost:3000")
-  .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
-  .option("--keyfile <path>")
-  .option("--config <path>")
-  .action(async (provider, operation, options) => {
-    const result = await createApiSession(
-      {
-        apiUrl: options.apiUrl,
-        provider,
-        operation,
+  program
+    .command("show")
+    .argument("<ref>")
+    .option("--api-url <url>", "Marketplace API URL", "http://localhost:3000")
+    .action(async (ref, options) => {
+      const result = await showMarketplaceItem(
+        {
+          apiUrl: options.apiUrl,
+          ref
+        },
+        deps
+      );
+      deps.print(JSON.stringify(result, null, 2));
+    });
+
+  const walletProgram = program.command("wallet");
+
+  walletProgram
+    .command("init")
+    .option("--keyfile <path>")
+    .option("--config <path>")
+    .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
+    .action(async (options) => {
+      const result = await initializeWallet({
         keyfilePath: options.keyfile,
         configPath: options.config,
         network: options.network
-      },
-      deps
-    );
-    deps.print(JSON.stringify(result, null, 2));
-  });
-
-const walletProgram = program.command("wallet");
-
-walletProgram
-  .command("init")
-  .option("--keyfile <path>")
-  .option("--config <path>")
-  .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
-  .action(async (options) => {
-    const result = await initializeWallet({
-      keyfilePath: options.keyfile,
-      configPath: options.config,
-      network: options.network
+      });
+      deps.print(JSON.stringify(result, null, 2));
     });
-    deps.print(JSON.stringify(result, null, 2));
-  });
 
-walletProgram
-  .command("load")
-  .option("--keyfile <path>")
-  .option("--config <path>")
-  .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
-  .action(async (options) => {
-    const result = await walletAddress({
-      keyfilePath: options.keyfile,
-      configPath: options.config,
-      network: options.network
-    });
-    deps.print(JSON.stringify(result, null, 2));
-  });
-
-walletProgram
-  .command("address")
-  .option("--keyfile <path>")
-  .option("--config <path>")
-  .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
-  .action(async (options) => {
-    const result = await walletAddress({
-      keyfilePath: options.keyfile,
-      configPath: options.config,
-      network: options.network
-    });
-    deps.print(JSON.stringify(result, null, 2));
-  });
-
-walletProgram
-  .command("balance")
-  .option("--keyfile <path>")
-  .option("--config <path>")
-  .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
-  .option("--token <symbol>", "Token symbol override")
-  .action(async (options) => {
-    const result = await walletBalance({
-      keyfilePath: options.keyfile,
-      configPath: options.config,
-      network: options.network,
-      token: options.token
-    });
-    deps.print(JSON.stringify(result, null, 2));
-  });
-
-program
-  .command("config")
-  .description("Manage local CLI configuration")
-  .command("spend")
-  .option("--config <path>")
-  .option("--max-per-call <amount>")
-  .option("--daily-cap <amount>")
-  .option("--allowlist <items>")
-  .option("--manual-approval-above <amount>")
-  .action(async (options) => {
-    const result = await setSpendControls({
-      configPath: options.config,
-      maxPerCall: options.maxPerCall,
-      dailyCap: options.dailyCap,
-      allowlist: options.allowlist ? String(options.allowlist).split(",").map((item) => item.trim()) : undefined,
-      manualApprovalAbove: options.manualApprovalAbove
-    });
-    deps.print(JSON.stringify(result, null, 2));
-  });
-
-program
-  .command("invoke")
-  .argument("<provider>")
-  .argument("<operation>")
-  .requiredOption("--body <json>")
-  .option("--api-url <url>", "Marketplace API URL", "http://localhost:3000")
-  .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
-  .option("--keyfile <path>")
-  .option("--config <path>")
-  .option("--approve-expensive", "Auto-approve expensive routes", false)
-  .option("--verbose", "Print x402 client logs", false)
-  .action(async (provider, operation, options) => {
-    const result = await invokePaidRoute(
-      {
-        apiUrl: options.apiUrl,
-        provider,
-        operation,
-        body: JSON.parse(options.body),
-        keyfilePath: options.keyfile,
-        configPath: options.config,
-        network: options.network,
-        autoApproveExpensive: Boolean(options.approveExpensive),
-        verbose: Boolean(options.verbose)
-      },
-      deps
-    );
-    deps.print(JSON.stringify(result, null, 2));
-  });
-
-const jobProgram = program.command("job");
-
-jobProgram
-  .command("get")
-  .argument("<jobToken>")
-  .option("--api-url <url>", "Marketplace API URL", "http://localhost:3000")
-  .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
-  .option("--keyfile <path>")
-  .option("--config <path>")
-  .action(async (jobToken, options) => {
-    const result = await fetchJobResult(
-      {
-        apiUrl: options.apiUrl,
-        jobToken,
+  walletProgram
+    .command("load")
+    .option("--keyfile <path>")
+    .option("--config <path>")
+    .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
+    .action(async (options) => {
+      const result = await walletAddress({
         keyfilePath: options.keyfile,
         configPath: options.config,
         network: options.network
-      },
-      deps
-    );
-    deps.print(JSON.stringify(result, null, 2));
-  });
+      });
+      deps.print(JSON.stringify(result, null, 2));
+    });
 
-const providerProgram = program.command("provider");
+  walletProgram
+    .command("address")
+    .option("--keyfile <path>")
+    .option("--config <path>")
+    .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
+    .action(async (options) => {
+      const result = await walletAddress({
+        keyfilePath: options.keyfile,
+        configPath: options.config,
+        network: options.network
+      });
+      deps.print(JSON.stringify(result, null, 2));
+    });
 
-providerProgram
-  .command("sync")
-  .requiredOption("--spec <path>")
-  .option("--api-url <url>", "Marketplace API URL")
-  .option("--network <network>", "Fast network (mainnet or testnet)")
-  .option("--keyfile <path>")
-  .option("--config <path>")
-  .action(async (options) => {
-    const result = await syncProviderSpec(
-      {
-        specPath: options.spec,
-        apiUrl: options.apiUrl,
+  walletProgram
+    .command("balance")
+    .option("--keyfile <path>")
+    .option("--config <path>")
+    .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
+    .option("--token <symbol>", "Token symbol override")
+    .action(async (options) => {
+      const result = await walletBalance({
         keyfilePath: options.keyfile,
         configPath: options.config,
         network: options.network,
-        rpcUrl: undefined
-      },
-      deps
-    );
-    deps.print(JSON.stringify(result, null, 2));
-  });
+        token: options.token
+      });
+      deps.print(JSON.stringify(result, null, 2));
+    });
 
-providerProgram
-  .command("verify")
-  .requiredOption("--service <slug-or-id>")
-  .option("--api-url <url>", "Marketplace API URL")
-  .option("--network <network>", "Fast network (mainnet or testnet)")
-  .option("--keyfile <path>")
-  .option("--config <path>")
-  .action(async (options) => {
-    const result = await verifyProviderService(
-      {
-        serviceRef: options.service,
-        apiUrl: options.apiUrl,
-        keyfilePath: options.keyfile,
+  program
+    .command("config")
+    .description("Manage local CLI configuration")
+    .command("spend")
+    .option("--config <path>")
+    .option("--max-per-call <amount>")
+    .option("--daily-cap <amount>")
+    .option("--allowlist <items>")
+    .option("--manual-approval-above <amount>")
+    .action(async (options) => {
+      const result = await setSpendControls({
         configPath: options.config,
-        network: options.network,
-        rpcUrl: undefined
-      },
-      deps
-    );
-    deps.print(JSON.stringify(result, null, 2));
-  });
+        maxPerCall: options.maxPerCall,
+        dailyCap: options.dailyCap,
+        allowlist: options.allowlist ? String(options.allowlist).split(",").map((item) => item.trim()) : undefined,
+        manualApprovalAbove: options.manualApprovalAbove
+      });
+      deps.print(JSON.stringify(result, null, 2));
+    });
 
-providerProgram
-  .command("submit")
-  .requiredOption("--service <slug-or-id>")
-  .option("--api-url <url>", "Marketplace API URL")
-  .option("--network <network>", "Fast network (mainnet or testnet)")
-  .option("--keyfile <path>")
-  .option("--config <path>")
-  .action(async (options) => {
-    const result = await submitProviderService(
-      {
-        serviceRef: options.service,
-        apiUrl: options.apiUrl,
-        keyfilePath: options.keyfile,
-        configPath: options.config,
-        network: options.network,
-        rpcUrl: undefined
-      },
-      deps
-    );
-    deps.print(JSON.stringify(result, null, 2));
-  });
+  program
+    .command("use")
+    .argument("<ref>")
+    .requiredOption("--input <json>")
+    .option("--api-url <url>", "Marketplace API URL", "http://localhost:3000")
+    .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
+    .option("--keyfile <path>")
+    .option("--config <path>")
+    .option("--approve-expensive", "Auto-approve expensive routes", false)
+    .option("--verbose", "Print x402 client logs", false)
+    .action(async (ref, options) => {
+      const result = await useMarketplaceRoute(
+        {
+          apiUrl: options.apiUrl,
+          ref,
+          body: parseJsonOption(options.input, "--input"),
+          keyfilePath: options.keyfile,
+          configPath: options.config,
+          network: options.network,
+          autoApproveExpensive: Boolean(options.approveExpensive),
+          verbose: Boolean(options.verbose)
+        },
+        deps
+      );
+      deps.print(JSON.stringify(result, null, 2));
+    });
 
-try {
-  await program.parseAsync(process.argv);
-} catch (error) {
-  deps.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+  const jobProgram = program.command("job");
+
+  jobProgram
+    .command("get")
+    .argument("<jobToken>")
+    .option("--api-url <url>", "Marketplace API URL", "http://localhost:3000")
+    .option("--network <network>", "Fast network (mainnet or testnet)", "mainnet")
+    .option("--keyfile <path>")
+    .option("--config <path>")
+    .action(async (jobToken, options) => {
+      const result = await fetchJobResult(
+        {
+          apiUrl: options.apiUrl,
+          jobToken,
+          keyfilePath: options.keyfile,
+          configPath: options.config,
+          network: options.network
+        },
+        deps
+      );
+      deps.print(JSON.stringify(result, null, 2));
+    });
+
+  const providerProgram = program.command("provider");
+
+  providerProgram
+    .command("sync")
+    .requiredOption("--spec <path>")
+    .option("--api-url <url>", "Marketplace API URL")
+    .option("--network <network>", "Fast network (mainnet or testnet)")
+    .option("--keyfile <path>")
+    .option("--config <path>")
+    .action(async (options) => {
+      const result = await syncProviderSpec(
+        {
+          specPath: options.spec,
+          apiUrl: options.apiUrl,
+          keyfilePath: options.keyfile,
+          configPath: options.config,
+          network: options.network,
+          rpcUrl: undefined
+        },
+        deps
+      );
+      deps.print(JSON.stringify(result, null, 2));
+    });
+
+  providerProgram
+    .command("verify")
+    .requiredOption("--service <slug-or-id>")
+    .option("--api-url <url>", "Marketplace API URL")
+    .option("--network <network>", "Fast network (mainnet or testnet)")
+    .option("--keyfile <path>")
+    .option("--config <path>")
+    .action(async (options) => {
+      const result = await verifyProviderService(
+        {
+          serviceRef: options.service,
+          apiUrl: options.apiUrl,
+          keyfilePath: options.keyfile,
+          configPath: options.config,
+          network: options.network,
+          rpcUrl: undefined
+        },
+        deps
+      );
+      deps.print(JSON.stringify(result, null, 2));
+    });
+
+  providerProgram
+    .command("submit")
+    .requiredOption("--service <slug-or-id>")
+    .option("--api-url <url>", "Marketplace API URL")
+    .option("--network <network>", "Fast network (mainnet or testnet)")
+    .option("--keyfile <path>")
+    .option("--config <path>")
+    .action(async (options) => {
+      const result = await submitProviderService(
+        {
+          serviceRef: options.service,
+          apiUrl: options.apiUrl,
+          keyfilePath: options.keyfile,
+          configPath: options.config,
+          network: options.network,
+          rpcUrl: undefined
+        },
+        deps
+      );
+      deps.print(JSON.stringify(result, null, 2));
+    });
+
+  return program;
+}
+
+export async function runCli(argv = process.argv, deps: CliDependencies = defaultCliDependencies()) {
+  const program = createProgram(deps);
+  try {
+    await program.parseAsync(argv);
+  } catch (error) {
+    deps.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await runCli(process.argv);
 }

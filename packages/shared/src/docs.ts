@@ -86,9 +86,19 @@ export function buildOpenApiDocument(input: {
         summary: "List marketplace services with live stats."
       }
     },
+    "/catalog/search": {
+      get: {
+        summary: "Search marketplace services and executable routes with machine-readable filters."
+      }
+    },
     "/catalog/services/{slug}": {
       get: {
         summary: "Get one marketplace service with endpoint docs and generated usage instructions."
+      }
+    },
+    "/catalog/routes/{provider}/{operation}": {
+      get: {
+        summary: "Get one executable marketplace route with machine-readable auth, pricing, and schema details."
       }
     },
     "/catalog/suggestions": {
@@ -386,6 +396,7 @@ export function buildLlmsTxt(input: {
     `Fast network: ${network.displayName}`,
     `Settlement token: ${network.tokenSymbol}`,
     `Marketplace catalog: ${baseUrl}/catalog/services`,
+    `Marketplace search: ${baseUrl}/catalog/search`,
     "Payment protocol for paid trigger routes: x402 over HTTP",
     `Payment headers for x402 routes: ${PAYMENT_REQUIRED_HEADER}, ${PAYMENT_SIGNATURE_HEADER}, ${PAYMENT_RESPONSE_HEADER}`,
     "Repeat retrieval auth: wallet challenge session with a Bearer access token scoped to the route or job resource",

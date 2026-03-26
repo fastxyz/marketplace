@@ -14,6 +14,7 @@ import {
   MARKETPLACE_JOB_TOKEN_HEADER,
   buildLlmsTxt,
   buildMarketplaceCatalog,
+  buildMarketplaceRouteDetail,
   buildOpenApiDocument,
   buildPaymentRequiredHeaders,
   buildPaymentRequiredResponse,
@@ -22,6 +23,7 @@ import {
   buildPayoutSplit,
   buildServiceDetail,
   buildServiceSummary,
+  buildCatalogSearchResults,
   computeNextPollAt,
   computeTimeoutAt,
   createChallenge,
@@ -138,6 +140,14 @@ const suggestionCreateSchema = z
   });
 
 const suggestionStatusSchema = z.enum(["submitted", "reviewing", "accepted", "rejected", "shipped"]);
+const catalogSearchQuerySchema = z.object({
+  q: z.string().min(1).optional(),
+  category: z.string().min(1).optional(),
+  billingType: z.enum(["fixed_x402", "topup_x402_variable", "prepaid_credit", "free"]).optional(),
+  mode: z.enum(["sync", "async"]).optional(),
+  settlementMode: z.enum(["community_direct", "verified_escrow"]).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional()
+});
 
 const suggestionUpdateSchema = z.object({
   status: suggestionStatusSchema.optional(),
@@ -429,6 +439,39 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
     return res.json({ services });
   });
 
+  app.get("/catalog/search", async (req, res) => {
+    const parsed = catalogSearchQuerySchema.safeParse({
+      q: typeof req.query.q === "string" ? req.query.q : undefined,
+      category: typeof req.query.category === "string" ? req.query.category : undefined,
+      billingType: typeof req.query.billingType === "string" ? req.query.billingType : undefined,
+      mode: typeof req.query.mode === "string" ? req.query.mode : undefined,
+      settlementMode: typeof req.query.settlementMode === "string" ? req.query.settlementMode : undefined,
+      limit: req.query.limit
+    });
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: "Search query validation failed.",
+        issues: parsed.error.issues
+      });
+    }
+
+    const catalog = await loadPublishedCatalog(options.store);
+    const services = await Promise.all(
+      catalog.services.map(async (serviceDetail) => ({
+        ...serviceDetail,
+        analytics: await options.store.getServiceAnalytics(serviceDetail.service.routeIds)
+      }))
+    );
+
+    return res.json({
+      results: buildCatalogSearchResults({
+        services,
+        apiBaseUrl: baseUrl,
+        filters: parsed.data
+      })
+    });
+  });
+
   app.get("/catalog/services/:slug", async (req, res) => {
     const published = await options.store.getPublishedServiceBySlug(req.params.slug);
     if (!published) {
@@ -444,6 +487,35 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
     });
 
     return res.json(detail);
+  });
+
+  app.get("/catalog/routes/:provider/:operation", async (req, res) => {
+    const route = await options.store.findPublishedRoute(
+      req.params.provider,
+      req.params.operation,
+      networkConfig.paymentNetwork
+    );
+    if (!route) {
+      return res.status(404).json({ error: "Route not found." });
+    }
+
+    const catalog = await loadPublishedCatalog(options.store);
+    const published = catalog.services.find((serviceDetail) =>
+      serviceDetail.endpoints.some((endpoint) => endpoint.endpointType === "marketplace_proxy" && endpoint.routeId === route.routeId)
+    );
+    if (!published) {
+      return res.status(404).json({ error: "Service not found for route." });
+    }
+
+    return res.json(
+      buildMarketplaceRouteDetail({
+        route,
+        service: published.service,
+        serviceEndpoints: published.endpoints,
+        analytics: await options.store.getServiceAnalytics(published.service.routeIds),
+        apiBaseUrl: baseUrl
+      })
+    );
   });
 
   app.post("/catalog/suggestions", async (req, res) => {

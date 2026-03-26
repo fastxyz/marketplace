@@ -9,15 +9,21 @@ import { FastProvider, FastWallet, encodeFastAddress } from "@fastxyz/sdk";
 import { x402Pay } from "@fastxyz/x402-client";
 import {
   PAYMENT_IDENTIFIER_HEADER,
+  buildRouteRef,
   createOpaqueToken,
   decimalToRawString,
   normalizeFastWalletAddress,
   rawToDecimalString,
   resolveMarketplaceNetworkConfig,
   serializeQueryInput,
+  validateJsonSchema,
+  type CatalogSearchFilters,
+  type CatalogSearchResult,
   type HttpMethod,
   type JsonSchema,
-  type MarketplaceDeploymentNetwork
+  type MarketplaceRouteDetail,
+  type MarketplaceDeploymentNetwork,
+  type ServiceDetail
 } from "@marketplace/shared";
 
 export interface CliConfig {
@@ -65,10 +71,21 @@ export interface CliDependencies {
 }
 
 interface PublishedRouteCatalogEntry {
+  ref: string;
+  routeId: string;
   provider: string;
   operation: string;
   method: HttpMethod;
   requestSchemaJson: JsonSchema;
+  authRequirement: MarketplaceRouteDetail["authRequirement"];
+}
+
+export interface UseRouteResult {
+  ref: string;
+  statusCode: number;
+  body: unknown;
+  authFlow: "x402" | "wallet_session" | "none";
+  jobToken: string | null;
 }
 
 const DEFAULT_CONFIG_PATH = "~/.fast-marketplace/config.json";
@@ -266,6 +283,75 @@ export async function walletBalance(input: {
   return loaded.wallet.balance(input.token ?? network.tokenSymbol);
 }
 
+export async function searchMarketplace(
+  input: {
+    apiUrl: string;
+    q?: string;
+    category?: string;
+    billingType?: CatalogSearchFilters["billingType"];
+    mode?: CatalogSearchFilters["mode"];
+    settlementMode?: CatalogSearchFilters["settlementMode"];
+    limit?: number;
+  },
+  deps: CliDependencies = defaultCliDependencies()
+): Promise<{ results: CatalogSearchResult[] }> {
+  return fetchMarketplaceJson<{ results: CatalogSearchResult[] }>(
+    deps,
+    buildSearchRequestUrl(input.apiUrl, input)
+  );
+}
+
+export async function showMarketplaceItem(
+  input: {
+    apiUrl: string;
+    ref: string;
+  },
+  deps: CliDependencies = defaultCliDependencies()
+): Promise<ServiceDetail | MarketplaceRouteDetail> {
+  const routeRef = parseRouteRef(input.ref);
+  if (routeRef) {
+    return fetchRouteDetail(input.apiUrl, routeRef.provider, routeRef.operation, deps);
+  }
+
+  return fetchServiceDetail(input.apiUrl, input.ref, deps);
+}
+
+export async function useMarketplaceRoute(
+  input: {
+    apiUrl: string;
+    ref: string;
+    body: unknown;
+    keyfilePath?: string;
+    configPath?: string;
+    network?: MarketplaceDeploymentNetwork;
+    rpcUrl?: string;
+    autoApproveExpensive?: boolean;
+    verbose?: boolean;
+  },
+  deps: CliDependencies = defaultCliDependencies()
+): Promise<UseRouteResult> {
+  const routeRef = parseRouteRef(input.ref);
+  if (!routeRef) {
+    throw new Error(`Route ref must use provider.operation: ${input.ref}`);
+  }
+
+  return invokePaidRoute(
+    {
+      apiUrl: input.apiUrl,
+      provider: routeRef.provider,
+      operation: routeRef.operation,
+      body: input.body,
+      keyfilePath: input.keyfilePath,
+      configPath: input.configPath,
+      network: input.network,
+      rpcUrl: input.rpcUrl,
+      autoApproveExpensive: input.autoApproveExpensive,
+      verbose: input.verbose
+    },
+    deps
+  );
+}
+
 export async function invokePaidRoute(
   input: {
     apiUrl: string;
@@ -280,12 +366,10 @@ export async function invokePaidRoute(
     verbose?: boolean;
   },
   deps: CliDependencies = defaultCliDependencies()
-) {
+): Promise<UseRouteResult> {
   const loaded = await loadWallet(input);
   const config = await readCliConfig(input.configPath);
   const network = resolveCliNetwork(input.network, config.defaultNetwork, input.rpcUrl);
-  const routeKey = `${input.provider}.${input.operation}`;
-  const paymentId = createOpaqueToken("payment");
   const route = await resolvePublishedRoute(input.apiUrl, input.provider, input.operation, deps);
   const requestTarget = buildInvocationTarget({
     apiUrl: input.apiUrl,
@@ -295,17 +379,13 @@ export async function invokePaidRoute(
     requestSchemaJson: route.requestSchemaJson,
     body: input.body
   });
-  const headers = buildClientHeaders(config, paymentId);
 
-  const preflight = await deps.fetchImpl(requestTarget.url, buildInvocationInit(route.method, headers, requestTarget.body));
-
-  if (preflight.status === 401 || preflight.status === 403) {
-    const routeId = `${input.provider}.${input.operation}.v1`;
+  if (route.authRequirement.type === "wallet_session") {
     const session = await createScopedSession(
       {
         apiUrl: input.apiUrl,
         resourceType: "api",
-        resourceId: routeId,
+        resourceId: route.routeId,
         keyfilePath: input.keyfilePath,
         configPath: input.configPath,
         network: input.network,
@@ -321,25 +401,28 @@ export async function invokePaidRoute(
       }, requestTarget.body)
     );
 
-    return {
-      statusCode: response.status,
-      body: await safeJson(response),
-      note: "Request used wallet-session auth."
-    };
+    return buildUseRouteResult(route.ref, response.status, await safeJson(response), "wallet_session");
   }
 
+  if (route.authRequirement.type === "none") {
+    const response = await deps.fetchImpl(
+      requestTarget.url,
+      buildInvocationInit(route.method, {}, requestTarget.body)
+    );
+
+    return buildUseRouteResult(route.ref, response.status, await safeJson(response), "none");
+  }
+
+  const paymentId = createOpaqueToken("payment");
+  const headers = buildClientHeaders(config, paymentId);
+  const preflight = await deps.fetchImpl(requestTarget.url, buildInvocationInit(route.method, headers, requestTarget.body));
   if (preflight.status !== 402) {
-    return {
-      statusCode: preflight.status,
-      body: await safeJson(preflight),
-      note: "Request did not require payment."
-    };
+    return buildUseRouteResult(route.ref, preflight.status, await safeJson(preflight), "x402");
   }
 
   const paymentRequired = await preflight.json() as {
     accepts?: Array<{ maxAmountRequired: string }>;
   };
-
   const maxAmountRequired = paymentRequired.accepts?.[0]?.maxAmountRequired;
   if (!maxAmountRequired) {
     throw new Error("Marketplace did not return a usable payment requirement.");
@@ -347,7 +430,7 @@ export async function invokePaidRoute(
   const amountRaw = decimalToRawString(maxAmountRequired, 6);
 
   await enforceSpendControls({
-    routeKey,
+    routeKey: route.ref,
     amountRaw,
     tokenSymbol: network.tokenSymbol,
     config,
@@ -358,7 +441,11 @@ export async function invokePaidRoute(
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async (...args) => normalizeMarketplacePaymentRequirement(await deps.fetchImpl(...args));
 
-  let result;
+  let result: {
+    success: boolean;
+    statusCode: number;
+    body: unknown;
+  };
   try {
     result = await x402Pay({
       url: requestTarget.url,
@@ -369,7 +456,11 @@ export async function invokePaidRoute(
       },
       wallet: loaded.paymentWallet,
       verbose: input.verbose
-    });
+    }) as {
+      success: boolean;
+      statusCode: number;
+      body: unknown;
+    };
   } finally {
     globalThis.fetch = previousFetch;
   }
@@ -378,7 +469,7 @@ export async function invokePaidRoute(
     await recordSpend(config, amountRaw, input.configPath, deps.now());
   }
 
-  return result;
+  return buildUseRouteResult(route.ref, result.statusCode, result.body, "x402");
 }
 
 async function resolvePublishedRoute(
@@ -387,29 +478,19 @@ async function resolvePublishedRoute(
   operation: string,
   deps: CliDependencies
 ): Promise<PublishedRouteCatalogEntry> {
-  const response = await deps.fetchImpl(`${apiUrl.replace(/\/$/, "")}/.well-known/marketplace.json`);
-  if (!response.ok) {
-    throw new Error(`Marketplace catalog request failed with status ${response.status}`);
-  }
-
-  const body = await safeJson(response) as {
-    routes?: Array<{
-      provider?: string;
-      operation?: string;
-      method?: string;
-      requestSchemaJson?: JsonSchema;
-    }>;
-  };
-  const route = body.routes?.find((candidate) => candidate.provider === provider && candidate.operation === operation);
-  if (!route || (route.method !== "GET" && route.method !== "POST") || !route.requestSchemaJson) {
+  const route = await fetchRouteDetail(apiUrl, provider, operation, deps);
+  if (route.method !== "GET" && route.method !== "POST") {
     throw new Error(`Published route metadata not found for ${provider}.${operation}.`);
   }
 
   return {
-    provider,
-    operation,
+    ref: route.ref,
+    routeId: route.routeId,
+    provider: route.provider,
+    operation: route.operation,
     method: route.method,
-    requestSchemaJson: route.requestSchemaJson
+    requestSchemaJson: route.requestSchemaJson,
+    authRequirement: route.authRequirement
   };
 }
 
@@ -431,6 +512,12 @@ function buildInvocationTarget(input: {
       })}`
     };
   }
+
+  validateJsonSchema({
+    schema: input.requestSchemaJson,
+    value: input.body,
+    label: `${buildRouteRef({ provider: input.provider, operation: input.operation })} POST input`
+  });
 
   return {
     url: baseUrl,
@@ -457,6 +544,110 @@ function buildInvocationInit(
       ...headers
     },
     body
+  };
+}
+
+function buildSearchRequestUrl(
+  apiUrl: string,
+  filters: {
+    q?: string;
+    category?: string;
+    billingType?: CatalogSearchFilters["billingType"];
+    mode?: CatalogSearchFilters["mode"];
+    settlementMode?: CatalogSearchFilters["settlementMode"];
+    limit?: number;
+  }
+): string {
+  const params = new URLSearchParams();
+  if (filters.q) {
+    params.set("q", filters.q);
+  }
+  if (filters.category) {
+    params.set("category", filters.category);
+  }
+  if (filters.billingType) {
+    params.set("billingType", filters.billingType);
+  }
+  if (filters.mode) {
+    params.set("mode", filters.mode);
+  }
+  if (filters.settlementMode) {
+    params.set("settlementMode", filters.settlementMode);
+  }
+  if (typeof filters.limit === "number") {
+    params.set("limit", String(filters.limit));
+  }
+
+  const baseUrl = `${apiUrl.replace(/\/$/, "")}/catalog/search`;
+  const query = params.toString();
+  return query ? `${baseUrl}?${query}` : baseUrl;
+}
+
+function parseRouteRef(ref: string): { provider: string; operation: string } | null {
+  const [provider, operation, extra] = ref.split(".");
+  if (!provider || !operation || extra) {
+    return null;
+  }
+
+  return { provider, operation };
+}
+
+async function fetchMarketplaceJson<T>(deps: CliDependencies, url: string): Promise<T> {
+  const response = await deps.fetchImpl(url);
+  if (!response.ok) {
+    const body = await safeJson(response);
+    const message = typeof body === "string"
+      ? body
+      : typeof body === "object" && body && "error" in body && typeof body.error === "string"
+        ? body.error
+        : `Marketplace request failed with status ${response.status}`;
+    throw new Error(message);
+  }
+
+  return await response.json() as T;
+}
+
+async function fetchServiceDetail(apiUrl: string, slug: string, deps: CliDependencies): Promise<ServiceDetail> {
+  return fetchMarketplaceJson<ServiceDetail>(
+    deps,
+    `${apiUrl.replace(/\/$/, "")}/catalog/services/${encodeURIComponent(slug)}`
+  );
+}
+
+async function fetchRouteDetail(
+  apiUrl: string,
+  provider: string,
+  operation: string,
+  deps: CliDependencies
+): Promise<MarketplaceRouteDetail> {
+  return fetchMarketplaceJson<MarketplaceRouteDetail>(
+    deps,
+    `${apiUrl.replace(/\/$/, "")}/catalog/routes/${encodeURIComponent(provider)}/${encodeURIComponent(operation)}`
+  );
+}
+
+function extractJobToken(body: unknown): string | null {
+  if (!body || typeof body !== "object") {
+    return null;
+  }
+
+  return typeof (body as { jobToken?: unknown }).jobToken === "string"
+    ? (body as { jobToken: string }).jobToken
+    : null;
+}
+
+function buildUseRouteResult(
+  ref: string,
+  statusCode: number,
+  body: unknown,
+  authFlow: UseRouteResult["authFlow"]
+): UseRouteResult {
+  return {
+    ref,
+    statusCode,
+    body,
+    authFlow,
+    jobToken: extractJobToken(body)
   };
 }
 
@@ -508,11 +699,12 @@ export async function createApiSession(
   },
   deps: CliDependencies = defaultCliDependencies()
 ) {
+  const route = await fetchRouteDetail(input.apiUrl, input.provider, input.operation, deps);
   return createScopedSession(
     {
       apiUrl: input.apiUrl,
       resourceType: "api",
-      resourceId: `${input.provider}.${input.operation}.v1`,
+      resourceId: route.routeId,
       keyfilePath: input.keyfilePath,
       configPath: input.configPath,
       network: input.network,

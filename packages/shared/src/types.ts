@@ -247,6 +247,7 @@ export type ServiceSummary = MarketplaceServiceSummary | ExternalRegistryService
 export interface MarketplaceServiceCatalogEndpoint {
   endpointType: "marketplace_proxy";
   routeId: string;
+  ref?: string;
   title: string;
   description: string;
   price: string;
@@ -256,6 +257,7 @@ export interface MarketplaceServiceCatalogEndpoint {
   method: HttpMethod;
   path: string;
   proxyUrl: string;
+  authRequirement?: MarketplaceRouteAuthRequirement;
   requestSchemaJson: JsonSchema;
   responseSchemaJson: JsonSchema;
   requestExample: unknown;
@@ -299,6 +301,111 @@ export interface ExternalRegistryServiceDetail {
 }
 
 export type ServiceDetail = MarketplaceServiceDetail | ExternalRegistryServiceDetail;
+
+export type MarketplaceRouteAuthRequirement =
+  | {
+      type: "x402";
+      description: string;
+      paymentProtocol: "x402";
+      paymentHeaders: {
+        required: string;
+        signature: string;
+        response: string;
+        paymentIdentifier: string;
+      };
+    }
+  | {
+      type: "wallet_session";
+      description: string;
+      authorizationScheme: "Bearer";
+      challengeEndpoint: string;
+      sessionEndpoint: string;
+      resourceType: "api";
+    }
+  | {
+      type: "none";
+      description: string;
+    };
+
+export interface CatalogSearchFilters {
+  q?: string;
+  category?: string;
+  billingType?: RouteBillingType;
+  mode?: RouteMode;
+  settlementMode?: SettlementMode;
+  limit?: number;
+}
+
+export interface MarketplaceRouteSearchSummary {
+  ref: string;
+  routeId: string;
+  provider: string;
+  operation: string;
+  serviceSlug: string;
+  serviceName: string;
+  ownerName: string;
+  categories: string[];
+  title: string;
+  description: string;
+  price: string;
+  billingType: RouteBillingType;
+  tokenSymbol: MarketplaceTokenSymbol;
+  mode: RouteMode;
+  method: HttpMethod;
+  path: string;
+  proxyUrl: string;
+  settlementMode: SettlementMode;
+  settlementLabel: string;
+  settlementDescription: string;
+  authRequirement: MarketplaceRouteAuthRequirement;
+  usageNotes?: string;
+}
+
+export interface ServiceSearchResult {
+  kind: "service";
+  summary: ServiceSummary;
+  executableByMarketplace: boolean;
+  routeRefs: string[];
+}
+
+export interface RouteSearchResult {
+  kind: "route";
+  summary: MarketplaceRouteSearchSummary;
+}
+
+export type CatalogSearchResult = ServiceSearchResult | RouteSearchResult;
+
+export interface MarketplaceRouteDetail {
+  kind: "route";
+  ref: string;
+  routeId: string;
+  provider: string;
+  operation: string;
+  serviceSlug: string;
+  serviceName: string;
+  ownerName: string;
+  categories: string[];
+  title: string;
+  description: string;
+  price: string;
+  billingType: RouteBillingType;
+  tokenSymbol: MarketplaceTokenSymbol;
+  mode: RouteMode;
+  method: HttpMethod;
+  path: string;
+  proxyUrl: string;
+  settlementMode: SettlementMode;
+  settlementLabel: string;
+  settlementDescription: string;
+  authRequirement: MarketplaceRouteAuthRequirement;
+  requestSchemaJson: JsonSchema;
+  responseSchemaJson: JsonSchema;
+  requestExample: unknown;
+  responseExample: unknown;
+  usageNotes?: string;
+  asyncConfig?: RouteAsyncConfig | null;
+  serviceSummary: MarketplaceServiceSummary;
+}
 
 export interface SuggestionRecord {
   id: string;

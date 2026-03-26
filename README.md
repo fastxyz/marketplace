@@ -10,7 +10,7 @@ Fast-native data marketplace using [`@fastxyz/sdk`](https://www.npmjs.com/packag
 - `apps/facilitator`: x402 facilitator service used for payment verification
 - `apps/tavily-service`: optional standalone Tavily-backed provider example that can be onboarded through the website like any other provider service. See [`apps/tavily-service/README.md`](./apps/tavily-service/README.md)
 - `packages/shared`: source of truth for shared contracts, route registry, catalog/docs generation, auth, billing, payout logic, and store behavior
-- `packages/cli`: buyer and provider CLI for wallet setup, x402 calls, provider draft sync/verification/submission, prepaid-credit flows, API sessions, and job retrieval
+- `packages/cli`: buyer and provider CLI for discovery-first marketplace search/show/use flows, wallet setup, provider draft sync/verification/submission, and job retrieval
 
 ## Billing Model
 
@@ -182,19 +182,16 @@ This service is not wired into `apps/api`. To use it, create a `marketplace_prox
 
 ```bash
 npm run cli -- wallet init
-npm run cli -- wallet address
-npm run cli -- invoke mock quick-insight --body '{"query":"alpha"}'
+npm run cli -- search "quick insight"
+npm run cli -- show mock-research-signals
+npm run cli -- show mock.quick-insight
+npm run cli -- use mock.quick-insight --input '{"query":"alpha"}'
+npm run cli -- job get <jobToken>
 ```
 
-The CLI currently uses `@fastxyz/x402-client@^0.1.2` and calls `x402Pay` for payable routes.
+The buyer CLI is discovery-first. `search` and `show` only consume machine-readable catalog APIs, and `use` fetches route detail first before executing through the existing x402 or wallet-session flow. Payable routes still use `@fastxyz/x402-client@^0.1.2` under the hood.
 
-For prepaid-credit routes, and for async free routes that require wallet-session auth, the CLI can mint an API-scoped wallet session automatically when the route responds with auth requirements instead of `402`. You can also create that session explicitly:
-
-```bash
-npm run cli -- auth api-session <provider> <operation>
-```
-
-For provider-authored top-up routes, call the route with an amount in the request body. For prepaid-credit routes, fund credit first, then call the prepaid route with the same `invoke` command; the CLI will switch to wallet-session auth when needed. Async free routes also use wallet-session auth and return a `jobToken` for `GET /api/jobs/:jobToken`.
+For provider-authored top-up routes, pass the amount in `--input`. For prepaid-credit routes, fund credit first and then call the prepaid route with `use`; the CLI will mint a route-scoped wallet session automatically when the route requires bearer auth. Async free routes also use wallet-session auth and return a `jobToken` for `job get`.
 
 Async retrieval uses a second wallet challenge flow scoped to the `jobToken`. Poll `GET /api/jobs/:jobToken` with `Authorization: Bearer <accessToken>` from the same wallet that paid for or authorized the original trigger. The default poll interval is `5000` ms.
 

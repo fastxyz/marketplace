@@ -4,9 +4,12 @@ import { describe, expect, it } from "vitest";
 import {
   InMemoryMarketplaceStore,
   PostgresMarketplaceStore,
+  buildCatalogSearchResults,
+  buildMarketplaceRouteDetail,
   buildPriceRange,
   buildMarketplaceRoutes,
   buildPaymentRequirementForRoute,
+  buildRouteAuthRequirement,
   buildServiceDetail,
   buildOpenApiDocument,
   buildPayoutSplit,
@@ -577,6 +580,161 @@ describe("shared marketplace helpers", () => {
     expect(detail.useThisServicePrompt).toContain('I want to use the "Mock Research Signals" service');
     expect(detail.useThisServicePrompt).toContain("https://api.marketplace.example.com/api/mock/quick-insight");
     expect(detail.useThisServicePrompt).toContain("($0.05 USDC)");
+  });
+
+  it("derives explicit auth requirements for marketplace routes", () => {
+    const fixedRoute = TESTNET_MARKETPLACE_ROUTES.find((candidate) => candidate.routeId === "mock.quick-insight.v1");
+    const asyncRoute = TESTNET_MARKETPLACE_ROUTES.find((candidate) => candidate.routeId === "mock.async-report.v1");
+    if (!fixedRoute || !asyncRoute) {
+      throw new Error("Mock seeded routes are missing.");
+    }
+
+    expect(buildRouteAuthRequirement(fixedRoute)).toMatchObject({
+      type: "x402"
+    });
+    expect(buildRouteAuthRequirement({
+      ...fixedRoute,
+      routeId: "mock.prepaid-insight.v1",
+      operation: "prepaid-insight",
+      billing: {
+        type: "prepaid_credit" as const
+      },
+      price: "Prepaid credit"
+    })).toMatchObject({
+      type: "wallet_session"
+    });
+    expect(buildRouteAuthRequirement({
+      ...fixedRoute,
+      routeId: "mock.free-sync.v1",
+      operation: "free-sync",
+      billing: {
+        type: "free" as const
+      },
+      price: "Free"
+    })).toMatchObject({
+      type: "none"
+    });
+    expect(buildRouteAuthRequirement({
+      ...asyncRoute,
+      routeId: "mock.free-async.v1",
+      operation: "free-async",
+      billing: {
+        type: "free" as const
+      },
+      price: "Free"
+    })).toMatchObject({
+      type: "wallet_session"
+    });
+  });
+
+  it("builds marketplace route detail from the shared catalog", () => {
+    const service = TESTNET_SERVICE_DEFINITIONS.find((candidate) => candidate.slug === "mock-research-signals");
+    const route = TESTNET_MARKETPLACE_ROUTES.find((candidate) => candidate.routeId === "mock.quick-insight.v1");
+    if (!service || !route) {
+      throw new Error("Mock seeded service is missing.");
+    }
+
+    const publishedEndpoints = TESTNET_MARKETPLACE_ROUTES
+      .filter((candidate) => service.routeIds.includes(candidate.routeId))
+      .map((candidate) => buildPublishedEndpointFromRoute(candidate));
+    const detail = buildMarketplaceRouteDetail({
+      route: buildPublishedEndpointFromRoute(route),
+      service,
+      serviceEndpoints: publishedEndpoints,
+      analytics: {
+        totalCalls: 12,
+        revenueRaw: "420000",
+        successRate30d: 66.666,
+        volume30d: [{ date: "2026-03-18", amountRaw: "150000" }]
+      },
+      apiBaseUrl: "https://api.marketplace.example.com"
+    });
+
+    expect(detail).toMatchObject({
+      kind: "route",
+      ref: "mock.quick-insight",
+      routeId: "mock.quick-insight.v1",
+      billingType: "fixed_x402",
+      method: "POST"
+    });
+    expect(detail.authRequirement).toMatchObject({
+      type: "x402"
+    });
+    expect(detail.serviceSummary.slug).toBe("mock-research-signals");
+  });
+
+  it("builds mixed search results with deterministic ordering and filters", () => {
+    const service = TESTNET_SERVICE_DEFINITIONS.find((candidate) => candidate.slug === "mock-research-signals");
+    const fixedRoute = TESTNET_MARKETPLACE_ROUTES.find((candidate) => candidate.routeId === "mock.quick-insight.v1");
+    const asyncRoute = TESTNET_MARKETPLACE_ROUTES.find((candidate) => candidate.routeId === "mock.async-report.v1");
+    if (!service || !fixedRoute || !asyncRoute) {
+      throw new Error("Mock seeded service is missing.");
+    }
+
+    const searchableService = {
+      service,
+      endpoints: [
+        buildPublishedEndpointFromRoute(fixedRoute),
+        buildPublishedEndpointFromRoute({
+          ...asyncRoute,
+          routeId: "mock.free-async-search.v1",
+          operation: "free-async-search",
+          billing: {
+            type: "free" as const
+          },
+          price: "Free"
+        })
+      ],
+      analytics: {
+        totalCalls: 1,
+        revenueRaw: "50000",
+        successRate30d: 100,
+        volume30d: []
+      }
+    };
+
+    const fixedSearch = buildCatalogSearchResults({
+      services: [searchableService],
+      apiBaseUrl: "https://api.marketplace.example.com",
+      filters: {
+        q: "quick insight"
+      }
+    });
+    const asyncSearch = buildCatalogSearchResults({
+      services: [searchableService],
+      apiBaseUrl: "https://api.marketplace.example.com",
+      filters: {
+        mode: "async",
+        billingType: "free",
+        settlementMode: "verified_escrow"
+      }
+    });
+
+    expect(fixedSearch[0]).toMatchObject({
+      kind: "route",
+      summary: {
+        ref: "mock.quick-insight"
+      }
+    });
+    expect(fixedSearch[1]).toMatchObject({
+      kind: "service",
+      routeRefs: ["mock.quick-insight", "mock.free-async-search"]
+    });
+    expect(asyncSearch).toEqual([
+      expect.objectContaining({
+        kind: "route",
+        summary: expect.objectContaining({
+          ref: "mock.free-async-search",
+          authRequirement: expect.objectContaining({
+            type: "wallet_session"
+          })
+        })
+      }),
+      expect.objectContaining({
+        kind: "service",
+        routeRefs: ["mock.free-async-search"]
+      })
+    ]);
   });
 
   it("computes service analytics and provider request queue state in the in-memory store", async () => {
