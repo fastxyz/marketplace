@@ -2056,4 +2056,187 @@ describe("shared marketplace helpers", () => {
     expect(schemaSql).toMatch(/UPDATE provider_endpoint_drafts[\s\S]*SET method = 'POST'[\s\S]*WHERE method IS NULL/);
     expect(schemaSql).toMatch(/UPDATE published_endpoint_versions[\s\S]*SET method = 'POST'[\s\S]*WHERE method IS NULL/);
   });
+
+  it("lists buyer activity from stored charges, jobs, refunds, and historical published routes", async () => {
+    const store = new InMemoryMarketplaceStore(TESTNET_NETWORK_CONFIG);
+    const quickInsight = TESTNET_MARKETPLACE_ROUTES.find((route) => route.operation === "quick-insight");
+    const asyncReport = TESTNET_MARKETPLACE_ROUTES.find((route) => route.operation === "async-report");
+
+    expect(quickInsight).toBeDefined();
+    expect(asyncReport).toBeDefined();
+
+    await store.saveSyncIdempotency({
+      paymentId: "payment_buyer_sync_1",
+      normalizedRequestHash: "hash_sync_1",
+      buyerWallet: "fast1buyerhistory0000000000000000000000000000000000000000000000000",
+      routeId: quickInsight!.routeId,
+      routeVersion: quickInsight!.version,
+      quotedPrice: "50000",
+      payoutSplit: buildEscrowSplit({
+        providerAccountId: "provider_marketplace",
+        providerWallet: null,
+        marketplaceAmount: "50000",
+        providerAmount: "0",
+        marketplaceBps: 10000,
+        providerBps: 0
+      }),
+      paymentPayload: "payload_sync_1",
+      facilitatorResponse: { isValid: true },
+      statusCode: 200,
+      body: { ok: true }
+    });
+
+    await store.createRefund({
+      paymentId: "payment_buyer_sync_1",
+      wallet: "fast1buyerhistory0000000000000000000000000000000000000000000000000",
+      amount: "50000"
+    });
+    const pendingRefund = await store.getRefundByPaymentId("payment_buyer_sync_1");
+    expect(pendingRefund).toBeTruthy();
+    await store.markRefundSent(pendingRefund!.id, "0xrefundsent");
+
+    await store.saveAsyncAcceptance({
+      paymentId: "payment_buyer_async_1",
+      normalizedRequestHash: "hash_async_1",
+      buyerWallet: "fast1buyerhistory0000000000000000000000000000000000000000000000000",
+      route: asyncReport!,
+      quotedPrice: "150000",
+      payoutSplit: buildEscrowSplit({
+        providerAccountId: "provider_marketplace",
+        providerWallet: null,
+        marketplaceAmount: "150000",
+        providerAmount: "0",
+        marketplaceBps: 10000,
+        providerBps: 0
+      }),
+      paymentPayload: "payload_async_1",
+      facilitatorResponse: { isValid: true },
+      jobToken: "job_buyer_async_1",
+      requestId: "request_async_1",
+      providerJobId: "provider_job_async_1",
+      requestBody: { topic: "market maps" },
+      responseBody: { jobToken: "job_buyer_async_1" }
+    });
+    await store.failJob("job_buyer_async_1", "provider timeout");
+
+    const activity = await store.listBuyerActivity({
+      wallet: "fast1buyerhistory0000000000000000000000000000000000000000000000000",
+      range: "30d",
+      limit: 10
+    });
+
+    expect(activity.summary).toMatchObject({
+      totalSpend: "0.20",
+      totalRefunded: "0.05",
+      netSpend: "0.15",
+      paidCallCount: 2,
+      serviceCount: 1
+    });
+    expect(activity.items).toHaveLength(2);
+    expect(activity.items).toContainEqual(expect.objectContaining({
+      paymentId: "payment_buyer_async_1",
+      status: "failed",
+      route: expect.objectContaining({
+        ref: "mock.async-report",
+        billingType: "fixed_x402"
+      }),
+      job: expect.objectContaining({
+        jobToken: "job_buyer_async_1",
+        status: "failed"
+      })
+    }));
+    expect(activity.items).toContainEqual(expect.objectContaining({
+      paymentId: "payment_buyer_sync_1",
+      status: "refunded",
+      refund: expect.objectContaining({
+        status: "sent",
+        amount: "0.05",
+        txHash: "0xrefundsent"
+      }),
+      service: expect.objectContaining({
+        slug: "mock-research-signals",
+        name: "Mock Research Signals"
+      })
+    }));
+  });
+
+  it("maps buyer activity rows from the Postgres store query", async () => {
+    const store = new PostgresMarketplaceStore({
+      async query(sql: string) {
+        if (sql.includes("FROM idempotency_records i")) {
+          return {
+            rowCount: 1,
+            rows: [
+              {
+                payment_id: "payment_pg_1",
+                provider_payout_source_kind: "credit_topup",
+                response_kind: "sync",
+                response_status_code: 200,
+                quoted_price: "25000000",
+                payout_split: buildEscrowSplit({
+                  providerAccountId: "provider_marketplace",
+                  providerWallet: null,
+                  marketplaceAmount: "25000000",
+                  providerAmount: "0",
+                  marketplaceBps: 10000,
+                  providerBps: 0
+                }),
+                route_id: "orders.topup.v1",
+                created_at: TEST_TIMESTAMP,
+                job_token: null,
+                job_status: null,
+                refund_status: "sent",
+                refund_amount: "25000000",
+                refund_tx_hash: "0xtopuprefund",
+                provider: "orders",
+                operation: "topup",
+                title: "Top Up",
+                mode: "sync",
+                billing: { type: "topup_x402_variable" },
+                service_id: "service_orders",
+                service_slug: "order-desk",
+                service_name: "Order Desk"
+              }
+            ]
+          };
+        }
+
+        return { rowCount: 0, rows: [] };
+      },
+      connect: async () => ({
+        query: async () => ({ rowCount: 0, rows: [] }),
+        release() {}
+      })
+    } as never);
+
+    const activity = await store.listBuyerActivity({
+      wallet: "fast1buyerhistory0000000000000000000000000000000000000000000000000",
+      range: "all",
+      limit: 10
+    });
+
+    expect(activity.items).toEqual([
+      expect.objectContaining({
+        paymentId: "payment_pg_1",
+        kind: "credit_topup",
+        status: "refunded",
+        amount: "25",
+        service: {
+          slug: "order-desk",
+          name: "Order Desk"
+        },
+        route: {
+          ref: "orders.topup",
+          title: "Top Up",
+          mode: "sync",
+          billingType: "topup_x402_variable"
+        },
+        refund: {
+          status: "sent",
+          amount: "25",
+          txHash: "0xtopuprefund"
+        }
+      })
+    ]);
+  });
 });

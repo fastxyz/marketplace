@@ -1,0 +1,29 @@
+{
+  "name": "@marketplace/mcp",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "fast-pay-mcp": "./dist/index.js"
+  },
+  "dependencies": {
+    "@marketplace/cli": "*",
+    "@marketplace/shared": "*",
+    "@modelcontextprotocol/sdk": "^1.28.0",
+    "zod": "^3.24.4"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup --config ../../tsup.config.ts",
+    "prepack": "npm run build"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -66,6 +66,7 @@ import {
   PAYMENT_REQUIRED_HEADER,
   PAYMENT_RESPONSE_HEADER,
   PAYMENT_SIGNATURE_HEADER,
+  type BuyerActivityRange,
   type CreateProviderEndpointDraftInput,
   type ExternalProviderEndpointDraftRecord,
   type FacilitatorClient,
@@ -147,6 +148,10 @@ const catalogSearchQuerySchema = z.object({
   mode: z.enum(["sync", "async"]).optional(),
   settlementMode: z.enum(["verified_escrow"]).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional()
+});
+const buyerActivityQuerySchema = z.object({
+  range: z.enum(["7d", "30d", "90d", "all"]).default("30d"),
+  limit: z.coerce.number().int().min(1).max(200).default(50)
 });
 
 const suggestionUpdateSchema = z.object({
@@ -749,6 +754,30 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
       resourceId: webBaseUrl,
       tokenType: "Bearer"
     });
+  });
+
+  app.get("/buyer/me/activity", async (req, res) => {
+    const session = requireSiteSession(req, res, options.sessionSecret, webBaseUrl);
+    if (!session) {
+      return;
+    }
+
+    const parsed = buyerActivityQuerySchema.safeParse({
+      range: typeof req.query.range === "string" ? req.query.range : undefined,
+      limit: req.query.limit
+    });
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: "Buyer activity query validation failed.",
+        issues: parsed.error.issues
+      });
+    }
+
+    return res.json(await options.store.listBuyerActivity({
+      wallet: session.wallet,
+      range: parsed.data.range as BuyerActivityRange,
+      limit: parsed.data.limit
+    }));
   });
 
   app.get("/provider/me", async (req, res) => {

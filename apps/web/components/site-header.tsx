@@ -28,6 +28,9 @@ export function SiteHeader({
       <Link href="/stats" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
         Stats
       </Link>
+      <Link href="/me/spend" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
+        Spend
+      </Link>
       <Link href="/suggest" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
         Suggest
       </Link>

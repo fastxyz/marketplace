@@ -407,6 +407,52 @@ export interface MarketplaceRouteDetail {
   serviceSummary: MarketplaceServiceSummary;
 }
 
+export type BuyerActivityRange = "7d" | "30d" | "90d" | "all";
+export type BuyerActivityItemKind = "route_charge" | "credit_topup";
+export type BuyerActivityItemStatus = "succeeded" | "refunded" | "refund_pending" | "failed";
+
+export interface BuyerActivityItem {
+  paymentId: string;
+  kind: BuyerActivityItemKind;
+  status: BuyerActivityItemStatus;
+  amount: string;
+  tokenSymbol: MarketplaceTokenSymbol;
+  createdAt: string;
+  service: {
+    slug: string;
+    name: string;
+  };
+  route: {
+    ref: string;
+    title: string;
+    mode: RouteMode;
+    billingType: RouteBillingType;
+  };
+  job: {
+    jobToken: string;
+    status: JobStatus;
+  } | null;
+  refund: {
+    status: RefundRecord["status"];
+    amount: string;
+    txHash: string | null;
+  } | null;
+}
+
+export interface BuyerActivitySummary {
+  totalSpend: string;
+  totalRefunded: string;
+  netSpend: string;
+  paidCallCount: number;
+  serviceCount: number;
+}
+
+export interface BuyerActivityResponse {
+  wallet: string;
+  summary: BuyerActivitySummary;
+  items: BuyerActivityItem[];
+}
+
 export interface SuggestionRecord {
   id: string;
   type: SuggestionType;
@@ -1233,6 +1279,11 @@ export interface MarketplaceStore {
   }): Promise<ProviderRuntimeKeyRecord>;
   getProviderRuntimeKeyForOwner(serviceId: string, wallet: string): Promise<ProviderRuntimeKeyRecord | null>;
   getProviderRuntimeKeyByPlaintext(plaintextKey: string): Promise<ProviderRuntimeKeyRecord | null>;
+  listBuyerActivity(input: {
+    wallet: string;
+    range: BuyerActivityRange;
+    limit: number;
+  }): Promise<BuyerActivityResponse>;
   getServiceAnalytics(routeIds: string[]): Promise<ServiceAnalytics>;
   listPublishedServices(): Promise<PublishedServiceVersionRecord[]>;
   getPublishedServiceBySlug(slug: string): Promise<{

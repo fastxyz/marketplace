@@ -1,4 +1,5 @@
 import type {
+  BuyerActivityResponse,
   CreateProviderEndpointDraftInput,
   CreateProviderServiceInput,
   OpenApiImportPreview,
@@ -97,6 +98,25 @@ export async function fetchServiceDetail(slug: string): Promise<ServiceDetail | 
   }
 
   return response.json() as Promise<ServiceDetail>;
+}
+
+export async function fetchBuyerActivity(input: {
+  apiBaseUrl: string;
+  accessToken: string;
+  range?: "7d" | "30d" | "90d" | "all";
+  limit?: number;
+}): Promise<BuyerActivityResponse> {
+  const params = new URLSearchParams();
+  params.set("range", input.range ?? "30d");
+  if (input.limit !== undefined) {
+    params.set("limit", String(input.limit));
+  }
+
+  return fetchMarketplace<BuyerActivityResponse>({
+    apiBaseUrl: input.apiBaseUrl,
+    path: `/buyer/me/activity?${params.toString()}`,
+    accessToken: input.accessToken
+  });
 }
 
 export async function createSuggestion(input: {

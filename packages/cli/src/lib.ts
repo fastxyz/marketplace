@@ -201,11 +201,22 @@ export async function setSpendControls(input: {
 }
 
 export async function loadWallet(input: {
+  privateKey?: string;
   keyfilePath?: string;
   configPath?: string;
   network?: MarketplaceDeploymentNetwork;
   rpcUrl?: string;
 }): Promise<LoadedWallet> {
+  if (input.privateKey) {
+    return loadWalletFromPrivateKey({
+      privateKey: input.privateKey,
+      sourceLabel: "env:FAST_PRIVATE_KEY",
+      configPath: input.configPath,
+      network: input.network,
+      rpcUrl: input.rpcUrl
+    });
+  }
+
   const config = await readCliConfig(input.configPath);
   const keyfilePath = expandHome(input.keyfilePath ?? config.defaultKeyfile ?? DEFAULT_KEYFILE_PATH);
   const keyfile = JSON.parse(await readFile(keyfilePath, "utf8")) as {
@@ -258,6 +269,7 @@ export async function loadWalletFromPrivateKey(input: {
 }
 
 export async function walletAddress(input: {
+  privateKey?: string;
   keyfilePath?: string;
   configPath?: string;
   network?: MarketplaceDeploymentNetwork;
@@ -272,6 +284,7 @@ export async function walletAddress(input: {
 
 export async function walletBalance(input: {
   token?: string;
+  privateKey?: string;
   keyfilePath?: string;
   configPath?: string;
   network?: MarketplaceDeploymentNetwork;
@@ -321,6 +334,7 @@ export async function useMarketplaceRoute(
     apiUrl: string;
     ref: string;
     body: unknown;
+    privateKey?: string;
     keyfilePath?: string;
     configPath?: string;
     network?: MarketplaceDeploymentNetwork;
@@ -341,6 +355,7 @@ export async function useMarketplaceRoute(
       provider: routeRef.provider,
       operation: routeRef.operation,
       body: input.body,
+      privateKey: input.privateKey,
       keyfilePath: input.keyfilePath,
       configPath: input.configPath,
       network: input.network,
@@ -358,6 +373,7 @@ export async function invokePaidRoute(
     provider: string;
     operation: string;
     body: unknown;
+    privateKey?: string;
     keyfilePath?: string;
     configPath?: string;
     network?: MarketplaceDeploymentNetwork;
@@ -383,6 +399,7 @@ export async function invokePaidRoute(
         apiUrl: input.apiUrl,
         resourceType: "api",
         resourceId: route.routeId,
+        privateKey: input.privateKey,
         keyfilePath: input.keyfilePath,
         configPath: input.configPath,
         network: input.network,
@@ -655,6 +672,7 @@ export async function fetchJobResult(
   input: {
     apiUrl: string;
     jobToken: string;
+    privateKey?: string;
     keyfilePath?: string;
     configPath?: string;
     network?: MarketplaceDeploymentNetwork;
@@ -667,6 +685,7 @@ export async function fetchJobResult(
       apiUrl: input.apiUrl,
       resourceType: "job",
       resourceId: input.jobToken,
+      privateKey: input.privateKey,
       keyfilePath: input.keyfilePath,
       configPath: input.configPath,
       network: input.network,
@@ -692,6 +711,7 @@ export async function createApiSession(
     apiUrl: string;
     provider: string;
     operation: string;
+    privateKey?: string;
     keyfilePath?: string;
     configPath?: string;
     network?: MarketplaceDeploymentNetwork;
@@ -705,6 +725,7 @@ export async function createApiSession(
       apiUrl: input.apiUrl,
       resourceType: "api",
       resourceId: route.routeId,
+      privateKey: input.privateKey,
       keyfilePath: input.keyfilePath,
       configPath: input.configPath,
       network: input.network,
@@ -719,6 +740,7 @@ async function createScopedSession(
     apiUrl: string;
     resourceType: "job" | "api";
     resourceId: string;
+    privateKey?: string;
     keyfilePath?: string;
     configPath?: string;
     network?: MarketplaceDeploymentNetwork;

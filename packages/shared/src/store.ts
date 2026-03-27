@@ -19,6 +19,10 @@ import {
 import type {
   AccessGrantRecord,
   AsyncRouteStrategy,
+  BuyerActivityItem,
+  BuyerActivityItemStatus,
+  BuyerActivityRange,
+  BuyerActivityResponse,
   ClaimPaymentExecutionInput,
   ClaimPaymentExecutionResult,
   CompleteCreditTopupChargeInput,
@@ -733,6 +737,79 @@ function normalizePersistedPayoutSplit(
     usesTreasurySettlement:
       (split as { usesTreasurySettlement?: boolean | null }).usesTreasurySettlement
       ?? usesMarketplaceTreasurySettlement(settlementMode)
+  };
+}
+
+function buildRouteLookupKey(routeId: string, routeVersion: string): string {
+  return `${routeId}:${routeVersion}`;
+}
+
+function buildRouteRef(provider: string, operation: string): string {
+  return `${provider}.${operation}`;
+}
+
+function rangeStart(range: BuyerActivityRange): number | null {
+  if (range === "all") {
+    return null;
+  }
+
+  const days = range === "7d" ? 7 : range === "30d" ? 30 : 90;
+  return Date.now() - ((days - 1) * 24 * 60 * 60 * 1000);
+}
+
+function buyerActivityStatus(input: {
+  record: Pick<IdempotencyRecord, "responseKind" | "responseStatusCode">;
+  job: Pick<JobRecord, "status"> | null;
+  refund: Pick<RefundRecord, "status"> | null;
+}): BuyerActivityItemStatus {
+  if (input.refund?.status === "sent") {
+    return "refunded";
+  }
+
+  if (input.refund && input.refund.status !== "failed") {
+    return "refund_pending";
+  }
+
+  if (input.record.responseKind === "sync") {
+    return input.record.responseStatusCode >= 200 && input.record.responseStatusCode < 400
+      ? "succeeded"
+      : "failed";
+  }
+
+  if (input.job?.status === "failed") {
+    return "failed";
+  }
+
+  return "succeeded";
+}
+
+function summarizeBuyerActivity(wallet: string, items: BuyerActivityItem[]): BuyerActivityResponse {
+  const totals = items.reduce(
+    (accumulator, item) => {
+      accumulator.totalSpend += Number(item.amount);
+      if (item.refund?.status === "sent") {
+        accumulator.totalRefunded += Number(item.refund.amount);
+      }
+      accumulator.serviceSlugs.add(item.service.slug);
+      return accumulator;
+    },
+    {
+      totalSpend: 0,
+      totalRefunded: 0,
+      serviceSlugs: new Set<string>()
+    }
+  );
+
+  return {
+    wallet,
+    summary: {
+      totalSpend: totals.totalSpend.toFixed(2),
+      totalRefunded: totals.totalRefunded.toFixed(2),
+      netSpend: (totals.totalSpend - totals.totalRefunded).toFixed(2),
+      paidCallCount: items.length,
+      serviceCount: totals.serviceSlugs.size
+    },
+    items
   };
 }
 
@@ -2276,6 +2353,79 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     const keyHash = hashProviderRuntimeKey(plaintextKey);
     const match = Array.from(this.providerRuntimeKeysByServiceId.values()).find((record) => record.keyHash === keyHash);
     return clone(match ?? null);
+  }
+
+  async listBuyerActivity(input: {
+    wallet: string;
+    range: BuyerActivityRange;
+    limit: number;
+  }): Promise<BuyerActivityResponse> {
+    const minimumCreatedAtMs = rangeStart(input.range);
+    const routesByKey = new Map<string, PublishedEndpointVersionRecord>();
+    const servicesByVersionId = new Map<string, PublishedServiceVersionRecord>();
+
+    for (const route of this.publishedEndpointsByVersionId.values()) {
+      routesByKey.set(buildRouteLookupKey(route.routeId, route.version), route);
+    }
+
+    for (const service of this.publishedServicesByVersionId.values()) {
+      servicesByVersionId.set(service.versionId, service);
+    }
+
+    const items = Array.from(this.idempotencyByPaymentId.values())
+      .filter((record) => {
+        if (record.buyerWallet !== input.wallet || record.executionStatus !== "completed") {
+          return false;
+        }
+
+        if (minimumCreatedAtMs === null) {
+          return true;
+        }
+
+        return Date.parse(record.createdAt) >= minimumCreatedAtMs;
+      })
+      .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+      .slice(0, input.limit)
+      .map((record) => {
+        const route = routesByKey.get(buildRouteLookupKey(record.routeId, record.routeVersion)) ?? null;
+        const service = route ? servicesByVersionId.get(route.serviceVersionId) ?? null : null;
+        const job = Array.from(this.jobsByToken.values()).find((candidate) => candidate.paymentId === record.paymentId) ?? null;
+        const refund = this.refundsByPaymentId.get(record.paymentId) ?? null;
+
+        return {
+          paymentId: record.paymentId,
+          kind: record.providerPayoutSourceKind === "credit_topup" ? "credit_topup" : "route_charge",
+          status: buyerActivityStatus({ record, job, refund }),
+          amount: rawToDecimalString(record.quotedPrice, 6),
+          tokenSymbol: record.payoutSplit.currency,
+          createdAt: record.createdAt,
+          service: {
+            slug: service?.slug ?? route?.serviceId ?? "unknown-service",
+            name: service?.name ?? "Unknown service"
+          },
+          route: {
+            ref: route ? buildRouteRef(route.provider, route.operation) : record.routeId,
+            title: route?.title ?? record.routeId,
+            mode: route?.mode ?? (job ? "async" : "sync"),
+            billingType: route?.billing.type ?? "fixed_x402"
+          },
+          job: job
+            ? {
+                jobToken: job.jobToken,
+                status: job.status
+              }
+            : null,
+          refund: refund
+            ? {
+                status: refund.status,
+                amount: rawToDecimalString(refund.amount, 6),
+                txHash: refund.txHash
+              }
+            : null
+        } satisfies BuyerActivityItem;
+      });
+
+    return summarizeBuyerActivity(input.wallet, items);
   }
 
   async getServiceAnalytics(routeIds: string[]): Promise<ServiceAnalytics> {
@@ -7043,6 +7193,114 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       hashProviderRuntimeKey(plaintextKey)
     ]);
     return result.rowCount ? mapProviderRuntimeKeyRow(result.rows[0]) : null;
+  }
+
+  async listBuyerActivity(input: {
+    wallet: string;
+    range: BuyerActivityRange;
+    limit: number;
+  }): Promise<BuyerActivityResponse> {
+    const minimumCreatedAtMs = rangeStart(input.range);
+    const minimumCreatedAt = minimumCreatedAtMs === null ? null : new Date(minimumCreatedAtMs).toISOString();
+    const result = await this.pool.query(
+      `
+      SELECT
+        i.payment_id,
+        i.provider_payout_source_kind,
+        i.response_kind,
+        i.response_status_code,
+        i.quoted_price,
+        i.payout_split,
+        i.route_id,
+        i.created_at,
+        j.job_token,
+        j.status AS job_status,
+        r.status AS refund_status,
+        r.amount AS refund_amount,
+        r.tx_hash AS refund_tx_hash,
+        e.provider,
+        e.operation,
+        e.title,
+        e.mode,
+        e.billing,
+        e.service_id,
+        s.slug AS service_slug,
+        s.name AS service_name
+      FROM idempotency_records i
+      LEFT JOIN jobs j
+        ON j.payment_id = i.payment_id
+      LEFT JOIN refunds r
+        ON r.payment_id = i.payment_id
+      LEFT JOIN published_endpoint_versions e
+        ON e.route_id = i.route_id
+       AND e.version = i.route_version
+      LEFT JOIN published_service_versions s
+        ON s.version_id = e.service_version_id
+      WHERE i.buyer_wallet = $1
+        AND i.execution_status = 'completed'
+        AND ($2::timestamptz IS NULL OR i.created_at >= $2)
+      ORDER BY i.created_at DESC
+      LIMIT $3
+      `,
+      [input.wallet, minimumCreatedAt, input.limit]
+    );
+
+    const items = result.rows.map((row) => {
+      const payoutSplit = normalizePersistedPayoutSplit(row.payout_split as IdempotencyRecord["payoutSplit"]);
+      const billing = row.billing as { type?: BuyerActivityItem["route"]["billingType"] } | null;
+      const refund = row.refund_status
+        ? {
+            status: row.refund_status as RefundRecord["status"],
+            amount: row.refund_amount as string,
+            txHash: (row.refund_tx_hash as string | null) ?? null
+          }
+        : null;
+      const job = row.job_token
+        ? {
+            jobToken: row.job_token as string,
+            status: row.job_status as JobRecord["status"]
+          }
+        : null;
+
+      return {
+        paymentId: row.payment_id as string,
+        kind: row.provider_payout_source_kind === "credit_topup" ? "credit_topup" : "route_charge",
+        status: buyerActivityStatus({
+          record: {
+            responseKind: row.response_kind as IdempotencyRecord["responseKind"],
+            responseStatusCode: Number(row.response_status_code)
+          },
+          job,
+          refund
+        }),
+        amount: rawToDecimalString(row.quoted_price as string, 6),
+        tokenSymbol: payoutSplit.currency,
+        createdAt: new Date(row.created_at as string | Date).toISOString(),
+        service: {
+          slug: (row.service_slug as string | null) ?? (row.service_id as string | null) ?? "unknown-service",
+          name: (row.service_name as string | null) ?? "Unknown service"
+        },
+        route: {
+          ref:
+            typeof row.provider === "string" && typeof row.operation === "string"
+              ? buildRouteRef(row.provider as string, row.operation as string)
+              : (row.route_id as string),
+          title: (row.title as string | null) ?? (row.route_id as string),
+          mode: (row.mode as BuyerActivityItem["route"]["mode"] | null) ?? (job ? "async" : "sync"),
+          billingType: billing?.type ?? "fixed_x402"
+        },
+        job,
+        refund: refund
+          ? {
+              status: refund.status,
+              amount: rawToDecimalString(refund.amount, 6),
+              txHash: refund.txHash
+            }
+          : null
+      } satisfies BuyerActivityItem;
+    });
+
+    return summarizeBuyerActivity(input.wallet, items);
   }
 
   async getServiceAnalytics(routeIds: string[]): Promise<ServiceAnalytics> {

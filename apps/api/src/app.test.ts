@@ -773,6 +773,74 @@ describe("marketplace api", () => {
     expect(session.body.accessToken).toBeDefined();
   });
 
+  it("returns buyer marketplace activity for the connected site wallet session", async () => {
+    const { app, store, buyer } = await createTestApp({
+      deploymentNetwork: "testnet"
+    });
+
+    const syncPaymentId = "payment_buyer_activity_sync_1";
+    const asyncPaymentId = "payment_buyer_activity_async_1";
+    const syncResponse = await request(app)
+      .post("/api/mock/quick-insight")
+      .set("PAYMENT-SIGNATURE", Buffer.from(JSON.stringify({ paid: true })).toString("base64"))
+      .set("PAYMENT-IDENTIFIER", syncPaymentId)
+      .send({ query: "agent spend controls" });
+
+    expect(syncResponse.status).toBe(200);
+
+    const asyncResponse = await request(app)
+      .post("/api/mock/async-report")
+      .set("PAYMENT-SIGNATURE", Buffer.from(JSON.stringify({ paid: true })).toString("base64"))
+      .set("PAYMENT-IDENTIFIER", asyncPaymentId)
+      .send({ topic: "market maps", delayMs: 60_000 });
+
+    expect(asyncResponse.status).toBe(202);
+
+    const syncRefund = await store.createRefund({
+      paymentId: syncPaymentId,
+      wallet: buyer.address,
+      amount: "50000"
+    });
+    await store.markRefundSent(syncRefund.id, "0xbuyerrefund");
+    await store.failJob(asyncResponse.body.jobToken, "provider timeout");
+
+    const siteAccessToken = await createSiteSession(app, buyer);
+    const response = await request(app)
+      .get("/buyer/me/activity")
+      .set("Authorization", `Bearer ${siteAccessToken}`)
+      .query({
+        range: "30d",
+        limit: 10
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.wallet).toBe(buyer.address);
+    expect(response.body.summary).toMatchObject({
+      totalSpend: "0.20",
+      totalRefunded: "0.05",
+      netSpend: "0.15",
+      paidCallCount: 2,
+      serviceCount: 1
+    });
+    expect(response.body.items[0]).toMatchObject({
+      paymentId: asyncPaymentId,
+      status: "failed",
+      job: {
+        jobToken: asyncResponse.body.jobToken,
+        status: "failed"
+      }
+    });
+    expect(response.body.items[1]).toMatchObject({
+      paymentId: syncPaymentId,
+      status: "refunded",
+      refund: {
+        status: "sent",
+        amount: "0.05",
+        txHash: "0xbuyerrefund"
+      }
+    });
+  });
+
   it("rejects a payment proof if the facilitator verifies the wrong Fast network", async () => {
     const buyer = await createTestWallet();
     const previousNetwork = process.env.MARKETPLACE_FAST_NETWORK;

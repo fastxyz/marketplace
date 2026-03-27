@@ -114,6 +114,11 @@ export function buildOpenApiDocument(input: {
         summary: "Create or update the provider account for the current website wallet session."
       }
     },
+    "/buyer/me/activity": {
+      get: {
+        summary: "List marketplace spend activity for the current website wallet session."
+      }
+    },
     "/provider/requests": {
       get: {
         summary: "List provider-visible request intake for the current website wallet session."
