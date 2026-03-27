@@ -68,7 +68,7 @@ They:
 1. create a dedicated Fast CI wallet
 2. fund it with a small amount
 3. configure `FAST_PRIVATE_KEY`, `MARKETPLACE_API_BASE_URL`, and `MARKETPLACE_FAST_NETWORK` as GitHub secrets
-4. optionally point `FAST_MARKETPLACE_CONFIG` at a checked-in allowlist/cap config
+4. optionally point `FAST_MARKETPLACE_CONFIG` at a checked-in allowlist/max-per-call config, treating any daily-cap logic as runner-local unless spend state is persisted between jobs
 5. run a GitHub Action that launches `fast-pay-mcp`
 6. let Claude Code call `marketplace_search` / `marketplace_call` against approved Fast services
 7. inspect resulting spend in `/me/spend`
@@ -89,8 +89,10 @@ Deliverables:
 Recommended new files:
 
 - `docs/claude-code-fast-pay.md`
-- `.github/workflows/examples/claude-code-fast-pay.yml`
+- `examples/github-actions/claude-code-fast-pay.yml`
 - optional checked-in example config such as `examples/fast-marketplace.ci.config.json`
+
+The example workflow should stay outside `.github/workflows/` so it does not auto-run in this repo. Teams can copy it into their own live workflow directory when they adopt it.
 
 Workflow shape:
 
@@ -111,6 +113,7 @@ Potential repo changes:
 - add an example spend-control config for CI
 - improve MCP startup/docs around non-interactive environments
 - verify that `FAST_MARKETPLACE_CONFIG` works cleanly in ephemeral runners
+- document that the current spend ledger is local config state, so cross-run daily caps are not reliable on fresh GitHub runners unless that state is persisted
 
 If code changes are needed, they should stay narrow:
 
@@ -153,6 +156,7 @@ This action should remain packaging-only. It should not become a hosted payment 
 
 - already has local spend caps and allowlists
 - already supports config-driven route restrictions
+- persists spend ledger state locally, which means `dailyCap` is runner-local by default in ephemeral CI
 - should be the only local policy layer for CI in v1
 
 `apps/tavily-service`
@@ -193,9 +197,11 @@ Add at least one ready-to-copy example workflow that shows:
 
 Add a checked-in config example for CI such as:
 
-- a small daily cap
 - a strict route allowlist
+- a conservative max per call
 - one or two approved route keys only
+
+Treat the current `dailyCap` as optional and clearly caveated. It only works as a true cross-run daily budget if the spend ledger persists between CI runs, which default GitHub-hosted runners do not provide.
 
 This is important because CI is autonomous and repeatable by default.
 
@@ -242,7 +248,7 @@ No new backend API is required for the first template-based version.
 
 Likely additions are docs/examples only:
 
-- example workflow YAML under `.github/workflows/examples/`
+- example workflow YAML under `examples/github-actions/`
 - CI setup docs under `docs/`
 - optional example spend-control config under `examples/`
 
