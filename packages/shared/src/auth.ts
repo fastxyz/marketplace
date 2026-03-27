@@ -1,7 +1,7 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
-import { etc, verifyAsync } from "@noble/ed25519";
-import { sha512 } from "@noble/hashes/sha512";
+import { hashes, verifyAsync } from "@noble/ed25519";
+import { sha512 } from "@noble/hashes/sha2.js";
 import { decodeFastAddress, encodeFastAddress, hexToBytes } from "@fastxyz/sdk";
 import { utf8ToBytes } from "@fastxyz/sdk/core";
 
@@ -11,7 +11,7 @@ import {
 } from "./constants.js";
 import type { ChallengePayload, ResourceType, SessionTokenPayload } from "./types.js";
 
-etc.sha512Sync = (...messages) => sha512(etc.concatBytes(...messages));
+hashes.sha512 = sha512;
 
 function base64UrlEncode(input: string): string {
   return Buffer.from(input, "utf8").toString("base64url");
