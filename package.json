@@ -48,7 +48,8 @@
   },
   "optionalDependencies": {
     "@next/swc-linux-x64-gnu": "^16.1.7",
-    "@rollup/rollup-linux-x64-gnu": "^4.59.0"
+    "@rollup/rollup-linux-x64-gnu": "^4.59.0",
+    "lightningcss-linux-x64-gnu": "^1.32.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.2",
