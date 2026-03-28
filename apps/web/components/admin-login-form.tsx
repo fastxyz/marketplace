@@ -17,10 +17,10 @@ export function AdminLoginForm() {
   const [state, action, pending] = useActionState(adminLoginAction, initialState);
 
   return (
-    <Card variant="frosted" className="mx-auto w-full max-w-xl">
+    <Card className="mx-auto w-full max-w-xl">
       <CardHeader>
         <CardDescription>Internal review access</CardDescription>
-        <CardTitle className="text-3xl">Admin token login</CardTitle>
+        <CardTitle>Admin token login</CardTitle>
       </CardHeader>
       <CardContent>
         <form action={action} className="grid gap-4">
@@ -29,7 +29,7 @@ export function AdminLoginForm() {
             <Input name="token" type="password" placeholder="Enter shared admin token" required />
           </label>
           {state.message ? (
-            <div className="rounded-card border border-border bg-muted px-5 py-4 text-sm leading-6 text-foreground">
+            <div className={`status-banner ${state.ok ? "" : "status-banner-error"}`}>
               {state.message}
             </div>
           ) : null}

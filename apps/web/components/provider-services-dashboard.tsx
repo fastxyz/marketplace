@@ -128,7 +128,7 @@ function ProviderServicesDashboardInner({
 
   if (hasAccount === false) {
     return (
-      <Card variant="frosted">
+      <Card>
         <CardHeader>
           <CardTitle>Create a provider profile first</CardTitle>
           <CardDescription>Service drafts are attached to the provider account for this wallet session.</CardDescription>
@@ -142,9 +142,9 @@ function ProviderServicesDashboardInner({
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_1.1fr]">
-      <Card variant="frosted">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-3xl">Your service drafts</CardTitle>
+          <CardTitle>Your service drafts</CardTitle>
           <CardDescription>Published services stay live while you keep editing the next draft version.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
@@ -152,10 +152,10 @@ function ProviderServicesDashboardInner({
             <p className="text-sm text-muted-foreground">No service drafts yet.</p>
           ) : null}
           {services.map((service) => (
-            <div key={service.service.id} className="rounded-card border border-border bg-background/70 p-5 dark:bg-background/20">
+            <div key={service.service.id} className="rounded-2xl border border-border bg-background/40 p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-lg font-medium tracking-headline">{service.service.name}</div>
+                  <div className="text-lg font-medium tracking-[-0.03em]">{service.service.name}</div>
                   <div className="text-sm leading-6 text-muted-foreground">
                     {service.service.serviceType === "marketplace_proxy"
                       ? `${service.service.apiNamespace} / ${service.service.status}`
@@ -179,9 +179,9 @@ function ProviderServicesDashboardInner({
         </CardContent>
       </Card>
 
-      <Card variant="frosted">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-3xl">New service draft</CardTitle>
+          <CardTitle>New service draft</CardTitle>
           <CardDescription>Create the public service metadata first, then add endpoints and any required verification.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -190,7 +190,7 @@ function ProviderServicesDashboardInner({
               Service type
               <select
                 value={form.serviceType}
-                className="fast-select min-h-12"
+                className="native-select"
                 onChange={(event) =>
                   setForm((current) => ({
                     ...current,
@@ -259,7 +259,7 @@ function ProviderServicesDashboardInner({
                   {fieldErrors.apiNamespace ? <span className="text-xs text-destructive">{fieldErrors.apiNamespace}</span> : null}
                 </label>
               ) : (
-                <div className="rounded-card border border-border bg-background/70 px-4 py-3 text-sm text-muted-foreground dark:bg-background/20">
+                <div className="rounded-2xl border border-border bg-background/40 px-4 py-3 text-sm text-muted-foreground">
                   External registry services do not define a marketplace API namespace.
                 </div>
               )}
@@ -337,7 +337,7 @@ function ProviderServicesDashboardInner({
                 {fieldErrors.payoutWallet ? <span className="text-xs text-destructive">{fieldErrors.payoutWallet}</span> : null}
               </label>
             ) : (
-              <div className="rounded-card border border-border bg-background/70 px-4 py-3 text-sm text-muted-foreground dark:bg-background/20">
+              <div className="rounded-2xl border border-border bg-background/40 px-4 py-3 text-sm text-muted-foreground">
                 External registry services stay discovery-only and do not use marketplace payouts.
               </div>
             )}

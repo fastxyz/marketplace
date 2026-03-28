@@ -16,16 +16,17 @@ vi.mock("next/link", () => ({
 }));
 
 describe("SiteFooter", () => {
-  it("renders only the social links", () => {
+  it("renders social and internal footer links", () => {
     render(<SiteFooter />);
 
     const links = screen.getAllByRole("link");
 
-    expect(links).toHaveLength(2);
-    expect(screen.getByText("Socials")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "X.com" }).getAttribute("href")).toBe("https://x.com/pi2_labs");
+    expect(links).toHaveLength(5);
+    expect(screen.getByText("Social")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "X" }).getAttribute("href")).toBe("https://x.com/pi2_labs");
     expect(screen.getByRole("link", { name: "LinkedIn" }).getAttribute("href")).toBe(
       "https://www.linkedin.com/company/fast-xyz"
     );
+    expect(screen.getByRole("link", { name: "Provider workspace" }).getAttribute("href")).toBe("/providers");
   });
 });

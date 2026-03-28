@@ -20,28 +20,26 @@ export default async function SuggestPage({
   const defaultType = getSingleParam(params.type) === "source" ? "source" : "endpoint";
 
   return (
-    <main className="page-shell">
-      <section className="section-sep">
-        <div className="section-container section-stack">
-          <div className="page-intro">
-            <Link href="/" className="fast-link">
+    <main className="page-main">
+      <section className="page-section">
+        <div className="app-container page-stack">
+          <div className="page-header">
+            <Link href="/" className="page-link">
               Back to marketplace
             </Link>
-            <div className="space-y-4">
-              <p className="eyebrow">Private intake</p>
-              <h1 className="section-title">Suggest a new endpoint or source</h1>
-              <p className="body-copy">
-                Use this queue to tell providers what to build next. Suggestions stay private and are reviewed in the
-                internal marketplace triage board.
-              </p>
-            </div>
-
-            <SuggestionForm
-              services={services}
-              defaultServiceSlug={defaultServiceSlug}
-              defaultType={defaultType}
-            />
+            <p className="page-eyebrow">Private intake</p>
+            <h1 className="section-title">Suggest a new endpoint or source</h1>
+            <p className="page-copy">
+              Use this queue to tell providers what to build next. Suggestions stay private and are reviewed in the
+              internal marketplace triage board.
+            </p>
           </div>
+
+          <SuggestionForm
+            services={services}
+            defaultServiceSlug={defaultServiceSlug}
+            defaultType={defaultType}
+          />
         </div>
       </section>
     </main>

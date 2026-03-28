@@ -137,7 +137,7 @@ function ProviderDashboardInner({
 
   if (account === undefined) {
     return (
-      <Card variant="frosted">
+      <Card>
         <CardHeader>
           <CardTitle>Loading provider dashboard</CardTitle>
           <CardDescription>Fetching request intake and service drafts for the connected wallet.</CardDescription>
@@ -148,7 +148,7 @@ function ProviderDashboardInner({
 
   if (!account) {
     return (
-      <Card variant="frosted">
+      <Card>
         <CardHeader>
           <CardTitle>Create your provider profile</CardTitle>
           <CardDescription>
@@ -176,12 +176,12 @@ function ProviderDashboardInner({
 
   return (
     <div className="grid gap-6">
-      <Card variant="frosted">
+      <Card>
         <CardHeader className="gap-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-2">
               <Badge variant="eyebrow">Provider workspace</Badge>
-              <CardTitle className="text-3xl">{account.displayName}</CardTitle>
+              <CardTitle>{account.displayName}</CardTitle>
               <CardDescription>
                 Pick up request intake, then move the implementation into your service drafts and review flow.
               </CardDescription>
@@ -205,9 +205,9 @@ function ProviderDashboardInner({
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card variant="frosted">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-3xl">Request intake</CardTitle>
+            <CardTitle>Request intake</CardTitle>
             <CardDescription>
               Claim requests you want to build. Claimed items stay visible so you can route them into a service draft.
             </CardDescription>
@@ -224,7 +224,7 @@ function ProviderDashboardInner({
               const isClaimingThisRequest = claimingRequestId === request.id;
 
               return (
-                <div key={request.id} className="rounded-card border border-border bg-background/70 p-5 dark:bg-background/20">
+                <div key={request.id} className="rounded-2xl border border-border bg-background/40 p-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="space-y-3">
                       <div className="flex flex-wrap gap-2">
@@ -237,7 +237,7 @@ function ProviderDashboardInner({
                         ) : null}
                       </div>
                       <div>
-                        <div className="text-lg font-medium tracking-headline">{request.title}</div>
+                        <div className="text-lg font-medium tracking-[-0.03em]">{request.title}</div>
                         <div className="mt-2 text-sm leading-6 text-muted-foreground">{request.description}</div>
                       </div>
                     </div>
@@ -270,9 +270,9 @@ function ProviderDashboardInner({
           </CardContent>
         </Card>
 
-        <Card variant="frosted">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-3xl">Your services</CardTitle>
+            <CardTitle>Your services</CardTitle>
             <CardDescription>
               Existing drafts stay here. Use them as the build destination after you claim a request.
             </CardDescription>
@@ -283,10 +283,10 @@ function ProviderDashboardInner({
             ) : null}
 
             {services.slice(0, 4).map((service) => (
-              <div key={service.service.id} className="rounded-card border border-border bg-background/70 p-5 dark:bg-background/20">
+              <div key={service.service.id} className="rounded-2xl border border-border bg-background/40 p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <div className="text-lg font-medium tracking-headline">{service.service.name}</div>
+                    <div className="text-lg font-medium tracking-[-0.03em]">{service.service.name}</div>
                     <div className="text-sm leading-6 text-muted-foreground">
                       {service.endpoints.length} endpoint draft{service.endpoints.length === 1 ? "" : "s"}
                     </div>
@@ -313,10 +313,10 @@ function ProviderDashboardInner({
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <Card variant="frosted">
+    <Card>
       <CardContent className="p-6">
         <div className="metric-label">{label}</div>
-        <div className="mt-4 text-3xl font-medium tracking-m">{value}</div>
+        <div className="metric-value mt-4">{value}</div>
       </CardContent>
     </Card>
   );

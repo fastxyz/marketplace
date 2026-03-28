@@ -81,9 +81,9 @@ function ProviderOnboardInner({ apiBaseUrl, accessToken }: { apiBaseUrl: string;
   }
 
   return (
-    <Card variant="frosted">
+    <Card>
       <CardHeader>
-        <CardTitle className="text-3xl">Provider profile</CardTitle>
+        <CardTitle>Provider profile</CardTitle>
         <CardDescription>This profile owns service drafts and is used as the public service attribution after publish.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -145,7 +145,7 @@ function ProviderOnboardInner({ apiBaseUrl, accessToken }: { apiBaseUrl: string;
           The connected wallet is the only owner in v1. If you need operator approval after submit, use the review page for that service.
         </div>
 
-        <Link href="/" className="fast-link">
+        <Link href="/" className="page-link">
           Back to marketplace
         </Link>
       </CardContent>

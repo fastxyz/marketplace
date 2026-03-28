@@ -9,9 +9,9 @@ export default function ProvidersPage() {
   const deploymentNetwork = resolveWebDeploymentNetwork(process.env.MARKETPLACE_FAST_NETWORK).deploymentNetwork;
 
   return (
-    <main className="page-shell">
-      <section className="section-sep">
-        <div className="section-container section-stack">
+    <main className="page-main">
+      <section className="page-section">
+        <div className="app-container">
           <ProviderDashboard apiBaseUrl={apiBaseUrl} deploymentNetwork={deploymentNetwork} />
         </div>
       </section>

@@ -1,34 +1,39 @@
 import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
 const badgeVariants = cva(
-  "badge-fast transition-colors",
+  "inline-flex items-center justify-center rounded-md border px-2 py-0.5 text-xs font-medium whitespace-nowrap shrink-0 gap-1 overflow-hidden transition-[color,box-shadow,background-color] [&>svg]:size-3 [&>svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
   {
     variants: {
       variant: {
-        default: "badge-fast-default",
-        secondary: "badge-fast-secondary",
-        outline: "badge-fast-outline",
-        eyebrow: "badge-fast-eyebrow"
+        default: "border-transparent bg-primary text-primary-foreground",
+        secondary: "border-transparent bg-secondary text-secondary-foreground",
+        destructive: "border-transparent bg-destructive text-destructive-foreground",
+        outline: "text-foreground bg-background/45",
+        eyebrow: "border-transparent bg-transparent px-0 text-muted-foreground tracking-[0.18em] uppercase"
       }
     },
     defaultVariants: {
-      variant: "outline"
+      variant: "default"
     }
   }
 );
 
-export function Badge({
+function Badge({
   className,
   variant,
+  asChild = false,
   ...props
-}: React.HTMLAttributes<HTMLSpanElement> & VariantProps<typeof badgeVariants>) {
-  return (
-    <span
-      className={cn(badgeVariants({ variant }), className)}
-      {...props}
-    />
-  );
+}: React.ComponentProps<"span"> &
+  VariantProps<typeof badgeVariants> & {
+    asChild?: boolean;
+  }) {
+  const Comp = asChild ? Slot : "span";
+
+  return <Comp data-slot="badge" className={cn(badgeVariants({ variant }), className)} {...props} />;
 }
+
+export { Badge, badgeVariants };

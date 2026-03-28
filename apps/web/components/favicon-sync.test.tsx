@@ -10,7 +10,7 @@ const { useThemeMock } = vi.hoisted(() => ({
   useThemeMock: vi.fn()
 }));
 
-vi.mock("next-themes", () => ({
+vi.mock("@/components/theme-provider", () => ({
   useTheme: () => useThemeMock()
 }));
 

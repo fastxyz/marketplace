@@ -1,13 +1,23 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { MarketplaceDeploymentNetwork } from "@marketplace/shared";
-import { Menu, X } from "lucide-react";
 
 import { ModeToggle } from "@/components/mode-toggle";
 import { WalletLoginButton } from "@/components/wallet-login-button";
+import { cn } from "@/lib/utils";
+
+const links = [
+  { href: "/", label: "Marketplace" },
+  { href: "/stats", label: "Stats" },
+  { href: "/me/spend", label: "Spend" },
+  { href: "/suggest", label: "Suggest" },
+  { href: "/providers", label: "Providers" },
+  { href: "/skill.md", label: "SKILL.md" }
+];
 
 export function SiteHeader({
   apiBaseUrl,
@@ -18,88 +28,67 @@ export function SiteHeader({
   deploymentNetwork: MarketplaceDeploymentNetwork;
   networkLabel: string;
 }) {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  const navigationLinks = (
-    <>
-      <Link href="/" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
-        Marketplace
-      </Link>
-      <Link href="/stats" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
-        Stats
-      </Link>
-      <Link href="/me/spend" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
-        Spend
-      </Link>
-      <Link href="/suggest" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
-        Suggest
-      </Link>
-      <Link href="/providers" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
-        Providers
-      </Link>
-      <Link href="/skill.md" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
-        SKILL.md
-      </Link>
-    </>
-  );
+  const pathname = usePathname();
 
   return (
-    <header
-      className="sticky top-0 z-[100] border-b border-border bg-background/85"
-      style={{ backdropFilter: "blur(16px)" }}
-    >
-      <div className="nav-shell">
-        <Link href="/" aria-label="Fast Marketplace" className="flex shrink-0 items-center">
-          <img
-            src="/brand/fast-logo-dark.svg"
-            alt=""
-            aria-hidden="true"
-            width={146}
-            height={52}
-            className="block h-5 w-auto dark:hidden"
-          />
-          <img
-            src="/brand/fast-logo-light.svg"
-            alt=""
-            aria-hidden="true"
-            width={146}
-            height={52}
-            className="hidden h-5 w-auto dark:block"
-          />
-          <span className="sr-only">Fast Marketplace</span>
-        </Link>
+    <header className="sticky top-0 z-50 py-4">
+      <div className="app-container">
+        <div className="surface-panel rounded-[1.75rem] px-4 py-4 md:px-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-wrap items-center gap-4 md:gap-6">
+              <Link href="/" aria-label="Fast Marketplace" className="flex items-center gap-3">
+                <img
+                  src="/brand/fast-logo-dark.svg"
+                  alt=""
+                  aria-hidden="true"
+                  width={146}
+                  height={52}
+                  className="block h-5 w-auto dark:hidden"
+                />
+                <img
+                  src="/brand/fast-logo-light.svg"
+                  alt=""
+                  aria-hidden="true"
+                  width={146}
+                  height={52}
+                  className="hidden h-5 w-auto dark:block"
+                />
+                <span className="text-base font-medium tracking-[-0.03em]">Marketplace</span>
+              </Link>
 
-        <nav className="hidden flex-1 items-center justify-center gap-6 lg:flex">{navigationLinks}</nav>
+              <nav className="flex flex-wrap items-center gap-1 text-sm">
+                {links.map((link) => {
+                  const active = link.href === "/" ? pathname === "/" : pathname?.startsWith(link.href);
 
-        <div className="flex shrink-0 items-start justify-end gap-2">
-          <button
-            type="button"
-            aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
-            aria-expanded={mobileMenuOpen}
-            aria-controls="mobile-site-navigation"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background text-foreground transition hover:border-foreground/40 lg:hidden"
-            onClick={() => setMobileMenuOpen((open) => !open)}
-          >
-            {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-          </button>
-          <ModeToggle />
-          <WalletLoginButton
-            apiBaseUrl={apiBaseUrl}
-            deploymentNetwork={deploymentNetwork}
-            networkLabel={networkLabel}
-          />
+                  return (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      className={cn(
+                        "rounded-full px-3 py-2 transition-colors",
+                        active ? "bg-foreground text-background" : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                      )}
+                    >
+                      {link.label}
+                    </Link>
+                  );
+                })}
+              </nav>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 xl:justify-end">
+              <div className="flex items-center gap-2">
+                <ModeToggle />
+              </div>
+              <WalletLoginButton
+                apiBaseUrl={apiBaseUrl}
+                deploymentNetwork={deploymentNetwork}
+                networkLabel={networkLabel}
+              />
+            </div>
+          </div>
         </div>
       </div>
-
-      {mobileMenuOpen ? (
-        <nav
-          id="mobile-site-navigation"
-          className="border-t border-border px-5 py-4 lg:hidden"
-          aria-label="Mobile"
-        >
-          <div className="mx-auto flex w-full max-w-6xl flex-col items-start gap-4">{navigationLinks}</div>
-        </nav>
-      ) : null}
     </header>
   );
 }

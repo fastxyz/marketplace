@@ -25,13 +25,12 @@ export function SuggestionForm({
   defaultType: "endpoint" | "source";
 }) {
   const [state, action, pending] = useActionState(submitSuggestionAction, initialState);
-  const selectClassName = "fast-select min-h-12";
 
   return (
-    <Card variant="frosted">
+    <Card>
       <CardHeader>
         <CardDescription>Suggest new supply</CardDescription>
-        <CardTitle className="text-3xl">Tell providers what to build next</CardTitle>
+        <CardTitle>Tell providers what to build next</CardTitle>
       </CardHeader>
       <CardContent>
         <form action={action} className="grid gap-5">
@@ -41,7 +40,7 @@ export function SuggestionForm({
               <select
                 name="type"
                 defaultValue={defaultType}
-                className={selectClassName}
+                className="native-select"
               >
                 <option value="endpoint">Endpoint</option>
                 <option value="source">Source / Webservice</option>
@@ -52,7 +51,7 @@ export function SuggestionForm({
               <select
                 name="serviceSlug"
                 defaultValue={defaultServiceSlug ?? ""}
-                className={selectClassName}
+                className="native-select"
               >
                 <option value="">No specific service</option>
                 {services.map((service) => (
@@ -96,10 +95,10 @@ export function SuggestionForm({
 
           {state.message ? (
             <div
-              className={`rounded-card border px-5 py-4 text-sm leading-6 ${
+              className={`status-banner ${
                 state.ok
-                  ? "border-border bg-background/70 text-foreground dark:bg-background/20"
-                  : "border-border bg-muted text-foreground"
+                  ? "text-foreground"
+                  : "status-banner-error text-foreground"
               }`}
             >
               {state.message}

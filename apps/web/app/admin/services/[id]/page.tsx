@@ -12,6 +12,8 @@ import { AdminNav } from "@/components/admin-nav";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   fetchAdminProviderService,
   fetchSubmittedAdminProviderService
@@ -59,18 +61,18 @@ export default async function AdminProviderServiceDetailPage({
 
   if (!currentDetail) {
     return (
-      <main className="page-shell">
-        <section className="section-sep">
-          <div className="section-container section-stack">
-            <Card variant="frosted">
+      <main className="page-main">
+        <section className="page-section">
+          <div className="app-container page-stack">
+            <Card>
               <CardHeader>
                 <CardTitle>Provider service not found</CardTitle>
                 <CardDescription>The requested service is no longer available for admin review.</CardDescription>
               </CardHeader>
               <CardContent>
-                <Link href="/admin/services" className="btn-fast btn-fast-secondary">
-                  Back to provider services
-                </Link>
+                <Button asChild variant="outline">
+                  <Link href="/admin/services">Back to provider services</Link>
+                </Button>
               </CardContent>
             </Card>
           </div>
@@ -87,21 +89,19 @@ export default async function AdminProviderServiceDetailPage({
   const isMarketplaceService = currentDetail.service.serviceType === "marketplace_proxy";
 
   return (
-    <main className="page-shell">
-      <section className="section-sep">
-        <div className="section-container section-stack">
+    <main className="page-main">
+      <section className="page-section">
+        <div className="app-container page-stack">
           <div className="flex flex-wrap items-end justify-between gap-4">
-            <div className="space-y-4">
-              <Link href="/" className="fast-link">
+            <div className="page-header">
+              <Link href="/" className="page-link">
                 Back to marketplace
               </Link>
-              <div className="space-y-4">
-                <p className="eyebrow">Admin review</p>
-                <h1 className="section-title">{currentDetail.service.name}</h1>
-                <p className="body-copy">
-                  Review provider supply, set the settlement tier, and decide whether to publish, request changes, or suspend.
-                </p>
-              </div>
+              <p className="page-eyebrow">Admin review</p>
+              <h1 className="section-title">{currentDetail.service.name}</h1>
+              <p className="page-copy">
+                Review provider supply, set the settlement tier, and decide whether to publish, request changes, or suspend.
+              </p>
             </div>
             <form action={adminLogoutAction}>
               <Button type="submit" variant="outline">
@@ -130,20 +130,20 @@ export default async function AdminProviderServiceDetailPage({
           </div>
 
           {message ? (
-            <div className="rounded-card border border-border bg-muted px-5 py-4 text-sm leading-6 text-foreground">
+            <div className="status-banner">
               {message}
             </div>
           ) : null}
           {error ? (
-            <div className="rounded-card border border-destructive/30 bg-destructive/10 px-5 py-4 text-sm leading-6 text-foreground">
+            <div className="status-banner status-banner-error">
               {error}
             </div>
           ) : null}
 
           <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <Card variant="frosted">
+            <Card>
               <CardHeader>
-                <CardTitle className="text-3xl">Review snapshot</CardTitle>
+                <CardTitle>Review snapshot</CardTitle>
                 <CardDescription>
                   {hasSubmittedSnapshot
                     ? "Showing the submitted snapshot that publish uses."
@@ -151,7 +151,7 @@ export default async function AdminProviderServiceDetailPage({
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4 text-sm">
-                <div className="rounded-card border border-border bg-background/70 p-5 dark:bg-background/20">
+                <div className="rounded-2xl border border-border bg-background/40 p-5">
                   <div className="font-medium">Service metadata</div>
                   <div className="mt-2 text-muted-foreground">
                     {reviewDetail.service.serviceType === "marketplace_proxy"
@@ -161,7 +161,7 @@ export default async function AdminProviderServiceDetailPage({
                   <div className="mt-2 text-muted-foreground">{reviewDetail.service.tagline}</div>
                   <div className="mt-2 whitespace-pre-wrap text-muted-foreground">{reviewDetail.service.about}</div>
                 </div>
-                <div className="rounded-card border border-border bg-background/70 p-5 dark:bg-background/20">
+                <div className="rounded-2xl border border-border bg-background/40 p-5">
                   <div className="font-medium">Provider</div>
                   <div className="mt-2 text-muted-foreground">{reviewDetail.account.displayName}</div>
                   <div className="mt-2 text-muted-foreground">{reviewDetail.account.ownerWallet}</div>
@@ -170,7 +170,7 @@ export default async function AdminProviderServiceDetailPage({
                     <div className="mt-2 text-muted-foreground">Payout wallet: {reviewDetail.service.payoutWallet ?? "not set"}</div>
                   ) : null}
                 </div>
-                <div className="rounded-card border border-border bg-background/70 p-5 dark:bg-background/20">
+                <div className="rounded-2xl border border-border bg-background/40 p-5">
                   <div className="font-medium">Verification and review</div>
                   <div className="mt-2 text-muted-foreground">
                     Verification: {reviewDetail.verification?.status ?? "not started"}
@@ -186,9 +186,9 @@ export default async function AdminProviderServiceDetailPage({
             </Card>
 
             <div className="grid gap-6">
-              <Card variant="frosted">
+              <Card>
                 <CardHeader>
-                  <CardTitle className="text-3xl">Review actions</CardTitle>
+                  <CardTitle>Review actions</CardTitle>
                   <CardDescription>
                     {isMarketplaceService
                       ? "Publish with a settlement tier or send the draft back with notes."
@@ -205,7 +205,7 @@ export default async function AdminProviderServiceDetailPage({
                         <select
                           name="settlementMode"
                           defaultValue={currentDetail.service.settlementMode ?? "verified_escrow"}
-                          className="fast-select min-h-12"
+                          className="native-select"
                         >
                           <option value="verified_escrow">Verified</option>
                         </select>
@@ -213,11 +213,10 @@ export default async function AdminProviderServiceDetailPage({
                     ) : null}
                     <label className="grid gap-2 text-sm font-medium">
                       Reviewer identity
-                      <input
+                      <Input
                         name="reviewerIdentity"
                         type="text"
                         defaultValue=""
-                        className="fast-input min-h-12"
                         placeholder="operator@fast.xyz"
                       />
                     </label>
@@ -234,20 +233,18 @@ export default async function AdminProviderServiceDetailPage({
                     <input type="hidden" name="returnTo" value={returnTo} />
                     <label className="grid gap-2 text-sm font-medium">
                       Change request notes
-                      <textarea
+                      <Textarea
                         name="reviewNotes"
-                        className="fast-textarea"
                         placeholder="Explain what the provider needs to update before publish."
                         required
                       />
                     </label>
                     <label className="grid gap-2 text-sm font-medium">
                       Reviewer identity
-                      <input
+                      <Input
                         name="reviewerIdentity"
                         type="text"
                         defaultValue=""
-                        className="fast-input min-h-12"
                         placeholder="operator@fast.xyz"
                       />
                     </label>
@@ -258,9 +255,9 @@ export default async function AdminProviderServiceDetailPage({
                 </CardContent>
               </Card>
 
-              <Card variant="frosted">
+              <Card>
                 <CardHeader>
-                  <CardTitle className="text-3xl">Published controls</CardTitle>
+                  <CardTitle>Published controls</CardTitle>
                   <CardDescription>
                     {isMarketplaceService
                       ? "Adjust the current settlement tier or suspend the public listing."
@@ -277,18 +274,17 @@ export default async function AdminProviderServiceDetailPage({
                         <select
                           name="settlementMode"
                           defaultValue={currentDetail.service.settlementMode ?? "verified_escrow"}
-                          className="fast-select min-h-12"
+                          className="native-select"
                         >
                           <option value="verified_escrow">Verified</option>
                         </select>
                       </label>
                       <label className="grid gap-2 text-sm font-medium">
                         Reviewer identity
-                        <input
+                        <Input
                           name="reviewerIdentity"
                           type="text"
                           defaultValue=""
-                          className="fast-input min-h-12"
                           placeholder="operator@fast.xyz"
                         />
                       </label>
@@ -297,7 +293,7 @@ export default async function AdminProviderServiceDetailPage({
                       </Button>
                     </form>
                   ) : (
-                    <div className="rounded-card border border-border bg-background/70 px-4 py-3 text-sm text-muted-foreground dark:bg-background/20">
+                    <div className="rounded-2xl border border-border bg-background/40 px-4 py-3 text-sm text-muted-foreground">
                       External registry services do not use marketplace settlement tiers or runtime payout handling.
                     </div>
                   )}
@@ -307,19 +303,17 @@ export default async function AdminProviderServiceDetailPage({
                     <input type="hidden" name="returnTo" value={returnTo} />
                     <label className="grid gap-2 text-sm font-medium">
                       Suspension notes
-                      <textarea
+                      <Textarea
                         name="reviewNotes"
-                        className="fast-textarea"
                         placeholder="Optional notes explaining why the service is being suspended."
                       />
                     </label>
                     <label className="grid gap-2 text-sm font-medium">
                       Reviewer identity
-                      <input
+                      <Input
                         name="reviewerIdentity"
                         type="text"
                         defaultValue=""
-                        className="fast-input min-h-12"
                         placeholder="operator@fast.xyz"
                       />
                     </label>
@@ -332,9 +326,9 @@ export default async function AdminProviderServiceDetailPage({
             </div>
           </div>
 
-          <Card variant="frosted">
+          <Card>
             <CardHeader>
-              <CardTitle className="text-3xl">Endpoints</CardTitle>
+              <CardTitle>Endpoints</CardTitle>
               <CardDescription>These are the endpoints on the review snapshot used for publish validation.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
@@ -342,10 +336,10 @@ export default async function AdminProviderServiceDetailPage({
                 <p className="text-sm text-muted-foreground">No endpoints found on this snapshot.</p>
               ) : null}
               {reviewDetail.endpoints.map((endpoint) => (
-                <div key={endpoint.id} className="rounded-card border border-border bg-background/70 p-5 dark:bg-background/20">
+                <div key={endpoint.id} className="rounded-2xl border border-border bg-background/40 p-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="text-lg font-medium tracking-headline">{endpoint.title}</div>
+                      <div className="text-lg font-medium tracking-[-0.03em]">{endpoint.title}</div>
                       <div className="mt-1 text-sm text-muted-foreground">
                         {endpoint.endpointType === "marketplace_proxy" ? endpoint.operation : `${endpoint.method} ${endpoint.publicUrl}`}
                       </div>

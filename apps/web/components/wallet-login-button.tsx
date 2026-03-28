@@ -175,16 +175,16 @@ export function WalletLoginButton({
   }
 
   return (
-    <div className="flex flex-col items-end gap-2">
-      <div className="flex flex-wrap items-center justify-end gap-2">
+    <div className="flex flex-col gap-2 xl:items-end">
+      <div className="flex flex-wrap items-center gap-2 xl:justify-end">
         {networkLabel !== "Mainnet" ? (
-          <Badge variant="outline" className="rounded-pill">
+          <Badge variant="outline" className="rounded-full">
             {networkLabel}
           </Badge>
         ) : null}
         {session ? (
           <>
-            <div className="inline-flex items-center gap-2 rounded-pill border border-border bg-muted px-4 py-3 text-sm font-medium tracking-headline">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background/60 px-4 py-2.5 text-sm font-medium">
               <Wallet className="h-4 w-4" />
               {shortenWalletAddress(session.wallet)}
             </div>
@@ -200,6 +200,7 @@ export function WalletLoginButton({
             onClick={() => void connectWallet()}
             disabled={pending}
             aria-label="Connect to Fast"
+            className="rounded-full"
           >
             {pending ? (
               <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -228,7 +229,7 @@ export function WalletLoginButton({
         )}
       </div>
       {error ? (
-        <div className="flex max-w-xs items-center gap-2 text-right text-xs text-muted-foreground">
+        <div className="flex max-w-xs items-center gap-2 text-xs text-muted-foreground xl:text-right">
           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
           <span>{error}</span>
         </div>

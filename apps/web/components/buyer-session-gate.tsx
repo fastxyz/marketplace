@@ -43,14 +43,14 @@ export function BuyerSessionGate({
 
   if (!session) {
     return (
-      <Card variant="frosted">
+      <Card>
         <CardHeader>
           <CardTitle>Spend dashboard</CardTitle>
           <CardDescription>Connect a Fast wallet in the header to view marketplace spend for this site.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
           <p>Buyer activity is tied to the connected website wallet session. Connect the extension wallet first, then reload this page.</p>
-          <Link href="/" className="fast-link">
+          <Link href="/" className="page-link">
             Back to marketplace
           </Link>
         </CardContent>

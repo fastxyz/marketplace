@@ -8,6 +8,7 @@ import { AdminNav } from "@/components/admin-nav";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { fetchAdminProviderServices } from "@/lib/api";
 import { isAdminAuthenticated } from "@/lib/admin-auth";
 
@@ -52,21 +53,19 @@ export default async function AdminProviderServicesPage({
   const services = await fetchAdminProviderServices(statusFilter);
 
   return (
-    <main className="page-shell">
-      <section className="section-sep">
-        <div className="section-container section-stack">
+    <main className="page-main">
+      <section className="page-section">
+        <div className="app-container page-stack">
           <div className="flex flex-wrap items-end justify-between gap-4">
-            <div className="space-y-4">
-              <Link href="/" className="fast-link">
+            <div className="page-header">
+              <Link href="/" className="page-link">
                 Back to marketplace
               </Link>
-              <div className="space-y-4">
-                <p className="eyebrow">Admin review</p>
-                <h1 className="section-title">Provider services</h1>
-                <p className="body-copy">
-                  Review submitted provider supply, assign settlement for marketplace-proxied services, and publish or suspend services.
-                </p>
-              </div>
+              <p className="page-eyebrow">Admin review</p>
+              <h1 className="section-title">Provider services</h1>
+              <p className="page-copy">
+                Review submitted provider supply, assign settlement for marketplace-proxied services, and publish or suspend services.
+              </p>
             </div>
             <form action={adminLogoutAction}>
               <Button type="submit" variant="outline">
@@ -83,7 +82,14 @@ export default async function AdminProviderServicesPage({
               const isActive = (status === "all" && !statusFilter) || statusFilter === status;
 
               return (
-                <Link key={status} href={href} className={isActive ? "filter-chip filter-chip-active" : "filter-chip"}>
+                <Link
+                  key={status}
+                  href={href}
+                  className={cn(
+                    "inline-flex items-center rounded-full px-3 py-2 text-sm transition-colors",
+                    isActive ? "bg-foreground text-background" : "bg-background/55 text-muted-foreground hover:text-foreground"
+                  )}
+                >
                   {status}
                 </Link>
               );
@@ -92,7 +98,7 @@ export default async function AdminProviderServicesPage({
 
           <section className="mt-8 grid gap-4">
             {services.length === 0 ? (
-              <Card variant="frosted">
+              <Card>
                 <CardContent className="p-6 text-sm text-muted-foreground">
                   No provider services match this filter.
                 </CardContent>
@@ -100,7 +106,7 @@ export default async function AdminProviderServicesPage({
             ) : null}
 
             {services.map((detail) => (
-              <Card key={detail.service.id} variant="frosted">
+              <Card key={detail.service.id}>
                 <CardHeader className="gap-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="space-y-2">
@@ -130,9 +136,9 @@ export default async function AdminProviderServicesPage({
                       </CardDescription>
                     </div>
                     <div className="flex gap-2">
-                      <Link href={`/admin/services/${detail.service.id}`} className="btn-fast btn-fast-secondary">
-                        Review
-                      </Link>
+                      <Button asChild variant="outline">
+                        <Link href={`/admin/services/${detail.service.id}`}>Review</Link>
+                      </Button>
                     </div>
                   </div>
                 </CardHeader>

@@ -33,7 +33,7 @@ import {
   verifyProviderService
 } from "@/lib/api";
 
-const SELECT_CLASS_NAME = "fast-select min-h-12";
+const SELECT_CLASS_NAME = "native-select";
 
 function usesFixedPrice(billingType: RouteBillingType): boolean {
   return billingType === "fixed_x402";
@@ -136,7 +136,7 @@ function ProviderServiceEditorInner({
 
   if (detail === undefined) {
     return (
-      <Card variant="frosted">
+      <Card>
         <CardContent className="p-6 text-sm text-muted-foreground">
           {error ?? "Loading service draft..."}
         </CardContent>
@@ -146,7 +146,7 @@ function ProviderServiceEditorInner({
 
   if (detail === null) {
     return (
-      <Card variant="frosted">
+      <Card>
         <CardHeader>
           <CardTitle>Service draft unavailable</CardTitle>
           <CardDescription>
@@ -313,9 +313,9 @@ function ProviderServiceEditorInner({
 
   return (
     <div className="grid gap-6">
-      <Card variant="frosted">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-3xl">{detail.service.name}</CardTitle>
+          <CardTitle>{detail.service.name}</CardTitle>
           <CardDescription>
             {detail.service.serviceType === "marketplace_proxy"
               ? `${detail.service.apiNamespace} · ${detail.service.status}`
@@ -373,21 +373,21 @@ function ProviderServiceEditorInner({
       </Card>
 
       {detail.service.serviceType === "marketplace_proxy" ? (
-        <Card variant="frosted">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-3xl">Settlement tier</CardTitle>
+            <CardTitle>Settlement tier</CardTitle>
             <CardDescription>
               Current tier: {detail.service.settlementMode === "verified_escrow" ? "Verified" : "Community"}.
               Providers cannot switch this themselves in v1.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-muted-foreground">
-            <div className="rounded-card border border-border bg-background/70 p-5 dark:bg-background/20">
+            <div className="rounded-2xl border border-border bg-background/40 p-5">
               {detail.service.settlementMode === "verified_escrow"
                 ? "Verified services use marketplace escrow, marketplace refunds, and marketplace payout settlement."
                 : "Community services are paid directly, require a runtime key for signed buyer identity headers, and provider-owned refund handling."}
             </div>
-            <div className="rounded-card border border-border bg-background/70 p-5 dark:bg-background/20 space-y-3">
+            <div className="rounded-2xl border border-border bg-background/40 p-5 space-y-3">
               <div className="font-medium text-foreground">Provider runtime key</div>
               <div>{runtimeKey ? `Active key: ${runtimeKey.keyPrefix}` : "No runtime key created yet."}</div>
               <div className="flex flex-wrap gap-3">
@@ -396,7 +396,7 @@ function ProviderServiceEditorInner({
                 </Button>
               </div>
               {runtimeSecret ? (
-                <div className="flex items-center justify-between gap-3 rounded-card border border-border bg-background/80 p-4 dark:bg-background/30">
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-background/50 p-4">
                   <div>
                     <div className="text-xs text-muted-foreground">Plaintext runtime key</div>
                     <div className="break-all font-mono text-sm text-foreground">{runtimeSecret}</div>
@@ -408,22 +408,22 @@ function ProviderServiceEditorInner({
           </CardContent>
         </Card>
       ) : (
-        <Card variant="frosted">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-3xl">Access model</CardTitle>
+            <CardTitle>Access model</CardTitle>
             <CardDescription>Discovery-only listing. The marketplace does not proxy, charge for, or authenticate these calls.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-muted-foreground">
-            <div className="rounded-card border border-border bg-background/70 p-5 dark:bg-background/20">
+            <div className="rounded-2xl border border-border bg-background/40 p-5">
               External registry services publish direct endpoint metadata only: method, public URL, docs URL, auth notes, and examples.
             </div>
           </CardContent>
         </Card>
       )}
 
-      <Card variant="frosted">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-3xl">Website verification</CardTitle>
+          <CardTitle>Website verification</CardTitle>
           <CardDescription>
             {detail.service.serviceType === "marketplace_proxy"
               ? "Host the issued token on your site before submitting this service for review. If your deploy is set up to serve this file from config, you can add the token there as an env var."
@@ -450,7 +450,7 @@ function ProviderServiceEditorInner({
             </Button>
           </div>
           {detail.service.serviceType === "marketplace_proxy" && challenge ? (
-            <div className="grid gap-4 rounded-card border border-border bg-background/70 p-5 dark:bg-background/20">
+            <div className="grid gap-4 rounded-2xl border border-border bg-background/40 p-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-xs text-muted-foreground">Expected URL</div>
@@ -474,9 +474,9 @@ function ProviderServiceEditorInner({
         </CardContent>
       </Card>
 
-      <Card variant="frosted">
+      <Card>
         <CardHeader>
-            <CardTitle className="text-3xl">Endpoint drafts</CardTitle>
+            <CardTitle>Endpoint drafts</CardTitle>
             <CardDescription>
               {detail.service.serviceType === "marketplace_proxy"
               ? "Provider-authored endpoints are sync-only. GET works for free, fixed-x402, and prepaid-credit routes; top-ups stay POST-only."
@@ -506,7 +506,7 @@ function ProviderServiceEditorInner({
               ))}
 
               <form
-                className="grid gap-4 rounded-card border border-border bg-background/70 p-5 dark:bg-background/20"
+                className="grid gap-4 rounded-2xl border border-border bg-background/40 p-5"
                 onSubmit={onImportOpenApi}
               >
                 <div className="metric-label">Import from OpenAPI</div>
@@ -530,7 +530,7 @@ function ProviderServiceEditorInner({
                   </Button>
                 </div>
                 {openApiPreview ? (
-                  <div className="grid gap-4 rounded-card border border-border bg-background/80 p-4 dark:bg-background/30">
+                  <div className="grid gap-4 rounded-2xl border border-border bg-background/50 p-4">
                     <div>
                       <div className="text-sm font-medium text-foreground">
                         {openApiPreview.title ?? "Imported OpenAPI document"}
@@ -548,7 +548,7 @@ function ProviderServiceEditorInner({
                       </div>
                     ) : null}
                     {openApiPreview.endpoints.map((candidate) => (
-                      <div key={`${candidate.operation}:${candidate.upstreamPath}`} className="grid gap-3 rounded-card border border-border p-4">
+                      <div key={`${candidate.operation}:${candidate.upstreamPath}`} className="grid gap-3 rounded-2xl border border-border bg-background/30 p-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
                             <div className="font-medium text-foreground">{candidate.title}</div>
@@ -578,7 +578,7 @@ function ProviderServiceEditorInner({
                 ) : null}
               </form>
 
-              <form className="grid gap-4 rounded-card border border-border bg-background/70 p-5 dark:bg-background/20" onSubmit={onCreateEndpoint}>
+              <form className="grid gap-4 rounded-2xl border border-border bg-background/40 p-5" onSubmit={onCreateEndpoint}>
                 <div className="metric-label">New endpoint</div>
                 <EndpointDraftFields state={newEndpoint} onChange={setNewEndpoint} />
                 <Button type="submit" disabled={pending}>
@@ -607,7 +607,7 @@ function ProviderServiceEditorInner({
                 />
               ))}
 
-              <form className="grid gap-4 rounded-card border border-border bg-background/70 p-5 dark:bg-background/20" onSubmit={onCreateEndpoint}>
+              <form className="grid gap-4 rounded-2xl border border-border bg-background/40 p-5" onSubmit={onCreateEndpoint}>
                 <div className="metric-label">New external endpoint</div>
                 <ExternalEndpointDraftFields state={newExternalEndpoint} onChange={setNewExternalEndpoint} />
                 <Button type="submit" disabled={pending}>
@@ -665,10 +665,10 @@ function EndpointDraftCard({
   }
 
   return (
-    <form className="grid gap-4 rounded-card border border-border bg-background/70 p-5 dark:bg-background/20" onSubmit={onSubmit}>
+    <form className="grid gap-4 rounded-2xl border border-border bg-background/40 p-5" onSubmit={onSubmit}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="text-lg font-medium tracking-headline">{endpoint.title}</div>
+          <div className="text-lg font-medium tracking-[-0.03em]">{endpoint.title}</div>
           <div className="text-xs text-muted-foreground">{endpoint.method} · {endpoint.operation}</div>
         </div>
         <div className="flex gap-2">
@@ -739,10 +739,10 @@ function ExternalEndpointDraftCard({
   }
 
   return (
-    <form className="grid gap-4 rounded-card border border-border bg-background/70 p-5 dark:bg-background/20" onSubmit={onSubmit}>
+    <form className="grid gap-4 rounded-2xl border border-border bg-background/40 p-5" onSubmit={onSubmit}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="text-lg font-medium tracking-headline">{endpoint.title}</div>
+          <div className="text-lg font-medium tracking-[-0.03em]">{endpoint.title}</div>
           <div className="text-xs text-muted-foreground">{endpoint.method} · {endpoint.publicUrl}</div>
         </div>
         <div className="flex gap-2">

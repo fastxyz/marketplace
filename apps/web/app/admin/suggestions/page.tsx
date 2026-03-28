@@ -6,6 +6,8 @@ import { AdminNav } from "@/components/admin-nav";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { fetchAdminSuggestions } from "@/lib/api";
 import { isAdminAuthenticated } from "@/lib/admin-auth";
 
@@ -35,25 +37,21 @@ export default async function AdminSuggestionsPage({
       ? statusFilter
       : undefined
   );
-  const selectClassName = "fast-select min-h-12";
-  const textareaClassName = "fast-textarea";
 
   return (
-    <main className="page-shell">
-      <section className="section-sep">
-        <div className="section-container section-stack">
+    <main className="page-main">
+      <section className="page-section">
+        <div className="app-container page-stack">
           <div className="flex flex-wrap items-end justify-between gap-4">
-            <div className="space-y-4">
-              <Link href="/" className="fast-link">
+            <div className="page-header">
+              <Link href="/" className="page-link">
                 Back to marketplace
               </Link>
-              <div className="space-y-4">
-                <p className="eyebrow">Admin review</p>
-                <h1 className="section-title">Suggestion queue</h1>
-                <p className="body-copy">
-                  Private intake for new endpoints and source integrations. Switch to Provider Services to review submitted supply and assign settlement tiers.
-                </p>
-              </div>
+              <p className="page-eyebrow">Admin review</p>
+              <h1 className="section-title">Suggestion queue</h1>
+              <p className="page-copy">
+                Private intake for new endpoints and source integrations. Switch to Provider Services to review submitted supply and assign settlement tiers.
+              </p>
             </div>
             <form action={adminLogoutAction}>
               <Button type="submit" variant="outline">
@@ -70,7 +68,14 @@ export default async function AdminSuggestionsPage({
               const isActive = (status === "all" && !statusFilter) || statusFilter === status;
 
               return (
-                <Link key={status} href={href} className={isActive ? "filter-chip filter-chip-active" : "filter-chip"}>
+                <Link
+                  key={status}
+                  href={href}
+                  className={cn(
+                    "inline-flex items-center rounded-full px-3 py-2 text-sm transition-colors",
+                    isActive ? "bg-foreground text-background" : "bg-background/55 text-muted-foreground hover:text-foreground"
+                  )}
+                >
                   {status}
                 </Link>
               );
@@ -79,7 +84,7 @@ export default async function AdminSuggestionsPage({
 
           <section className="mt-8 grid gap-4">
             {suggestions.map((suggestion) => (
-              <Card key={suggestion.id} variant="frosted">
+              <Card key={suggestion.id}>
                 <CardHeader className="gap-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="space-y-2">
@@ -108,7 +113,7 @@ export default async function AdminSuggestionsPage({
                       <select
                         name="status"
                         defaultValue={suggestion.status}
-                        className={selectClassName}
+                        className="native-select"
                       >
                         <option value="submitted">submitted</option>
                         <option value="reviewing">reviewing</option>
@@ -120,10 +125,9 @@ export default async function AdminSuggestionsPage({
 
                     <label className="grid gap-2 text-sm font-medium">
                       Internal notes
-                      <textarea
+                      <Textarea
                         name="internalNotes"
                         defaultValue={suggestion.internalNotes ?? ""}
-                        className={textareaClassName}
                       />
                     </label>
 

@@ -11,9 +11,9 @@ import { shortenWalletAddress } from "@/lib/wallet-session";
 
 function summaryMetric(label: string, value: string) {
   return (
-    <div className="space-y-2 rounded-card border border-border bg-background/70 px-5 py-6 dark:bg-background/20">
+    <div className="metric-tile">
       <div className="metric-label">{label}</div>
-      <div className="text-3xl font-medium tracking-m">{value}</div>
+      <div className="metric-value">{value}</div>
     </div>
   );
 }
@@ -106,7 +106,7 @@ function SpendDashboardInner({
 
   if (!activity && !error) {
     return (
-      <Card variant="frosted">
+      <Card>
         <CardHeader>
           <CardTitle>Loading spend</CardTitle>
           <CardDescription>Fetching marketplace activity for the connected wallet.</CardDescription>
@@ -117,7 +117,7 @@ function SpendDashboardInner({
 
   if (error) {
     return (
-      <Card variant="frosted">
+      <Card>
         <CardHeader>
           <CardTitle>Spend dashboard unavailable</CardTitle>
           <CardDescription>{error}</CardDescription>
@@ -134,12 +134,12 @@ function SpendDashboardInner({
 
   return (
     <div className="grid gap-6">
-      <Card variant="frosted">
+      <Card>
         <CardHeader className="gap-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-2">
               <Badge variant="eyebrow">Last 30 days</Badge>
-              <CardTitle className="text-3xl">Marketplace spend</CardTitle>
+              <CardTitle>Marketplace spend</CardTitle>
               <CardDescription>
                 Wallet {shortenWalletAddress(wallet)}. Only marketplace-executed calls, top-ups, async outcomes, and refunds appear here.
               </CardDescription>
@@ -156,7 +156,7 @@ function SpendDashboardInner({
       </Card>
 
       {activity.items.length === 0 ? (
-        <Card variant="frosted">
+        <Card>
           <CardHeader>
             <CardTitle>No marketplace activity yet</CardTitle>
             <CardDescription>
@@ -167,16 +167,16 @@ function SpendDashboardInner({
       ) : null}
 
       {groups.map((group) => (
-        <Card key={group.slug} variant="frosted">
+        <Card key={group.slug}>
           <CardHeader>
-            <CardTitle className="text-3xl">{group.name}</CardTitle>
+            <CardTitle>{group.name}</CardTitle>
             <CardDescription>{group.slug}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
             {group.items.map((item) => (
               <div
                 key={item.paymentId}
-                className="grid gap-3 rounded-card border border-border bg-background/70 px-5 py-5 dark:bg-background/20 md:grid-cols-[1.3fr_0.7fr_0.7fr]"
+                className="grid gap-3 rounded-2xl border border-border bg-background/40 px-5 py-5 md:grid-cols-[1.3fr_0.7fr_0.7fr]"
               >
                 <div className="space-y-2">
                   <div className="text-lg font-medium">{item.route.title}</div>

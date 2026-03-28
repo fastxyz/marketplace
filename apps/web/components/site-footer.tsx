@@ -1,47 +1,62 @@
 import React from "react";
 import Link from "next/link";
 
+const socials = [
+  { href: "https://x.com/pi2_labs", label: "X" },
+  { href: "https://www.linkedin.com/company/fast-xyz", label: "LinkedIn" }
+];
+
+const internalLinks = [
+  { href: "/providers", label: "Provider workspace" },
+  { href: "/suggest", label: "Private intake" },
+  { href: "/skill.md", label: "SKILL.md" }
+];
+
 export function SiteFooter() {
-  const socialLinks = [
-    { href: "https://x.com/pi2_labs", label: "X.com" },
-    { href: "https://www.linkedin.com/company/fast-xyz", label: "LinkedIn" }
-  ];
+  const year = new Date().getFullYear();
 
   return (
-    <footer className="section-sep bg-background">
-      <div className="footer-shell">
-        <div className="grid gap-12 lg:grid-cols-[1.1fr_1.4fr]">
-          <div className="space-y-4">
-            <p className="eyebrow">FAST Marketplace</p>
-            <div className="max-w-md space-y-3">
-              <h2 className="text-2xl font-medium tracking-m">Payment infrastructure for the agentic economy.</h2>
-              <p className="text-sm leading-7 text-muted-foreground">
-                Discovery, request intake, provider tooling, and public service docs for Fast-native APIs.
+    <footer className="pb-6">
+      <div className="app-container">
+        <div className="surface-panel rounded-[1.75rem] px-5 py-8 md:px-7">
+          <div className="grid gap-8 lg:grid-cols-[1.25fr_0.75fr_0.75fr]">
+            <div className="space-y-3">
+              <div className="page-eyebrow">Fast Marketplace</div>
+              <h2 className="max-w-sm text-2xl font-medium tracking-[-0.04em]">
+                Discovery, payment, and review infrastructure for Fast-native agent APIs.
+              </h2>
+              <p className="max-w-xl text-sm leading-7 text-muted-foreground">
+                Public marketplace pages, buyer spend visibility, provider tooling, and internal review live in one
+                shared shell.
               </p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="page-eyebrow">Navigate</div>
+              <div className="grid gap-2 text-sm text-muted-foreground">
+                {internalLinks.map((item) => (
+                  <Link key={item.href} href={item.href} className="transition-colors hover:text-foreground">
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="page-eyebrow">Social</div>
+              <div className="grid gap-2 text-sm text-muted-foreground">
+                {socials.map((item) => (
+                  <Link key={item.href} href={item.href} target="_blank" rel="noreferrer" className="transition-colors hover:text-foreground">
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
             </div>
           </div>
 
-          <div className="space-y-4">
-            <div className="footer-label">Socials</div>
-            <nav className="flex flex-col gap-3 sm:max-w-xs">
-              {socialLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="footer-link"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {link.label}
-                </Link>
-              ))}
-            </nav>
+          <div className="mt-8 border-t border-border pt-4 text-sm text-muted-foreground">
+            © {year} Fast Marketplace. Built for Fast-native settlement and API discovery.
           </div>
-        </div>
-
-        <div className="mt-12 flex flex-col gap-3 border-t border-border pt-6 text-sm md:flex-row md:items-center md:justify-between">
-          <div className="text-steel">Built for Fast-native agent payments.</div>
-          <div className="text-steel/60">© 2026 FAST Marketplace</div>
         </div>
       </div>
     </footer>

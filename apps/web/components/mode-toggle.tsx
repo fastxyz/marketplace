@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import { Moon, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
 
+import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 
 export function ModeToggle() {
@@ -12,9 +12,9 @@ export function ModeToggle() {
   return (
     <Button
       type="button"
-      variant="ghost"
+      variant="outline"
       size="icon"
-      className="relative shrink-0 border border-border bg-background/65 backdrop-blur-sm"
+      className="relative shrink-0 rounded-full"
       aria-label="Toggle color theme"
       title="Toggle color theme"
       onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}

@@ -21,10 +21,10 @@ export function CatalogSnapshotCard({ services }: { services: ServiceSummary[] }
   const totals = buildMarketplaceTotals(services);
 
   return (
-    <Card variant="frosted">
+    <Card>
       <CardHeader>
         <CardDescription>Marketplace totals</CardDescription>
-        <CardTitle className="text-3xl">Catalog snapshot</CardTitle>
+        <CardTitle>Catalog snapshot</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
         <Metric label="Services" value={String(services.length)} />
@@ -38,9 +38,9 @@ export function CatalogSnapshotCard({ services }: { services: ServiceSummary[] }
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="space-y-2 rounded-card border border-border bg-background/70 px-5 py-6 dark:bg-background/20">
+    <div className="metric-tile">
       <div className="metric-label">{label}</div>
-      <div className="text-3xl font-medium tracking-m">{value}</div>
+      <div className="metric-value">{value}</div>
     </div>
   );
 }

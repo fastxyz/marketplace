@@ -14,9 +14,9 @@ export default async function ProviderServiceEditorPage({
   const { id } = await params;
 
   return (
-    <main className="page-shell">
-      <section className="section-sep">
-        <div className="section-container section-stack">
+    <main className="page-main">
+      <section className="page-section">
+        <div className="app-container">
           <ProviderServiceEditor
             apiBaseUrl={apiBaseUrl}
             deploymentNetwork={deploymentNetwork}

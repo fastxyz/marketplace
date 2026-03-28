@@ -75,7 +75,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="bg-background text-foreground antialiased">
+      <body className="antialiased">
+        <div className="site-bg" />
         <ThemeProvider
           attribute="class"
           defaultTheme="light"
@@ -84,13 +85,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           themes={["light", "dark"]}
         >
           <FaviconSync />
-          <div className="flex min-h-screen flex-col">
+          <div className="app-shell">
             <SiteHeader
               apiBaseUrl={apiBaseUrl}
               deploymentNetwork={network.deploymentNetwork}
               networkLabel={network.networkLabel}
             />
-            <div className="flex-1">{children}</div>
+            <div className="page-main">{children}</div>
             <SiteFooter />
           </div>
         </ThemeProvider>

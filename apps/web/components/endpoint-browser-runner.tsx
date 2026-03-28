@@ -293,15 +293,15 @@ export function EndpointBrowserRunner({
   }
 
   return (
-    <div className="terminal-shell lg:col-span-2">
-      <div className="terminal-topbar">
+    <div className="terminal-surface lg:col-span-2">
+      <div className="terminal-toolbar">
         <div className="flex items-center gap-4">
-          <div className="terminal-lights" aria-hidden="true">
-            <span className="terminal-light-red" />
-            <span className="terminal-light-amber" />
-            <span className="terminal-light-green" />
+          <div className="terminal-dots" aria-hidden="true">
+            <span />
+            <span />
+            <span />
           </div>
-          <div className="terminal-title">{runnerTitle}</div>
+          <div className="text-sm font-medium">{runnerTitle}</div>
         </div>
         <Badge variant="outline" className="gap-2">
           <Wallet className="h-3.5 w-3.5" />
@@ -309,15 +309,15 @@ export function EndpointBrowserRunner({
         </Badge>
       </div>
 
-      <div className="terminal-body space-y-5">
+      <div className="terminal-body">
         <p className="max-w-3xl text-sm leading-7 text-white/70">{runnerDescription}</p>
 
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
-            <div className="terminal-kicker">Request body</div>
-            <CopyButton value={requestBody} className="terminal-copy" />
+            <div className="terminal-label">Request body</div>
+            <CopyButton value={requestBody} />
           </div>
-          <Textarea value={requestBody} onChange={(event) => setRequestBody(event.target.value)} className="terminal-textarea" />
+          <Textarea value={requestBody} onChange={(event) => setRequestBody(event.target.value)} className="terminal-input" />
         </div>
 
         <div className="flex flex-wrap gap-3">
@@ -334,7 +334,7 @@ export function EndpointBrowserRunner({
         </div>
 
         {error ? (
-          <div className="terminal-panel flex items-center gap-2 px-4 py-3 text-sm text-silicon">
+          <div className="terminal-panel flex items-center gap-2 px-4 py-3 text-sm text-white/72">
             <TriangleAlert className="h-4 w-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -344,14 +344,14 @@ export function EndpointBrowserRunner({
           <div className="space-y-4 terminal-panel p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="terminal-kicker">Latest response</div>
+                <div className="terminal-label">Latest response</div>
                 <div className="mt-1 text-sm font-medium text-white">HTTP {result.statusCode}</div>
               </div>
-              <CopyButton value={formatResponseBody(result.body)} className="terminal-copy" />
+              <CopyButton value={formatResponseBody(result.body)} />
             </div>
 
             {result.payment ? (
-              <div className="grid gap-3 rounded-card border border-white/10 bg-white/5 p-4 sm:grid-cols-3">
+              <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 sm:grid-cols-3">
                 <Detail label="Amount" value={`${formatRawAmount(result.payment.amountRaw)} ${endpoint.tokenSymbol}`} />
                 <Detail label="Recipient" value={shorten(result.payment.recipient)} />
                 <Detail label="Transaction" value={result.payment.txHash} />
@@ -363,13 +363,13 @@ export function EndpointBrowserRunner({
                 href={result.payment.explorerUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="terminal-meta inline-flex w-fit"
+                className="inline-flex w-fit text-sm text-white/72 transition-opacity hover:opacity-100"
               >
                 Open transaction in explorer
               </a>
             ) : null}
 
-            <pre className="terminal-command overflow-x-auto whitespace-pre-wrap text-sm">
+            <pre className="terminal-code overflow-x-auto whitespace-pre-wrap text-sm">
               {formatResponseBody(result.body)}
             </pre>
           </div>
@@ -379,38 +379,38 @@ export function EndpointBrowserRunner({
           <div className="space-y-3 terminal-panel p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="terminal-kicker">Async job</div>
+                <div className="terminal-label">Async job</div>
                 <div className="mt-1 text-sm font-medium text-white">{job.jobToken}</div>
               </div>
-              <div className="rounded-pill border border-white/10 px-3 py-1 text-xs font-medium uppercase tracking-eyebrow text-silicon">
+              <div className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-white/72">
                 {job.status}
               </div>
             </div>
             <p className="text-sm text-white/70">
               Async retrieval uses the same paying wallet to sign a job-specific challenge before polling the result.
             </p>
-            {job.updatedAt ? <div className="terminal-kicker">Updated: {job.updatedAt}</div> : null}
+            {job.updatedAt ? <div className="terminal-label">Updated: {job.updatedAt}</div> : null}
             {job.result !== undefined ? (
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="terminal-kicker">Job result</div>
-                  <CopyButton value={formatResponseBody(job.result)} className="terminal-copy" />
+                  <div className="terminal-label">Job result</div>
+                  <CopyButton value={formatResponseBody(job.result)} />
                 </div>
-                <pre className="terminal-command overflow-x-auto whitespace-pre-wrap text-sm">
+                <pre className="terminal-code overflow-x-auto whitespace-pre-wrap text-sm">
                   {formatResponseBody(job.result)}
                 </pre>
               </div>
             ) : null}
             {job.error ? (
               <div className="space-y-2">
-                <div className="terminal-kicker">Job error</div>
-                <pre className="terminal-command overflow-x-auto whitespace-pre-wrap text-sm text-silicon">{job.error}</pre>
+                <div className="terminal-label">Job error</div>
+                <pre className="terminal-code overflow-x-auto whitespace-pre-wrap text-sm text-white/72">{job.error}</pre>
               </div>
             ) : null}
             {job.refund !== undefined ? (
               <div className="space-y-2">
-                <div className="terminal-kicker">Refund</div>
-                <pre className="terminal-command overflow-x-auto whitespace-pre-wrap text-sm">
+                <div className="terminal-label">Refund</div>
+                <pre className="terminal-code overflow-x-auto whitespace-pre-wrap text-sm">
                   {formatResponseBody(job.refund)}
                 </pre>
               </div>
@@ -425,7 +425,7 @@ export function EndpointBrowserRunner({
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="terminal-kicker">{label}</div>
+      <div className="terminal-label">{label}</div>
       <div className="mt-2 break-all text-sm font-medium text-white">{value}</div>
     </div>
   );
