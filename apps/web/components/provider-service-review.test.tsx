@@ -161,7 +161,7 @@ describe("ProviderServiceReview", () => {
             description: "Return a single quote snapshot.",
             billing: {
               type: "fixed_x402",
-              price: "$0.25",
+              price: "$0.0001",
               tokenSymbol: "USDC",
               minAmount: null,
               maxAmount: null

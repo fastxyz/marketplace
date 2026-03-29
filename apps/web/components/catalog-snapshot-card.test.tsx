@@ -21,7 +21,7 @@ describe("CatalogSnapshotCard", () => {
             settlementMode: "verified_escrow",
             settlementLabel: "Verified",
             settlementDescription: "Marketplace escrow, refunds, and payout reconciliation.",
-            priceRange: "$0.05 USDC - $0.15 USDC",
+            priceRange: "$0.0001 USDC",
             settlementToken: "USDC",
             endpointCount: 2,
             totalCalls: 12,

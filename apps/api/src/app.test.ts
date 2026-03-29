@@ -953,7 +953,7 @@ describe("marketplace api", () => {
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
-        price: "$0.25",
+        price: "$0.0001",
         mode: "sync",
         requestSchemaJson: {
           type: "object",
@@ -1095,7 +1095,7 @@ describe("marketplace api", () => {
     expect(record?.payoutSplit.providerWallet).toBe(replacementPayoutWallet.address);
     expect(record?.payoutSplit.paymentDestinationWallet).toBe(buyer.address);
     expect(record?.payoutSplit.usesTreasurySettlement).toBe(true);
-    expect(record?.payoutSplit.providerAmount).toBe("250000");
+    expect(record?.payoutSplit.providerAmount).toBe("100");
     expect(record?.payoutSplit.marketplaceAmount).toBe("0");
     expect(await store.listPendingProviderPayouts(10)).toHaveLength(1);
   });
@@ -2316,7 +2316,7 @@ describe("marketplace api", () => {
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
-        price: "$0.25",
+        price: "$0.0001",
         mode: "sync",
         requestSchemaJson: {
           type: "object",
@@ -3201,7 +3201,7 @@ describe("marketplace api", () => {
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
-        price: "$0.25",
+        price: "$0.0001",
         mode: "sync",
         requestSchemaJson: {
           type: "object",
@@ -3410,7 +3410,7 @@ describe("marketplace api", () => {
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
-        price: "$0.25",
+        price: "$0.0001",
         mode: "sync",
         requestSchemaJson: {
           type: "object",
@@ -3546,7 +3546,7 @@ describe("marketplace api", () => {
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
-        price: "$0.25",
+        price: "$0.0001",
         mode: "sync",
         requestSchemaJson: {
           type: "object",
@@ -3630,7 +3630,7 @@ describe("marketplace api", () => {
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
-        price: "$0.25",
+        price: "$0.0001",
         mode: "sync",
         requestSchemaJson: {
           type: "object",
@@ -3751,7 +3751,7 @@ describe("marketplace api", () => {
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
-        price: "$0.25",
+        price: "$0.0001",
         mode: "sync",
         requestSchemaJson: {
           type: "object",
@@ -4031,7 +4031,7 @@ describe("marketplace api", () => {
         title: "Get Quote",
         description: "Returns the latest signal quote.",
         billingType: "fixed_x402",
-        price: "$0.25",
+        price: "$0.0001",
         mode: "sync",
         requestSchemaJson: {
           type: "object",
@@ -4191,7 +4191,7 @@ describe("marketplace api", () => {
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
-        price: "$0.25",
+        price: "$0.0001",
         mode: "sync",
         requestSchemaJson: {
           type: "object",
@@ -4651,7 +4651,7 @@ describe("marketplace api", () => {
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
-        price: "$0.25",
+        price: "$0.0001",
         mode: "sync",
         requestSchemaJson: {
           type: "object",
@@ -4753,7 +4753,7 @@ describe("marketplace api", () => {
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
-        price: "$0.25",
+        price: "$0.0001",
         mode: "sync",
         requestSchemaJson: {
           type: "object",
@@ -4942,7 +4942,7 @@ describe("marketplace api", () => {
         title: "Quote",
         description: "Return a single quote snapshot.",
         billingType: "fixed_x402",
-        price: "$0.25",
+        price: "$0.0001",
         mode: "sync",
         requestSchemaJson: {
           type: "object",
@@ -4979,7 +4979,7 @@ describe("marketplace api", () => {
         title: "Quote duplicate",
         description: "Duplicate operation.",
         billingType: "fixed_x402",
-        price: "$0.25",
+        price: "$0.0001",
         mode: "sync",
         requestSchemaJson: {
           type: "object",

@@ -68,7 +68,7 @@
         ]
       },
       "usageNotes": "Good default entry point for research lookups and link discovery.",
-      "upstreamBaseUrl": "https://replace-with-your-mainnet-tavily-host.example.com",
+      "upstreamBaseUrl": "https://fastmainnettavily.8o.vc",
       "upstreamPath": "/search",
       "upstreamAuthMode": "none"
     },
@@ -115,7 +115,7 @@
         ]
       },
       "usageNotes": "Use when you already know the target URLs and need page content returned in one response.",
-      "upstreamBaseUrl": "https://replace-with-your-mainnet-tavily-host.example.com",
+      "upstreamBaseUrl": "https://fastmainnettavily.8o.vc",
       "upstreamPath": "/extract",
       "upstreamAuthMode": "none"
     },
@@ -159,7 +159,7 @@
         ]
       },
       "usageNotes": "Best for deeper site traversal where a plain search is not enough.",
-      "upstreamBaseUrl": "https://replace-with-your-mainnet-tavily-host.example.com",
+      "upstreamBaseUrl": "https://fastmainnettavily.8o.vc",
       "upstreamPath": "/crawl",
       "upstreamAuthMode": "none"
     },
@@ -200,7 +200,7 @@
         ]
       },
       "usageNotes": "Use when you need URL discovery without full extraction or crawl output.",
-      "upstreamBaseUrl": "https://replace-with-your-mainnet-tavily-host.example.com",
+      "upstreamBaseUrl": "https://fastmainnettavily.8o.vc",
       "upstreamPath": "/map",
       "upstreamAuthMode": "none"
     }

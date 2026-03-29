@@ -600,7 +600,7 @@ function buildMarketplaceEndpoint(input: {
     title: input.title,
     description: input.description ?? "Return a single quote snapshot.",
     billingType: "fixed_x402",
-    price: "$0.25",
+    price: "$0.0001",
     mode: "sync",
     requestSchemaJson: {
       type: "object",
