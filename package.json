@@ -8,7 +8,8 @@
   ],
   "scripts": {
     "typecheck:workspace": "tsc --noEmit",
-    "typecheck:web": "tsc --noEmit -p apps/web/tsconfig.json",
+    "clean:web": "rm -rf apps/web/.next",
+    "typecheck:web": "npm run clean:web && tsc --noEmit -p apps/web/tsconfig.json",
     "typecheck": "npm run typecheck:workspace && npm run typecheck:web",
     "build:runtime": "tsup --config tsup.config.ts",
     "build:web": "npm run build --workspace @marketplace/web",

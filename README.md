@@ -331,6 +331,59 @@ If you want both networks, deploy two stacks from the same repo:
 
 Keep the web, API, and worker on the same network value inside each stack. The facilitator can stay shared if it supports both Fast networks.
 
+### GHCR Publishing
+
+The repo now includes a GitHub Actions workflow that publishes one image per deployable service to GHCR:
+
+- `ghcr.io/<owner>/<repo>-api`
+- `ghcr.io/<owner>/<repo>-web`
+- `ghcr.io/<owner>/<repo>-worker`
+- `ghcr.io/<owner>/<repo>-facilitator`
+
+Workflow file:
+
+- [`.github/workflows/ghcr.yml`](./.github/workflows/ghcr.yml)
+
+Publish triggers:
+
+- pushes to `main`
+- tags matching `v*`
+- manual `workflow_dispatch`
+
+Each publish includes branch tags, tag refs, a `sha-<commit>` tag, and `latest` on the default branch.
+
+### Example Deployment YAML
+
+For environments that deploy from container images, use the checked-in Compose template as the canonical wiring example:
+
+- [`deploy/docker-compose.ghcr.yml`](./deploy/docker-compose.ghcr.yml)
+- [`deploy/.env.ghcr.example`](./deploy/.env.ghcr.example)
+
+Typical flow:
+
+```bash
+cp deploy/.env.ghcr.example deploy/.env.ghcr
+docker compose --env-file deploy/.env.ghcr -f deploy/docker-compose.ghcr.yml up -d
+```
+
+Routing expectations encoded in the template:
+
+- `web` is public and serves `MARKETPLACE_WEB_BASE_URL`
+- `api` is public and serves `MARKETPLACE_BASE_URL`
+- `web` talks to the API using `MARKETPLACE_API_BASE_URL`
+- `api` talks to the facilitator over the internal network at `http://facilitator:4020`
+- `api` and `worker` share the same Postgres database and marketplace secret material
+
+If your platform uses another YAML format, keep the same topology:
+
+- one `web` container
+- one `api` container
+- one `worker` container
+- one `facilitator` container
+- one PostgreSQL service
+
+Do not point `MARKETPLACE_FACILITATOR_URL` at a public ingress unless your platform requires it. Internal service-to-service routing is the intended default.
+
 ### Provider Credit Runtime
 
 Provider runtime keys are used in three cases:
