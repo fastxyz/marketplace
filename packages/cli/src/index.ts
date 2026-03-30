@@ -18,6 +18,7 @@ import {
   type CliDependencies
 } from "./lib.js";
 import {
+  backfillExternalExamples,
   submitProviderService,
   syncProviderSpec,
   verifyProviderService
@@ -240,6 +241,34 @@ export function createProgram(deps: CliDependencies = defaultCliDependencies()):
       const result = await verifyProviderService(
         {
           serviceRef: options.service,
+          apiUrl: options.apiUrl,
+          keyfilePath: options.keyfile,
+          configPath: options.config,
+          network: options.network,
+          rpcUrl: undefined
+        },
+        deps
+      );
+      deps.print(JSON.stringify(result, null, 2));
+    });
+
+  providerProgram
+    .command("backfill-examples")
+    .option("--service <slug-or-id>")
+    .option("--all-external", "Process all external_registry services owned by the current provider wallet", false)
+    .option("--dry-run", "Infer updates without writing endpoint drafts", false)
+    .option("--overwrite", "Overwrite existing non-empty examples as well", false)
+    .option("--api-url <url>", "Marketplace API URL")
+    .option("--network <network>", "Fast network (mainnet or testnet)")
+    .option("--keyfile <path>")
+    .option("--config <path>")
+    .action(async (options) => {
+      const result = await backfillExternalExamples(
+        {
+          serviceRef: options.service,
+          allExternal: Boolean(options.allExternal),
+          dryRun: Boolean(options.dryRun),
+          overwrite: Boolean(options.overwrite),
           apiUrl: options.apiUrl,
           keyfilePath: options.keyfile,
           configPath: options.config,

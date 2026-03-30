@@ -92,6 +92,54 @@ export function parseOpenApiImportDocument(input: {
   };
 }
 
+export function extractOpenApiOperationPayloads(input: {
+  document: unknown;
+  method: HttpMethod;
+  path: string;
+}): {
+  requestSchemaJson: JsonSchema;
+  responseSchemaJson: JsonSchema;
+  requestExample: unknown;
+  responseExample: unknown;
+  warnings: string[];
+} | null {
+  const root = expectObject(input.document, "OpenAPI document");
+  const version = readOptionalString(root, "openapi");
+  if (!version?.startsWith("3.")) {
+    throw new Error("Only OpenAPI 3.x documents are supported.");
+  }
+
+  const paths = expectObject(root.paths, "OpenAPI document.paths");
+  const pathItemValue = paths[input.path];
+  if (pathItemValue === undefined) {
+    return null;
+  }
+
+  const pathItem = expectObject(resolveOpenApiNode(root, pathItemValue), `OpenAPI path ${input.path}`);
+  const operationKey = input.method.toLowerCase();
+  const operationValue = pathItem[operationKey];
+  if (operationValue === undefined) {
+    return null;
+  }
+
+  const operation = expectObject(
+    resolveOpenApiNode(root, operationValue),
+    `OpenAPI operation ${input.method} ${input.path}`
+  );
+  const request = input.method === "GET"
+    ? extractGetRequestPayload(root, pathItem, operation)
+    : extractRequestPayload(root, operation);
+  const response = extractResponsePayload(root, operation);
+
+  return {
+    requestSchemaJson: request.schema,
+    responseSchemaJson: response.schema,
+    requestExample: request.example,
+    responseExample: response.example,
+    warnings: [...request.warnings, ...response.warnings]
+  };
+}
+
 function buildImportCandidate(input: {
   method: HttpMethod;
   root: Record<string, unknown>;
@@ -762,6 +810,10 @@ function exampleFromSchema(schema: unknown, depth = 0): unknown {
       }
       return {};
   }
+}
+
+export function buildJsonExample(schema: unknown): unknown {
+  return exampleFromSchema(schema);
 }
 
 function objectExample(schema: Record<string, unknown>, depth: number): Record<string, unknown> {

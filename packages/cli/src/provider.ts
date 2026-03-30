@@ -6,6 +6,7 @@ import { z } from "zod";
 import { normalizeFastWalletAddress, type CreateProviderEndpointDraftInput, type CreateProviderServiceInput, type MarketplaceDeploymentNetwork, type ProviderEndpointDraftRecord, type ProviderServiceDetailRecord, type ProviderServiceRecord, type ProviderVerificationRecord, type UpdateProviderEndpointDraftInput, type UpdateProviderServiceInput, type UpsertProviderAccountInput } from "@marketplace/shared";
 
 import { defaultCliDependencies, expandHome, loadWallet, loadWalletFromPrivateKey, type CliDependencies, type LoadedWallet } from "./lib.js";
+import { inferExternalServiceExamples, isMeaningfulExample } from "./external-examples.js";
 
 interface ProviderSiteChallenge {
   wallet: string;
@@ -368,6 +369,116 @@ export async function submitProviderService(input: {
     throw error;
   }
 }
+
+export async function backfillExternalExamples(input: {
+  serviceRef?: string;
+  allExternal?: boolean;
+  dryRun?: boolean;
+  overwrite?: boolean;
+  apiUrl?: string;
+  keyfilePath?: string;
+  configPath?: string;
+  network?: MarketplaceDeploymentNetwork;
+  rpcUrl?: string;
+}, deps: CliDependencies = defaultCliDependencies()) {
+  loadProviderCommandEnv();
+  if (!input.serviceRef && !input.allExternal) {
+    throw new Error("Pass --service <slug-or-id> or --all-external.");
+  }
+
+  const session = await createProviderSiteSession(input, deps);
+  const candidateServices = input.serviceRef
+    ? [await resolveProviderService(session.apiUrl, session.accessToken, input.serviceRef, deps)]
+    : await listProviderServices(session.apiUrl, session.accessToken, deps);
+  const services = candidateServices.filter((detail) => detail.service.serviceType === "external_registry");
+  if (input.serviceRef && services.length === 0) {
+    throw new Error(`Provider service is not an external_registry listing: ${input.serviceRef}`);
+  }
+
+  const results = [];
+  for (const service of services) {
+    const endpointTargets = service.endpoints
+      .filter((endpoint) => endpoint.endpointType === "external_registry")
+      .map((endpoint) => ({
+        endpointId: endpoint.id,
+        title: endpoint.title,
+        description: endpoint.description,
+        method: endpoint.method,
+        publicUrl: endpoint.publicUrl,
+        docsUrl: endpoint.docsUrl,
+        requestExample: endpoint.requestExample,
+        responseExample: endpoint.responseExample
+      }));
+    if (endpointTargets.length === 0) {
+      results.push({
+        serviceId: service.service.id,
+        slug: service.service.slug,
+        totalEndpoints: 0,
+        updated: 0,
+        unresolved: 0,
+        endpoints: []
+      });
+      continue;
+    }
+
+    const inferred = await inferExternalServiceExamples({
+      websiteUrl: service.service.websiteUrl ?? new URL(endpointTargets[0]?.publicUrl ?? "https://example.com").origin,
+      endpoints: endpointTargets,
+      deps,
+      overwrite: input.overwrite
+    });
+
+    const updates = inferred.filter((candidate) => {
+      const existing = service.endpoints.find((endpoint) => endpoint.id === candidate.endpointId);
+      const requestNeedsBackfill = !isMeaningfulExample(existing?.requestExample);
+      const responseNeedsBackfill = !isMeaningfulExample(existing?.responseExample);
+      return candidate.changed && (input.overwrite || requestNeedsBackfill || responseNeedsBackfill);
+    });
+
+    if (!input.dryRun) {
+      for (const update of updates) {
+        await updateProviderEndpoint(
+          session.apiUrl,
+          session.accessToken,
+          service.service.id,
+          update.endpointId,
+          {
+            endpointType: "external_registry",
+            requestExample: update.requestExample,
+            responseExample: update.responseExample
+          },
+          deps
+        );
+      }
+    }
+
+    results.push({
+      serviceId: service.service.id,
+      slug: service.service.slug,
+      totalEndpoints: endpointTargets.length,
+      updated: updates.length,
+      unresolved: inferred.filter((candidate) =>
+        !isMeaningfulExample(candidate.requestExample) || !isMeaningfulExample(candidate.responseExample)
+      ).length,
+      endpoints: inferred.map((candidate) => ({
+        endpointId: candidate.endpointId,
+        title: candidate.title,
+        publicUrl: candidate.publicUrl,
+        changed: updates.some((update) => update.endpointId === candidate.endpointId),
+        requestSource: candidate.requestSource,
+        responseSource: candidate.responseSource,
+        warnings: candidate.warnings
+      }))
+    });
+  }
+
+  return {
+    status: input.dryRun ? "dry_run" : "backfilled",
+    wallet: session.wallet,
+    services: results
+  };
+}
+
 async function readProviderSpec(specPath: string): Promise<ProviderSyncSpec> {
   const resolved = expandHome(specPath);
   const raw = await readFile(resolved, "utf8");
