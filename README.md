@@ -366,6 +366,39 @@ cp deploy/.env.ghcr.example deploy/.env.ghcr
 docker compose --env-file deploy/.env.ghcr -f deploy/docker-compose.ghcr.yml up -d
 ```
 
+Manual secret injection:
+
+- Do not commit the real `deploy/.env.ghcr`.
+- On a plain VPS, create `deploy/.env.ghcr` on the server during first deploy and fill in secrets there.
+- On a deployment platform, keep the checked-in template for non-secret config and add secrets through the platform secret manager.
+
+Secrets that must be supplied manually:
+
+- `POSTGRES_PASSWORD`
+- `MARKETPLACE_SESSION_SECRET`
+- `MARKETPLACE_ADMIN_TOKEN`
+- `MARKETPLACE_SECRETS_KEY`
+- `MARKETPLACE_TREASURY_PRIVATE_KEY` or `MARKETPLACE_TREASURY_KEYFILE`
+
+Non-secret config that can stay in the checked-in template:
+
+- `API_IMAGE`
+- `WEB_IMAGE`
+- `WORKER_IMAGE`
+- `FACILITATOR_IMAGE`
+- `MARKETPLACE_FAST_NETWORK`
+- `MARKETPLACE_BASE_URL`
+- `MARKETPLACE_WEB_BASE_URL`
+- `MARKETPLACE_API_BASE_URL`
+- `NEXT_PUBLIC_MARKETPLACE_API_BASE_URL`
+- `FAST_RPC_URL`
+- `FACILITATOR_FAST_RPC_URL`
+- `API_PORT`
+- `WEB_PORT`
+- `WORKER_POLL_INTERVAL_MS`
+
+When your platform supports mounted secret files, prefer `MARKETPLACE_TREASURY_KEYFILE` over `MARKETPLACE_TREASURY_PRIVATE_KEY`.
+
 Routing expectations encoded in the template:
 
 - `web` is public and serves `MARKETPLACE_WEB_BASE_URL`
