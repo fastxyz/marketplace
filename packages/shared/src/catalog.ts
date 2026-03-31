@@ -503,6 +503,7 @@ export function buildServiceSummary(input: {
     totalCalls: input.analytics.totalCalls,
     revenue: formatRevenueLabel(input.analytics.revenueRaw),
     successRate30d: roundToSingleDecimal(input.analytics.successRate30d),
+    websiteUrl: input.service.websiteUrl,
     volume30d: input.analytics.volume30d.map((point) => ({
       date: point.date,
       amount: rawToDecimalString(point.amountRaw, 6)

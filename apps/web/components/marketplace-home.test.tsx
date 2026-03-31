@@ -39,25 +39,29 @@ describe("MarketplaceHome", () => {
             totalCalls: 12,
             revenue: "0.42",
             successRate30d: 66.7,
-            volume30d: []
+            volume30d: [],
+            websiteUrl: "https://www.amazon.com"
           },
           {
-            serviceType: "marketplace_proxy",
+            serviceType: "external_registry",
             slug: "weather-wire",
             name: "Weather Wire",
             ownerName: "Sky Data",
             tagline: "Forecast and alert APIs for agents.",
             categories: ["Weather"],
-            settlementMode: "verified_escrow",
-            settlementLabel: "Verified",
-            settlementDescription: "Marketplace escrow, refunds, and payout reconciliation.",
-            priceRange: "$0.01 USDC",
-            settlementToken: "USDC",
+            settlementMode: null,
+            settlementLabel: "External API",
+            settlementDescription: "Calls go directly to the provider. The marketplace lists discovery metadata only.",
+            priceRange: "See provider docs",
+            settlementToken: null,
             endpointCount: 1,
-            totalCalls: 4,
-            revenue: "0.04",
-            successRate30d: 100,
-            volume30d: []
+            totalCalls: null,
+            revenue: null,
+            successRate30d: null,
+            volume30d: [],
+            accessModelLabel: "External API",
+            accessModelDescription: "Calls go directly to the provider. The marketplace only lists docs and direct endpoints.",
+            websiteUrl: "https://weather.example.com"
           }
         ]}
       />
@@ -69,6 +73,8 @@ describe("MarketplaceHome", () => {
     expect(screen.getByRole("columnheader", { name: /pricing/i })).toBeTruthy();
     expect(screen.getByText("Mock Research Signals")).toBeTruthy();
     expect(screen.getByText("Weather Wire")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Mock Research Signals favicon" }).getAttribute("src")).toBe("https://www.amazon.com/favicon.ico");
+    expect(screen.getByRole("img", { name: "Weather Wire favicon" }).getAttribute("src")).toBe("https://weather.example.com/favicon.ico");
 
     await user.type(screen.getByPlaceholderText("Search services, owners, or categories"), "weather");
 

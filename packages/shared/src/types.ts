@@ -215,6 +215,7 @@ export interface MarketplaceServiceSummary {
     date: string;
     amount: string;
   }>;
+  websiteUrl?: string | null;
 }
 
 export interface ExternalRegistryServiceSummary {
