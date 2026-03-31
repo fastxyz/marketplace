@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useTheme } from "next-themes";
+
+import { useTheme } from "@/components/theme-provider";
 
 const FAVICON_BY_THEME = {
   dark: "/brand/favicon_light.ico",

@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { SiteHeader } from "./site-header";
+import { ThemeProvider } from "./theme-provider";
 
 vi.mock("next/link", () => ({
   default: ({ href, children, ...props }: { href: string; children: ReactNode }) => (
@@ -17,14 +18,20 @@ vi.mock("next/link", () => ({
 }));
 
 describe("SiteHeader", () => {
-  it("renders desktop navigation plus the wallet login controls", () => {
-    render(
-      <SiteHeader
-        apiBaseUrl="https://api.marketplace.example.com"
-        deploymentNetwork="testnet"
-        networkLabel="Testnet"
-      />
+  function renderHeader(deploymentNetwork: "testnet" | "mainnet", networkLabel: string) {
+    return render(
+      <ThemeProvider defaultTheme="light">
+        <SiteHeader
+          apiBaseUrl="https://api.marketplace.example.com"
+          deploymentNetwork={deploymentNetwork}
+          networkLabel={networkLabel}
+        />
+      </ThemeProvider>
     );
+  }
+
+  it("renders desktop navigation plus the wallet login controls", () => {
+    renderHeader("testnet", "Testnet");
 
     expect(screen.getByRole("link", { name: /fast marketplace/i }).getAttribute("href")).toBe("/");
     expect(screen.getByRole("navigation")).toBeTruthy();
@@ -37,13 +44,7 @@ describe("SiteHeader", () => {
   it("shows the site links inside the mobile burger menu", async () => {
     const user = userEvent.setup();
 
-    render(
-      <SiteHeader
-        apiBaseUrl="https://api.marketplace.example.com"
-        deploymentNetwork="testnet"
-        networkLabel="Testnet"
-      />
-    );
+    renderHeader("testnet", "Testnet");
 
     expect(screen.queryByRole("navigation", { name: "Mobile" })).toBeNull();
 
@@ -51,7 +52,6 @@ describe("SiteHeader", () => {
 
     const mobileNav = screen.getByRole("navigation", { name: "Mobile" });
     expect(mobileNav).toBeTruthy();
-    expect(within(mobileNav).getByText("Marketplace")).toBeTruthy();
     expect(within(mobileNav).getByText("Stats")).toBeTruthy();
     expect(within(mobileNav).getByText("Spend")).toBeTruthy();
     expect(within(mobileNav).getByText("Suggest")).toBeTruthy();
@@ -60,13 +60,7 @@ describe("SiteHeader", () => {
   });
 
   it("does not render the mainnet badge in the navbar", () => {
-    render(
-      <SiteHeader
-        apiBaseUrl="https://api.marketplace.example.com"
-        deploymentNetwork="mainnet"
-        networkLabel="Mainnet"
-      />
-    );
+    renderHeader("mainnet", "Mainnet");
 
     expect(screen.queryByText("Mainnet")).toBeNull();
   });

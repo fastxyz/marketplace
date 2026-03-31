@@ -6,18 +6,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ModeToggle } from "./mode-toggle";
-
-const { useThemeMock } = vi.hoisted(() => ({
-  useThemeMock: vi.fn()
-}));
-
-vi.mock("next-themes", () => ({
-  useTheme: () => useThemeMock()
-}));
+import { ThemeProvider } from "./theme-provider";
 
 describe("ModeToggle", () => {
   beforeEach(() => {
-    useThemeMock.mockReset();
+    window.localStorage.clear();
+    document.documentElement.className = "";
   });
 
   afterEach(() => {
@@ -25,30 +19,30 @@ describe("ModeToggle", () => {
   });
 
   it("switches from light to dark", async () => {
-    const setTheme = vi.fn();
-    useThemeMock.mockReturnValue({
-      resolvedTheme: "light",
-      setTheme
-    });
-
-    render(<ModeToggle />);
+    render(
+      <ThemeProvider defaultTheme="light">
+        <ModeToggle />
+      </ThemeProvider>
+    );
 
     await userEvent.click(screen.getByRole("button", { name: /toggle color theme/i }));
 
-    expect(setTheme).toHaveBeenCalledWith("dark");
+    expect(window.localStorage.getItem("fast-marketplace-theme")).toBe("dark");
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
   });
 
   it("switches from dark to light", async () => {
-    const setTheme = vi.fn();
-    useThemeMock.mockReturnValue({
-      resolvedTheme: "dark",
-      setTheme
-    });
+    window.localStorage.setItem("fast-marketplace-theme", "dark");
 
-    render(<ModeToggle />);
+    render(
+      <ThemeProvider defaultTheme="light">
+        <ModeToggle />
+      </ThemeProvider>
+    );
 
     await userEvent.click(screen.getByRole("button", { name: /toggle color theme/i }));
 
-    expect(setTheme).toHaveBeenCalledWith("light");
+    expect(window.localStorage.getItem("fast-marketplace-theme")).toBe("light");
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
   });
 });

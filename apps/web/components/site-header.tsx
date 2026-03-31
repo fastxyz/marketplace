@@ -22,9 +22,6 @@ export function SiteHeader({
 
   const navigationLinks = (
     <>
-      <Link href="/" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
-        Marketplace
-      </Link>
       <Link href="/stats" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
         Stats
       </Link>

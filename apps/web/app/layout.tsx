@@ -77,11 +77,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <body className="bg-background text-foreground antialiased">
         <ThemeProvider
-          attribute="class"
           defaultTheme="light"
-          disableTransitionOnChange
-          enableSystem={false}
-          themes={["light", "dark"]}
         >
           <FaviconSync />
           <div className="flex min-h-screen flex-col">
