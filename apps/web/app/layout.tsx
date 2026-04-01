@@ -46,7 +46,16 @@ export const metadata: Metadata = {
     follow: true
   },
   icons: {
-    icon: "/brand/favicon_dark.ico",
+    icon: [
+      {
+        url: "/brand/favicon_dark.ico",
+        media: "(prefers-color-scheme: light)"
+      },
+      {
+        url: "/brand/favicon_light.ico",
+        media: "(prefers-color-scheme: dark)"
+      }
+    ],
     shortcut: "/brand/favicon_dark.ico"
   },
   openGraph: {

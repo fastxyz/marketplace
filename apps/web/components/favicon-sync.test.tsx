@@ -5,13 +5,25 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { FaviconSync } from "./favicon-sync";
-import { ThemeProvider } from "./theme-provider";
 
 describe("FaviconSync", () => {
+  let prefersDark = false;
+
   beforeEach(() => {
     document.head.innerHTML = "";
-    window.localStorage.clear();
-    document.documentElement.className = "";
+    prefersDark = false;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: (query: string) => ({
+        matches: query === "(prefers-color-scheme: dark)" ? prefersDark : false,
+        media: query,
+        onchange: null,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        dispatchEvent: () => false
+      })
+    });
   });
 
   afterEach(() => {
@@ -19,26 +31,18 @@ describe("FaviconSync", () => {
     document.head.innerHTML = "";
   });
 
-  it("uses the light favicon when the site theme is dark", async () => {
-    window.localStorage.setItem("fast-marketplace-theme", "dark");
+  it("uses the light favicon when the browser prefers dark mode", async () => {
+    prefersDark = true;
 
-    render(
-      <ThemeProvider defaultTheme="light">
-        <FaviconSync />
-      </ThemeProvider>
-    );
+    render(<FaviconSync />);
 
     await waitFor(() => {
       expect(document.head.querySelector('link[rel="icon"]')?.getAttribute("href")).toBe("/brand/favicon_light.ico");
     });
   });
 
-  it("uses the dark favicon when the site theme is light", async () => {
-    render(
-      <ThemeProvider defaultTheme="light">
-        <FaviconSync />
-      </ThemeProvider>
-    );
+  it("uses the dark favicon when the browser prefers light mode", async () => {
+    render(<FaviconSync />);
 
     await waitFor(() => {
       expect(document.head.querySelector('link[rel="icon"]')?.getAttribute("href")).toBe("/brand/favicon_dark.ico");

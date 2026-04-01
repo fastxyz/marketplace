@@ -2,14 +2,13 @@
 
 import * as React from "react";
 
-import { useTheme } from "@/components/theme-provider";
-
 const FAVICON_BY_THEME = {
   dark: "/brand/favicon_light.ico",
   light: "/brand/favicon_dark.ico"
 } as const;
 
 const LINK_RELS = ["icon", "shortcut icon"] as const;
+const DARK_MODE_MEDIA_QUERY = "(prefers-color-scheme: dark)";
 
 function updateFaviconLinks(href: string) {
   for (const rel of LINK_RELS) {
@@ -31,13 +30,22 @@ function updateFaviconLinks(href: string) {
   }
 }
 
-export function FaviconSync() {
-  const { resolvedTheme } = useTheme();
+function resolvePreferredTheme(): keyof typeof FAVICON_BY_THEME {
+  return window.matchMedia(DARK_MODE_MEDIA_QUERY).matches ? "dark" : "light";
+}
 
+export function FaviconSync() {
   React.useEffect(() => {
-    const theme = resolvedTheme === "dark" ? "dark" : "light";
-    updateFaviconLinks(FAVICON_BY_THEME[theme]);
-  }, [resolvedTheme]);
+    const mediaQuery = window.matchMedia(DARK_MODE_MEDIA_QUERY);
+    const syncFavicon = () => updateFaviconLinks(FAVICON_BY_THEME[resolvePreferredTheme()]);
+
+    syncFavicon();
+    mediaQuery.addEventListener("change", syncFavicon);
+
+    return () => {
+      mediaQuery.removeEventListener("change", syncFavicon);
+    };
+  }, []);
 
   return null;
 }

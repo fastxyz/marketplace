@@ -52,9 +52,8 @@ describe("SiteHeader", () => {
 
     const mobileNav = screen.getByRole("navigation", { name: "Mobile" });
     expect(mobileNav).toBeTruthy();
-    expect(within(mobileNav).getByText("Stats")).toBeTruthy();
-    expect(within(mobileNav).getByText("Spend")).toBeTruthy();
-    expect(within(mobileNav).getByText("Providers")).toBeTruthy();
+    expect(within(mobileNav).getByText("Marketplace Stats")).toBeTruthy();
+    expect(within(mobileNav).getByText("Provider Dashboard")).toBeTruthy();
   });
 
   it("does not render the mainnet badge in the navbar", () => {

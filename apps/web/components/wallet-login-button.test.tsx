@@ -3,9 +3,11 @@
 import React from "react";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WalletLoginButton } from "./wallet-login-button";
+import { WALLET_SESSION_STORAGE_KEY } from "@/lib/wallet-session";
 
 const connectMock = vi.fn();
 const disconnectMock = vi.fn();
@@ -13,13 +15,22 @@ const exportKeysMock = vi.fn();
 const getActiveNetworkMock = vi.fn();
 const signMock = vi.fn();
 const fromInjectedMock = vi.fn();
+const getInjectedFastConnectorMock = vi.fn();
 const waitForInjectedFastConnectorMock = vi.fn();
+
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...props }: { href: string; children: ReactNode }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  )
+}));
 
 vi.mock("@fastxyz/fast-connector", () => ({
   FastConnector: {
     fromInjected: fromInjectedMock
   },
-  getInjectedFastConnector: vi.fn(),
+  getInjectedFastConnector: getInjectedFastConnectorMock,
   waitForInjectedFastConnector: waitForInjectedFastConnectorMock
 }));
 
@@ -41,6 +52,7 @@ describe("WalletLoginButton", () => {
       getActiveNetwork: getActiveNetworkMock,
       sign: signMock
     });
+    getInjectedFastConnectorMock.mockReturnValue({ provider: "injected" });
     waitForInjectedFastConnectorMock.mockResolvedValue({ provider: "injected" });
     window.localStorage.clear();
   });
@@ -110,6 +122,42 @@ describe("WalletLoginButton", () => {
       wallet: "fast1provider000000000000000000000000000000000000000000000000000000",
       deploymentNetwork: "mainnet"
     });
+  });
+
+  it("shows the connected wallet dropdown with dashboard and disconnect actions", async () => {
+    const user = userEvent.setup();
+
+    window.localStorage.setItem(
+      WALLET_SESSION_STORAGE_KEY,
+      JSON.stringify({
+        accessToken: "wallet-session-token",
+        wallet: "fast1provider000000000000000000000000000000000000000000000000000000",
+        deploymentNetwork: "mainnet",
+        resourceId: window.location.origin
+      })
+    );
+
+    render(
+      <WalletLoginButton
+        apiBaseUrl=""
+        deploymentNetwork="mainnet"
+        networkLabel="Mainnet"
+      />
+    );
+
+    await user.hover(screen.getByRole("button", { name: /wallet menu for fast1pro\.\.\.000000/i }));
+
+    const dashboardMenuItem = await screen.findByRole("menuitem", { name: "My Dashboard" });
+    expect(dashboardMenuItem.getAttribute("href")).toBe("/me/spend");
+
+    await user.click(screen.getByText("Disconnect Wallet"));
+
+    await waitFor(() => {
+      expect(disconnectMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(window.localStorage.getItem(WALLET_SESSION_STORAGE_KEY)).toBeNull();
+    expect(screen.getByRole("button", { name: /connect to fast/i })).toBeTruthy();
   });
 
   it("shows an actionable error when wallet auth receives the Next app HTML instead of API JSON", async () => {

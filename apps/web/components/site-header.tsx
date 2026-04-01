@@ -23,13 +23,10 @@ export function SiteHeader({
   const navigationLinks = (
     <>
       <Link href="/stats" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
-        Stats
-      </Link>
-      <Link href="/me/spend" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
-        Spend
+        Marketplace Stats
       </Link>
       <Link href="/providers" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
-        Providers
+        Provider Dashboard
       </Link>
     </>
   );
