@@ -159,7 +159,6 @@ describe("WalletLoginButton", () => {
     expect(window.localStorage.getItem(WALLET_SESSION_STORAGE_KEY)).toBeNull();
     expect(screen.getByRole("button", { name: /connect to fast/i })).toBeTruthy();
   });
-
   it("shows an actionable error when wallet auth receives the Next app HTML instead of API JSON", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response("<!DOCTYPE html><html><body>Not the API</body></html>", {
