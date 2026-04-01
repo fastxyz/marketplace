@@ -19,6 +19,7 @@ COPY packages ./packages
 RUN npm run build:runtime
 
 FROM node:20-bookworm-slim AS runner
+LABEL org.opencontainers.image.source=https://github.com/fastxyz/marketplace
 
 WORKDIR /app
 ENV NODE_ENV=production
