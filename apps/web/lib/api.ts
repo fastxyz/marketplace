@@ -79,8 +79,8 @@ export async function fetchServices(): Promise<ServiceSummary[]> {
   return data.services;
 }
 
-export async function fetchServiceDetail(slug: string): Promise<ServiceDetail | null> {
-  const response = await fetch(`${getApiBaseUrl()}/catalog/services/${slug}`, {
+export async function fetchServiceDetail(slug: string, apiBaseUrl?: string): Promise<ServiceDetail | null> {
+  const response = await fetch(`${(apiBaseUrl ?? getApiBaseUrl()).replace(/\/$/, "")}/catalog/services/${slug}`, {
     cache: "no-store"
   });
 

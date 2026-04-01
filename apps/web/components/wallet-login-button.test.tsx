@@ -111,4 +111,33 @@ describe("WalletLoginButton", () => {
       deploymentNetwork: "mainnet"
     });
   });
+
+  it("shows an actionable error when wallet auth receives the Next app HTML instead of API JSON", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("<!DOCTYPE html><html><body>Not the API</body></html>", {
+        status: 404,
+        headers: {
+          "content-type": "text/html"
+        }
+      })
+    );
+
+    render(
+      <WalletLoginButton
+        apiBaseUrl=""
+        deploymentNetwork="mainnet"
+        networkLabel="Mainnet"
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /connect to fast/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          /wallet auth hit the web app instead of the api\. for localhost dev, run the api server and set marketplace_api_base_url=http:\/\/localhost:3000 before starting the web app\./i
+        )
+      ).toBeTruthy();
+    });
+  });
 });

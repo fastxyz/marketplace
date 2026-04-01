@@ -22,23 +22,14 @@ export function SiteHeader({
 
   const navigationLinks = (
     <>
-      <Link href="/" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
-        Marketplace
-      </Link>
       <Link href="/stats" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
         Stats
       </Link>
       <Link href="/me/spend" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
         Spend
       </Link>
-      <Link href="/suggest" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
-        Suggest
-      </Link>
       <Link href="/providers" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
         Providers
-      </Link>
-      <Link href="/skill.md" className="fast-nav-link" onClick={() => setMobileMenuOpen(false)}>
-        SKILL.md
       </Link>
     </>
   );
@@ -80,12 +71,12 @@ export function SiteHeader({
             >
               {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
             </button>
-            <ModeToggle />
             <WalletLoginButton
               apiBaseUrl={apiBaseUrl}
               deploymentNetwork={deploymentNetwork}
               networkLabel={networkLabel}
             />
+            <ModeToggle />
           </div>
         </div>
       </div>

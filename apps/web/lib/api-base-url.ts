@@ -1,7 +1,7 @@
-const DEFAULT_PRODUCTION_API_BASE_URL = "https://api.marketplace.fast.xyz";
+const DEFAULT_LOCAL_API_BASE_URL = "http://localhost:3000";
 
 export function getServerApiBaseUrl(): string {
-  return process.env.MARKETPLACE_API_BASE_URL ?? "http://localhost:3000";
+  return process.env.MARKETPLACE_API_BASE_URL ?? DEFAULT_LOCAL_API_BASE_URL;
 }
 
 export function getClientApiBaseUrl(
@@ -9,9 +9,10 @@ export function getClientApiBaseUrl(
 ): string {
   const configured = env.NEXT_PUBLIC_MARKETPLACE_API_BASE_URL ?? env.MARKETPLACE_API_BASE_URL ?? "";
 
-  // Local web dev should default to same-origin unless a non-production API was explicitly configured.
-  if (env.NODE_ENV !== "production" && configured === DEFAULT_PRODUCTION_API_BASE_URL) {
-    return "";
+  if (env.NODE_ENV !== "production") {
+    if (!configured) {
+      return DEFAULT_LOCAL_API_BASE_URL;
+    }
   }
 
   return configured;
