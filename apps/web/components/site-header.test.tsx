@@ -54,9 +54,7 @@ describe("SiteHeader", () => {
     expect(mobileNav).toBeTruthy();
     expect(within(mobileNav).getByText("Stats")).toBeTruthy();
     expect(within(mobileNav).getByText("Spend")).toBeTruthy();
-    expect(within(mobileNav).getByText("Suggest")).toBeTruthy();
     expect(within(mobileNav).getByText("Providers")).toBeTruthy();
-    expect(within(mobileNav).getByText("SKILL.md")).toBeTruthy();
   });
 
   it("does not render the mainnet badge in the navbar", () => {

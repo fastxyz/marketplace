@@ -172,8 +172,20 @@
     padding: 0 24px 80px;
   }
 
+  .page-shell {
+    margin: 0 auto;
+    padding: 0 24px 80px;
+  }
+
+  .section-sep {
+    padding-top: 64px;
+  }
+
   .page-section {
-    width: min(100%, var(--section-width));
+    margin: 0 auto;
+  }
+
+  .section-container {
     margin: 0 auto;
   }
 
@@ -182,9 +194,19 @@
     gap: 24px;
   }
 
+  .section-stack {
+    display: grid;
+    gap: 24px;
+  }
+
   .page-header {
     display: grid;
     gap: 12px;
+  }
+
+  .page-intro {
+    display: grid;
+    gap: 16px;
   }
 
   .page-title,
@@ -301,6 +323,17 @@
     color: var(--foreground);
   }
 
+  .btn-fast-ghost.btn-fast-sm {
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  .btn-fast-ghost.btn-fast-sm:hover {
+    background: transparent;
+    transform: none;
+  }
+
   .btn-fast-sm {
     padding: 0.6rem 1rem;
     font-size: 0.875rem;
@@ -334,9 +367,16 @@
   .fast-card-dark,
   .terminal-surface {
     background: var(--foreground);
-    border: 1px solid color-mix(in srgb, var(--foreground) 80%, white 20%);
+    border: 1px solid transparent;
     border-radius: 24px;
     color: var(--background);
+  }
+
+  .prompt-block {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    color: var(--card-foreground);
   }
 
   .badge-fast {
@@ -419,14 +459,73 @@
     border-bottom: 1px solid color-mix(in srgb, var(--background) 16%, transparent);
   }
 
+  .terminal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid color-mix(in srgb, var(--background) 16%, transparent);
+  }
+
+  .terminal-toolbar .btn-fast-ghost {
+    color: color-mix(in srgb, var(--background) 88%, transparent);
+    border-color: transparent;
+  }
+
+  .terminal-toolbar .btn-fast-ghost:hover {
+    color: var(--background);
+    background: transparent;
+  }
+
+  .prompt-block .terminal-toolbar {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .prompt-block .terminal-footer {
+    border-top: 1px solid var(--border);
+  }
+
+  .prompt-block .terminal-toolbar .btn-fast-ghost {
+    color: var(--foreground);
+  }
+
+  .prompt-block .terminal-toolbar .btn-fast-ghost:hover {
+    color: var(--foreground);
+  }
+
   .terminal-body {
-    padding: 1.5rem;
+    padding: 1rem;
+    background: #000;
+    color: var(--background);
+    border-radius: 20px;
+    border: 1px solid transparent;
+    box-shadow: none;
+  }
+
+  .wallet-connect-button {
+    background: #000;
+    color: var(--background);
+    border-color: transparent;
+  }
+
+  .wallet-connect-button:hover {
+    background: #000;
+    color: var(--background);
+    transform: translateY(-1px);
   }
 
   .terminal-code {
     margin: 0;
-    color: var(--background);
+    color: inherit;
     white-space: pre-wrap;
+  }
+
+  .prompt-block .terminal-body {
+    background: transparent;
+    color: inherit;
+    border: 0;
+    box-shadow: none;
   }
 
   .terminal-dots {
@@ -442,6 +541,43 @@
   }
 }
 
+.dark .terminal-body {
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.dark .terminal-surface {
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.dark .terminal-surface .terminal-toolbar {
+  border-bottom: 1px solid var(--border);
+}
+
+.dark .terminal-surface .terminal-footer {
+  border-top: 1px solid var(--border);
+}
+
+.dark .terminal-surface .terminal-toolbar .btn-fast-ghost {
+  color: var(--foreground);
+}
+
+.dark .terminal-surface .terminal-toolbar .btn-fast-ghost:hover {
+  color: var(--foreground);
+}
+
+.dark .wallet-connect-button {
+  background: var(--card);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
+.dark .wallet-connect-button:hover {
+  background: var(--card);
+  color: var(--foreground);
+}
+
 @media (min-width: 1024px) {
   .nav-shell,
   .footer-shell {
@@ -450,6 +586,11 @@
   }
 
   .page-main {
+    padding-left: 40px;
+    padding-right: 40px;
+  }
+
+  .page-shell {
     padding-left: 40px;
     padding-right: 40px;
   }

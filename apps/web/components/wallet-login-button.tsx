@@ -38,6 +38,16 @@ interface SessionState {
   resourceId: string;
 }
 
+function normalizeAuthFailureMessage(message: string): string {
+  const trimmed = message.trim();
+
+  if (trimmed.startsWith("<!DOCTYPE html>") || trimmed.startsWith("<html")) {
+    return "Wallet auth hit the web app instead of the API. For localhost dev, run the API server and set MARKETPLACE_API_BASE_URL=http://localhost:3000 before starting the web app.";
+  }
+
+  return trimmed || "Wallet login failed.";
+}
+
 export function WalletLoginButton({
   apiBaseUrl,
   deploymentNetwork,
@@ -110,7 +120,7 @@ export function WalletLoginButton({
       });
 
       if (!challengeResponse.ok) {
-        throw new Error(await challengeResponse.text());
+        throw new Error(normalizeAuthFailureMessage(await challengeResponse.text()));
       }
 
       const challenge = (await challengeResponse.json()) as WalletChallengeResponse;
@@ -129,7 +139,7 @@ export function WalletLoginButton({
       });
 
       if (!sessionResponse.ok) {
-        throw new Error(await sessionResponse.text());
+        throw new Error(normalizeAuthFailureMessage(await sessionResponse.text()));
       }
 
       const walletSession = (await sessionResponse.json()) as WalletSessionResponse;
@@ -197,6 +207,7 @@ export function WalletLoginButton({
           <Button
             type="button"
             size="sm"
+            className="wallet-connect-button"
             onClick={() => void connectWallet()}
             disabled={pending}
             aria-label="Connect to Fast"
@@ -212,15 +223,7 @@ export function WalletLoginButton({
                   aria-hidden="true"
                   width={146}
                   height={52}
-                  className="block h-4 w-auto dark:hidden"
-                />
-                <img
-                  src="/brand/fast-logo-dark.svg"
-                  alt=""
-                  aria-hidden="true"
-                  width={146}
-                  height={52}
-                  className="hidden h-4 w-auto dark:block"
+                  className="block h-4 w-auto"
                 />
               </>
             )}
