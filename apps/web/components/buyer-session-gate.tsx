@@ -13,9 +13,11 @@ import {
 
 export function BuyerSessionGate({
   deploymentNetwork,
+  requiredWallet,
   children
 }: {
   deploymentNetwork: MarketplaceDeploymentNetwork;
+  requiredWallet?: string | null;
   children: (session: StoredWalletSession) => React.ReactNode;
 }) {
   const [session, setSession] = React.useState<StoredWalletSession | null>(null);
@@ -46,10 +48,36 @@ export function BuyerSessionGate({
       <Card variant="frosted">
         <CardHeader>
           <CardTitle>Spend dashboard</CardTitle>
-          <CardDescription>Connect a Fast wallet in the header to view marketplace spend for this site.</CardDescription>
+          <CardDescription>
+            {requiredWallet
+              ? `Connect Fast wallet ${requiredWallet} in the header to view marketplace spend for this site.`
+              : "Connect a Fast wallet in the header to view marketplace spend for this site."}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
-          <p>Buyer activity is tied to the connected website wallet session. Connect the extension wallet first, then reload this page.</p>
+          <p>
+            Buyer activity is tied to the connected website wallet session. Connect the extension wallet first, then
+            reload this page.
+          </p>
+          <Link href="/" className="fast-link">
+            Back to marketplace
+          </Link>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (requiredWallet && session.wallet !== requiredWallet) {
+    return (
+      <Card variant="frosted">
+        <CardHeader>
+          <CardTitle>Wrong wallet connected</CardTitle>
+          <CardDescription>
+            Spend for {requiredWallet} is only available when that wallet is connected in the header.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <p>Connected wallet: {session.wallet}</p>
           <Link href="/" className="fast-link">
             Back to marketplace
           </Link>

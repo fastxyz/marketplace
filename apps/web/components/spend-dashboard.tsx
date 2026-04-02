@@ -47,13 +47,30 @@ function formatTimestamp(value: string) {
 
 export function SpendDashboard({
   apiBaseUrl,
-  deploymentNetwork
+  deploymentNetwork,
+  requestedWallet,
+  invalidRequestedWallet
 }: {
   apiBaseUrl: string;
   deploymentNetwork: MarketplaceDeploymentNetwork;
+  requestedWallet?: string | null;
+  invalidRequestedWallet?: string | null;
 }) {
+  if (invalidRequestedWallet) {
+    return (
+      <Card variant="frosted">
+        <CardHeader>
+          <CardTitle>Invalid wallet address</CardTitle>
+          <CardDescription>
+            {invalidRequestedWallet} is not a canonical Fast address or 32-byte public key.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
   return (
-    <BuyerSessionGate deploymentNetwork={deploymentNetwork}>
+    <BuyerSessionGate deploymentNetwork={deploymentNetwork} requiredWallet={requestedWallet}>
       {(session) => (
         <SpendDashboardInner
           apiBaseUrl={apiBaseUrl}
@@ -141,7 +158,8 @@ function SpendDashboardInner({
               <Badge variant="eyebrow">Last 30 days</Badge>
               <CardTitle className="text-3xl">Marketplace spend</CardTitle>
               <CardDescription>
-                Wallet {shortenWalletAddress(wallet)}. Only marketplace-executed calls, top-ups, async outcomes, and refunds appear here.
+                Wallet {shortenWalletAddress(wallet)}. Only marketplace-executed calls, top-ups, async outcomes, and
+                refunds appear here.
               </CardDescription>
             </div>
           </div>

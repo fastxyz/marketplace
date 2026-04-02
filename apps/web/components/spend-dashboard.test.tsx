@@ -39,6 +39,19 @@ describe("SpendDashboard", () => {
     expect(screen.getByText(/connect a fast wallet in the header/i)).toBeTruthy();
   });
 
+  it("shows an invalid-address state when the query wallet cannot be normalized", () => {
+    render(
+      <SpendDashboard
+        apiBaseUrl="https://api.marketplace.example.com"
+        deploymentNetwork="mainnet"
+        invalidRequestedWallet="not-a-wallet"
+      />
+    );
+
+    expect(screen.getByText("Invalid wallet address")).toBeTruthy();
+    expect(screen.getByText(/not-a-wallet is not a canonical fast address/i)).toBeTruthy();
+  });
+
   it("renders summary cards and grouped activity when a wallet session exists", async () => {
     window.localStorage.setItem(
       "fast-marketplace-wallet-session",
@@ -113,6 +126,7 @@ describe("SpendDashboard", () => {
       <SpendDashboard
         apiBaseUrl="https://api.marketplace.example.com"
         deploymentNetwork="testnet"
+        requestedWallet="fast1buyer0000000000000000000000000000000000000000000000000000000"
       />
     );
 

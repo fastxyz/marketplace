@@ -59,6 +59,34 @@ describe("BuyerSessionGate", () => {
     });
   });
 
+  it("requires the requested wallet when the url targets a specific address", async () => {
+    window.localStorage.setItem(
+      "fast-marketplace-wallet-session",
+      JSON.stringify({
+        accessToken: "token_123",
+        wallet: "fast1different000000000000000000000000000000000000000000000000000",
+        deploymentNetwork: "testnet",
+        resourceId: window.location.origin
+      })
+    );
+
+    render(
+      <BuyerSessionGate
+        deploymentNetwork="testnet"
+        requiredWallet="fast1buyer0000000000000000000000000000000000000000000000000000000"
+      >
+        {(session) => <div>{session.wallet}</div>}
+      </BuyerSessionGate>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Wrong wallet connected")).toBeTruthy();
+    });
+
+    expect(screen.getByText(/connected wallet:/i)).toBeTruthy();
+    expect(screen.queryByText(/fast1buyer0000000000000000000000000000000000000000000000000000000$/i)).toBeFalsy();
+  });
+
   it("reacts to same-tab session clears and falls back to the wallet-required state", async () => {
     window.localStorage.setItem(
       "fast-marketplace-wallet-session",

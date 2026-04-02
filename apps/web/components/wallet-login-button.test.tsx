@@ -148,7 +148,7 @@ describe("WalletLoginButton", () => {
     await user.hover(screen.getByRole("button", { name: /wallet menu for fast1pro\.\.\.000000/i }));
 
     const dashboardMenuItem = await screen.findByRole("menuitem", { name: "My Dashboard" });
-    expect(dashboardMenuItem.getAttribute("href")).toBe("/me/spend");
+    expect(dashboardMenuItem.getAttribute("href")).toBe("/spend");
 
     await user.click(screen.getByText("Disconnect Wallet"));
 
