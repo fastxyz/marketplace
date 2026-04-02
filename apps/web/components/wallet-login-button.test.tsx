@@ -148,7 +148,7 @@ describe("WalletLoginButton", () => {
     await user.hover(screen.getByRole("button", { name: /wallet menu for fast1pro\.\.\.000000/i }));
 
     const dashboardMenuItem = await screen.findByRole("menuitem", { name: "My Dashboard" });
-    expect(dashboardMenuItem.getAttribute("href")).toBe("/me/spend");
+    expect(dashboardMenuItem.getAttribute("href")).toBe("/spend");
 
     await user.click(screen.getByText("Disconnect Wallet"));
 
@@ -159,7 +159,6 @@ describe("WalletLoginButton", () => {
     expect(window.localStorage.getItem(WALLET_SESSION_STORAGE_KEY)).toBeNull();
     expect(screen.getByRole("button", { name: /connect to fast/i })).toBeTruthy();
   });
-
   it("shows an actionable error when wallet auth receives the Next app HTML instead of API JSON", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response("<!DOCTYPE html><html><body>Not the API</body></html>", {

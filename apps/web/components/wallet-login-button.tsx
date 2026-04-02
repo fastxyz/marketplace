@@ -245,7 +245,7 @@ export function WalletLoginButton({
               onMouseLeave={scheduleMenuClose}
             >
               <DropdownMenuItem asChild>
-                <Link href="/me/spend" className="cursor-pointer">
+                <Link href="/spend" className="cursor-pointer">
                   My Dashboard
                 </Link>
               </DropdownMenuItem>
