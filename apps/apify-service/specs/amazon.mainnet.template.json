@@ -104,6 +104,154 @@
       "upstreamBaseUrl": "https://fastmainnetapifyamazon.8o.vc",
       "upstreamPath": "/scrape-products",
       "upstreamAuthMode": "none"
+    },
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "product-details",
+      "title": "Product Details",
+      "description": "Extract Amazon product, pricing, and review data from direct product URLs.",
+      "billingType": "fixed_x402",
+      "price": "$0.0001",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["startUrls"],
+        "properties": {
+          "startUrls": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["url"],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "maxItems": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "country": {
+            "type": "string",
+            "minLength": 2
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "startUrls": [
+          {
+            "url": "https://www.amazon.com/dp/B09X7MPX8L"
+          }
+        ],
+        "maxItems": 10,
+        "country": "US"
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "asin": "B09X7MPX8L",
+            "title": "Example Product",
+            "price": {
+              "value": 145.5,
+              "currency": "$"
+            }
+          }
+        ]
+      },
+      "usageNotes": "Use this when you already know the product URLs and want the clearest product-detail workflow.",
+      "upstreamBaseUrl": "https://fastmainnetapifyamazon.8o.vc",
+      "upstreamPath": "/product-details",
+      "upstreamAuthMode": "none"
+    },
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "category-products",
+      "title": "Category Products",
+      "description": "Extract Amazon product listings from category or search result URLs.",
+      "billingType": "fixed_x402",
+      "price": "$0.0001",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["startUrls"],
+        "properties": {
+          "startUrls": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["url"],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "maxItems": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "country": {
+            "type": "string",
+            "minLength": 2
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "startUrls": [
+          {
+            "url": "https://www.amazon.com/s?k=mechanical+keyboard"
+          }
+        ],
+        "maxItems": 25,
+        "country": "US"
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "asin": "B09X7MPX8L",
+            "title": "Example Product",
+            "price": {
+              "value": 145.5,
+              "currency": "$"
+            }
+          }
+        ]
+      },
+      "usageNotes": "Use this when the input is an Amazon category or search results page rather than a direct product URL.",
+      "upstreamBaseUrl": "https://fastmainnetapifyamazon.8o.vc",
+      "upstreamPath": "/category-products",
+      "upstreamAuthMode": "none"
     }
   ]
 }

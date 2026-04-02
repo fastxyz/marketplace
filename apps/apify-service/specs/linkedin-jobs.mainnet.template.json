@@ -85,6 +85,62 @@
       "upstreamBaseUrl": "https://fastmainnetapifylinkedinjobs.8o.vc",
       "upstreamPath": "/search-jobs",
       "upstreamAuthMode": "none"
+    },
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "remote-jobs",
+      "title": "Remote Jobs",
+      "description": "Search LinkedIn jobs with a remote-first workflow using title and row count inputs.",
+      "billingType": "fixed_x402",
+      "price": "$0.0001",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "location": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rows": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "title": "Product Designer",
+        "location": "Remote",
+        "rows": 25
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "title": "Remote Product Designer",
+            "company": "Example Corp",
+            "location": "Remote"
+          }
+        ]
+      },
+      "usageNotes": "Use this when the primary filter is remote availability rather than a specific metro area.",
+      "upstreamBaseUrl": "https://fastmainnetapifylinkedinjobs.8o.vc",
+      "upstreamPath": "/remote-jobs",
+      "upstreamAuthMode": "none"
     }
   ]
 }

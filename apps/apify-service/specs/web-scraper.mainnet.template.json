@@ -119,6 +119,76 @@
       "upstreamBaseUrl": "https://fastmainnetapifywebscraper.8o.vc",
       "upstreamPath": "/crawl-pages",
       "upstreamAuthMode": "none"
+    },
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "extract-page",
+      "title": "Extract Page",
+      "description": "Load one or more JavaScript-rendered pages and extract structured data without recursive crawling.",
+      "billingType": "fixed_x402",
+      "price": "$0.0001",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["startUrls", "pageFunction"],
+        "properties": {
+          "startUrls": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["url"],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "pageFunction": {
+            "type": "string",
+            "minLength": 1
+          },
+          "maxCrawlPages": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "startUrls": [
+          {
+            "url": "https://example.com/products/widget"
+          }
+        ],
+        "pageFunction": "async function pageFunction(context) { const { request, page } = context; return { url: request.url, title: await page.title(), price: await page.locator('.price').textContent() }; }",
+        "maxCrawlPages": 1
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "url": "https://example.com/products/widget",
+            "title": "Widget"
+          }
+        ]
+      },
+      "usageNotes": "Use this when you want rendered extraction from a small set of known pages rather than a broader crawl.",
+      "upstreamBaseUrl": "https://fastmainnetapifywebscraper.8o.vc",
+      "upstreamPath": "/extract-page",
+      "upstreamAuthMode": "none"
     }
   ]
 }

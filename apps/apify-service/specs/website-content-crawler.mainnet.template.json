@@ -119,6 +119,174 @@
       "upstreamBaseUrl": "https://fastmainnetapifywebsitecontent.8o.vc",
       "upstreamPath": "/crawl-content",
       "upstreamAuthMode": "none"
+    },
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "crawl-markdown",
+      "title": "Crawl Markdown",
+      "description": "Deep crawl one or more websites and return Markdown-oriented output for downstream indexing.",
+      "billingType": "fixed_x402",
+      "price": "$0.0001",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["startUrls"],
+        "properties": {
+          "startUrls": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["url"],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "maxPages": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxCrawlDepth": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "crawlerType": {
+            "type": "string"
+          },
+          "htmlTransformer": {
+            "type": "string"
+          },
+          "removeCookieWarnings": {
+            "type": "boolean"
+          },
+          "saveMarkdown": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "startUrls": [
+          {
+            "url": "https://docs.fast.xyz"
+          }
+        ],
+        "maxPages": 100,
+        "maxCrawlDepth": 3,
+        "crawlerType": "adaptive",
+        "htmlTransformer": "readableText",
+        "removeCookieWarnings": true,
+        "saveMarkdown": true
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "url": "https://docs.fast.xyz/intro",
+            "markdown": "# Intro\nFast docs content..."
+          }
+        ]
+      },
+      "usageNotes": "Use this when the downstream system prefers Markdown over raw HTML.",
+      "upstreamBaseUrl": "https://fastmainnetapifywebsitecontent.8o.vc",
+      "upstreamPath": "/crawl-markdown",
+      "upstreamAuthMode": "none"
+    },
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "crawl-html",
+      "title": "Crawl HTML",
+      "description": "Deep crawl one or more websites and preserve HTML output for downstream transformation or archival.",
+      "billingType": "fixed_x402",
+      "price": "$0.0001",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["startUrls"],
+        "properties": {
+          "startUrls": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["url"],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "maxPages": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxCrawlDepth": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "crawlerType": {
+            "type": "string"
+          },
+          "removeCookieWarnings": {
+            "type": "boolean"
+          },
+          "saveHtml": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "startUrls": [
+          {
+            "url": "https://docs.fast.xyz"
+          }
+        ],
+        "maxPages": 100,
+        "maxCrawlDepth": 2,
+        "crawlerType": "adaptive",
+        "removeCookieWarnings": true,
+        "saveHtml": true
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "url": "https://docs.fast.xyz/intro",
+            "html": "<html><body><h1>Intro</h1></body></html>"
+          }
+        ]
+      },
+      "usageNotes": "Use this when you want raw HTML preserved for later parsing or transformation.",
+      "upstreamBaseUrl": "https://fastmainnetapifywebsitecontent.8o.vc",
+      "upstreamPath": "/crawl-html",
+      "upstreamAuthMode": "none"
     }
   ]
 }

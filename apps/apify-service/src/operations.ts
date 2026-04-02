@@ -1063,6 +1063,124 @@ const APIFY_PROXY_ROUTE_PRESETS: Record<string, ApifyProxyRouteDefinition[]> = {
         removeCookieWarnings: true,
         saveMarkdown: true
       }
+    },
+    {
+      path: "/crawl-markdown",
+      operationId: "crawl-markdown",
+      summary: "Crawl website to Markdown",
+      description: "Deep crawl one or more websites and return Markdown-oriented output for docs, blogs, and RAG ingestion.",
+      requestSchemaJson: {
+        type: "object",
+        required: ["startUrls"],
+        properties: {
+          startUrls: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              required: ["url"],
+              properties: {
+                url: {
+                  type: "string",
+                  format: "uri"
+                }
+              },
+              additionalProperties: false
+            }
+          },
+          maxPages: {
+            type: "integer",
+            minimum: 1
+          },
+          maxCrawlDepth: {
+            type: "integer",
+            minimum: 0
+          },
+          crawlerType: {
+            type: "string"
+          },
+          htmlTransformer: {
+            type: "string"
+          },
+          removeCookieWarnings: {
+            type: "boolean"
+          },
+          saveMarkdown: {
+            type: "boolean"
+          }
+        },
+        additionalProperties: true
+      },
+      requestExample: {
+        startUrls: [
+          {
+            url: "https://docs.fast.xyz"
+          }
+        ],
+        maxPages: 100,
+        maxCrawlDepth: 3,
+        crawlerType: "adaptive",
+        htmlTransformer: "readableText",
+        removeCookieWarnings: true,
+        saveMarkdown: true
+      }
+    },
+    {
+      path: "/crawl-html",
+      operationId: "crawl-html",
+      summary: "Crawl website to HTML",
+      description: "Deep crawl one or more websites and preserve HTML output for downstream transformation or archival.",
+      requestSchemaJson: {
+        type: "object",
+        required: ["startUrls"],
+        properties: {
+          startUrls: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              required: ["url"],
+              properties: {
+                url: {
+                  type: "string",
+                  format: "uri"
+                }
+              },
+              additionalProperties: false
+            }
+          },
+          maxPages: {
+            type: "integer",
+            minimum: 1
+          },
+          maxCrawlDepth: {
+            type: "integer",
+            minimum: 0
+          },
+          crawlerType: {
+            type: "string"
+          },
+          removeCookieWarnings: {
+            type: "boolean"
+          },
+          saveHtml: {
+            type: "boolean"
+          }
+        },
+        additionalProperties: true
+      },
+      requestExample: {
+        startUrls: [
+          {
+            url: "https://docs.fast.xyz"
+          }
+        ],
+        maxPages: 100,
+        maxCrawlDepth: 2,
+        crawlerType: "adaptive",
+        removeCookieWarnings: true,
+        saveHtml: true
+      }
     }
   ],
   "apify/web-scraper": [
@@ -1127,6 +1245,51 @@ const APIFY_PROXY_ROUTE_PRESETS: Record<string, ApifyProxyRouteDefinition[]> = {
         pageFunction: "async function pageFunction(context) { const { request, page } = context; return { url: request.url, title: await page.title() }; }",
         linkSelector: "a.product-link",
         maxCrawlPages: 25
+      }
+    },
+    {
+      path: "/extract-page",
+      operationId: "extract-page",
+      summary: "Extract a rendered page",
+      description: "Load one or more JavaScript-rendered pages and extract structured data without recursive crawling.",
+      requestSchemaJson: {
+        type: "object",
+        required: ["startUrls", "pageFunction"],
+        properties: {
+          startUrls: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              required: ["url"],
+              properties: {
+                url: {
+                  type: "string",
+                  format: "uri"
+                }
+              },
+              additionalProperties: false
+            }
+          },
+          pageFunction: {
+            type: "string",
+            minLength: 1
+          },
+          maxCrawlPages: {
+            type: "integer",
+            minimum: 1
+          }
+        },
+        additionalProperties: true
+      },
+      requestExample: {
+        startUrls: [
+          {
+            url: "https://example.com/products/widget"
+          }
+        ],
+        pageFunction: "async function pageFunction(context) { const { request, page } = context; return { url: request.url, title: await page.title(), price: await page.locator('.price').textContent() }; }",
+        maxCrawlPages: 1
       }
     }
   ],
@@ -1213,6 +1376,54 @@ const APIFY_PROXY_ROUTE_PRESETS: Record<string, ApifyProxyRouteDefinition[]> = {
         mergeContacts: true,
         enrichSocialProfiles: false,
         enableLeadEnrichment: false
+      }
+    },
+    {
+      path: "/extract-social-profiles",
+      operationId: "extract-social-profiles",
+      summary: "Extract social profiles",
+      description: "Crawl one or more websites and prioritize linked social profiles alongside contact data.",
+      requestSchemaJson: {
+        type: "object",
+        required: ["startUrls"],
+        properties: {
+          startUrls: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              required: ["url"],
+              properties: {
+                url: {
+                  type: "string",
+                  format: "uri"
+                }
+              },
+              additionalProperties: false
+            }
+          },
+          maxPages: {
+            type: "integer",
+            minimum: 1
+          },
+          mergeContacts: {
+            type: "boolean"
+          },
+          enrichSocialProfiles: {
+            type: "boolean"
+          }
+        },
+        additionalProperties: true
+      },
+      requestExample: {
+        startUrls: [
+          {
+            url: "https://example.com"
+          }
+        ],
+        maxPages: 25,
+        mergeContacts: true,
+        enrichSocialProfiles: true
       }
     }
   ],
@@ -1345,6 +1556,36 @@ const APIFY_PROXY_ROUTE_PRESETS: Record<string, ApifyProxyRouteDefinition[]> = {
         location: "San Francisco Bay Area",
         rows: 25
       }
+    },
+    {
+      path: "/remote-jobs",
+      operationId: "remote-jobs",
+      summary: "Search remote LinkedIn jobs",
+      description: "Search LinkedIn jobs with a remote-first workflow using title and row count inputs.",
+      requestSchemaJson: {
+        type: "object",
+        required: ["title"],
+        properties: {
+          title: {
+            type: "string",
+            minLength: 1
+          },
+          location: {
+            type: "string",
+            minLength: 1
+          },
+          rows: {
+            type: "integer",
+            minimum: 1
+          }
+        },
+        additionalProperties: true
+      },
+      requestExample: {
+        title: "Product Designer",
+        location: "Remote",
+        rows: 25
+      }
     }
   ],
   "apify/e-commerce-scraping-tool": [
@@ -1388,6 +1629,126 @@ const APIFY_PROXY_ROUTE_PRESETS: Record<string, ApifyProxyRouteDefinition[]> = {
           { required: ["startUrls"] },
           { required: ["search"] }
         ],
+        additionalProperties: true
+      },
+      requestExample: {
+        startUrls: [
+          {
+            url: "https://www.amazon.com/dp/B09X7MPX8L"
+          }
+        ],
+        country: "US",
+        maxItems: 10
+      }
+    },
+    {
+      path: "/search-products",
+      operationId: "search-products",
+      summary: "Search e-commerce products",
+      description: "Search retail sites by keyword and country and return product listings.",
+      requestSchemaJson: {
+        type: "object",
+        required: ["search"],
+        properties: {
+          search: {
+            type: "string",
+            minLength: 1
+          },
+          country: {
+            type: "string",
+            minLength: 2
+          },
+          maxItems: {
+            type: "integer",
+            minimum: 1
+          }
+        },
+        additionalProperties: true
+      },
+      requestExample: {
+        search: "wireless mechanical keyboard",
+        country: "US",
+        maxItems: 25
+      }
+    },
+    {
+      path: "/category-products",
+      operationId: "category-products",
+      summary: "Scrape e-commerce categories",
+      description: "Extract product listings from retail category or collection pages.",
+      requestSchemaJson: {
+        type: "object",
+        required: ["startUrls"],
+        properties: {
+          startUrls: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              required: ["url"],
+              properties: {
+                url: {
+                  type: "string",
+                  format: "uri"
+                }
+              },
+              additionalProperties: false
+            }
+          },
+          country: {
+            type: "string",
+            minLength: 2
+          },
+          maxItems: {
+            type: "integer",
+            minimum: 1
+          }
+        },
+        additionalProperties: true
+      },
+      requestExample: {
+        startUrls: [
+          {
+            url: "https://www.amazon.com/s?k=mechanical+keyboard"
+          }
+        ],
+        country: "US",
+        maxItems: 25
+      }
+    },
+    {
+      path: "/product-details",
+      operationId: "product-details",
+      summary: "Scrape product details",
+      description: "Extract detailed product records from direct retail product URLs.",
+      requestSchemaJson: {
+        type: "object",
+        required: ["startUrls"],
+        properties: {
+          startUrls: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              required: ["url"],
+              properties: {
+                url: {
+                  type: "string",
+                  format: "uri"
+                }
+              },
+              additionalProperties: false
+            }
+          },
+          country: {
+            type: "string",
+            minLength: 2
+          },
+          maxItems: {
+            type: "integer",
+            minimum: 1
+          }
+        },
         additionalProperties: true
       },
       requestExample: {
@@ -1500,6 +1861,37 @@ const APIFY_PROXY_ROUTE_PRESETS: Record<string, ApifyProxyRouteDefinition[]> = {
         location: "Remote",
         maxItems: 50
       }
+    },
+    {
+      path: "/search-url-jobs",
+      operationId: "search-url-jobs",
+      summary: "Scrape Indeed search URLs",
+      description: "Scrape jobs from one or more direct Indeed search result URLs.",
+      requestSchemaJson: {
+        type: "object",
+        required: ["startUrls"],
+        properties: {
+          startUrls: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "string",
+              format: "uri"
+            }
+          },
+          maxItems: {
+            type: "integer",
+            minimum: 1
+          }
+        },
+        additionalProperties: true
+      },
+      requestExample: {
+        startUrls: [
+          "https://www.indeed.com/jobs?q=data+engineer&l=Remote"
+        ],
+        maxItems: 50
+      }
     }
   ],
   "powerai/g2-product-reviews-scraper": [
@@ -1593,6 +1985,51 @@ const APIFY_PROXY_ROUTE_PRESETS: Record<string, ApifyProxyRouteDefinition[]> = {
         linkSelector: "a.article-link",
         maxCrawlPages: 50
       }
+    },
+    {
+      path: "/extract-page",
+      operationId: "extract-page",
+      summary: "Extract a static page",
+      description: "Extract structured data from one or more static pages without broad recursive crawling.",
+      requestSchemaJson: {
+        type: "object",
+        required: ["startUrls", "pageFunction"],
+        properties: {
+          startUrls: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              required: ["url"],
+              properties: {
+                url: {
+                  type: "string",
+                  format: "uri"
+                }
+              },
+              additionalProperties: false
+            }
+          },
+          pageFunction: {
+            type: "string",
+            minLength: 1
+          },
+          maxCrawlPages: {
+            type: "integer",
+            minimum: 1
+          }
+        },
+        additionalProperties: true
+      },
+      requestExample: {
+        startUrls: [
+          {
+            url: "https://example.com/blog/post-1"
+          }
+        ],
+        pageFunction: "async function pageFunction(context) { const { $, request } = context; return { url: request.url, title: $('title').text().trim(), author: $('.author').text().trim() }; }",
+        maxCrawlPages: 1
+      }
     }
   ],
   "junglee/amazon-crawler": [
@@ -1638,6 +2075,96 @@ const APIFY_PROXY_ROUTE_PRESETS: Record<string, ApifyProxyRouteDefinition[]> = {
           }
         ],
         maxItems: 10,
+        country: "US"
+      }
+    },
+    {
+      path: "/product-details",
+      operationId: "product-details",
+      summary: "Scrape Amazon product details",
+      description: "Extract Amazon product, pricing, and review data from direct product URLs.",
+      requestSchemaJson: {
+        type: "object",
+        required: ["startUrls"],
+        properties: {
+          startUrls: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              required: ["url"],
+              properties: {
+                url: {
+                  type: "string",
+                  format: "uri"
+                }
+              },
+              additionalProperties: false
+            }
+          },
+          maxItems: {
+            type: "integer",
+            minimum: 1
+          },
+          country: {
+            type: "string",
+            minLength: 2
+          }
+        },
+        additionalProperties: true
+      },
+      requestExample: {
+        startUrls: [
+          {
+            url: "https://www.amazon.com/dp/B09X7MPX8L"
+          }
+        ],
+        maxItems: 10,
+        country: "US"
+      }
+    },
+    {
+      path: "/category-products",
+      operationId: "category-products",
+      summary: "Scrape Amazon categories",
+      description: "Extract Amazon product listings from category or search result URLs.",
+      requestSchemaJson: {
+        type: "object",
+        required: ["startUrls"],
+        properties: {
+          startUrls: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              required: ["url"],
+              properties: {
+                url: {
+                  type: "string",
+                  format: "uri"
+                }
+              },
+              additionalProperties: false
+            }
+          },
+          maxItems: {
+            type: "integer",
+            minimum: 1
+          },
+          country: {
+            type: "string",
+            minLength: 2
+          }
+        },
+        additionalProperties: true
+      },
+      requestExample: {
+        startUrls: [
+          {
+            url: "https://www.amazon.com/s?k=mechanical+keyboard"
+          }
+        ],
+        maxItems: 25,
         country: "US"
       }
     }
