@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { AlertCircle, LoaderCircle, LogOut, Wallet } from "lucide-react";
-import type { MarketplaceDeploymentNetwork } from "@marketplace/shared";
+import type { MarketplaceDeploymentNetwork } from "@/lib/marketplace-shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

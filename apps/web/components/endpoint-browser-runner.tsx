@@ -2,7 +2,7 @@
 
 import React from "react";
 import { LoaderCircle, RefreshCcw, TriangleAlert, Wallet } from "lucide-react";
-import type { MarketplaceServiceCatalogEndpoint } from "@marketplace/shared";
+import type { MarketplaceServiceCatalogEndpoint } from "@/lib/marketplace-shared";
 import { serializeQueryInput } from "@marketplace/shared/browser-request-input";
 import type { WebDeploymentNetwork } from "@/lib/network";
 

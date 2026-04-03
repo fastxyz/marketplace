@@ -23,7 +23,7 @@
       "Provide a search term and optional country, category, or chart filters.",
       "Keep the returned job token and poll the marketplace job route for completion."
     ],
-    "websiteUrl": "https://api.marketplace.fast.xyz",
+    "websiteUrl": "https://fastmainnetapifyappstore.8o.vc",
     "payoutWallet": "fast1rv8wsdd5pnkwt4u637g2yj4tpuyq26rzw8380rfhpnsnljz7v3tqv4njuq"
   },
   "endpoints": [

@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, ArrowUpRight } from "lucide-react";
-import type { MarketplaceServiceCatalogEndpoint, ServiceDetail } from "@marketplace/shared";
+import type { MarketplaceServiceCatalogEndpoint, ServiceDetail } from "@/lib/marketplace-shared";
 import type { WebDeploymentNetwork } from "@/lib/network";
 
 import { CopyButton } from "@/components/copy-button";

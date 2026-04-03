@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import type { MarketplaceDeploymentNetwork } from "@marketplace/shared";
+import type { MarketplaceDeploymentNetwork } from "@/lib/marketplace-shared";
 
 import { ProviderSessionGate } from "@/components/provider-session-gate";
 import { Button } from "@/components/ui/button";

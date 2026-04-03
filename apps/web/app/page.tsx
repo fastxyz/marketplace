@@ -1,6 +1,6 @@
 import { MarketplaceHome } from "@/components/marketplace-home";
 import { fetchServices } from "@/lib/api";
-import type { ServiceSummary } from "@marketplace/shared";
+import type { ServiceSummary } from "@/lib/marketplace-shared";
 
 export const dynamic = "force-dynamic";
 

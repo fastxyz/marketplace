@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useActionState } from "react";
-import type { ServiceSummary } from "@marketplace/shared";
+import type { ServiceSummary } from "@/lib/marketplace-shared";
 
 import { submitSuggestionAction, type SuggestionActionState } from "@/app/actions";
 import { Button } from "@/components/ui/button";

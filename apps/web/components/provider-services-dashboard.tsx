@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import type { MarketplaceDeploymentNetwork, ProviderServiceType } from "@marketplace/shared";
+import type { MarketplaceDeploymentNetwork, ProviderServiceType } from "@/lib/marketplace-shared";
 
 import { ProviderSessionGate } from "@/components/provider-session-gate";
 import { Button } from "@/components/ui/button";

@@ -23,7 +23,7 @@
       "Provide one or more subreddit names or search queries and optional sort filters.",
       "Keep the returned job token and poll the marketplace job route for completion."
     ],
-    "websiteUrl": "https://api.marketplace.fast.xyz",
+    "websiteUrl": "https://fastmainnetapifyreddit.8o.vc",
     "payoutWallet": "fast1rv8wsdd5pnkwt4u637g2yj4tpuyq26rzw8380rfhpnsnljz7v3tqv4njuq"
   },
   "endpoints": [

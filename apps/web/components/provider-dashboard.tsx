@@ -6,7 +6,7 @@ import type {
   ProviderAccountRecord,
   ProviderRequestRecord,
   ProviderServiceDetailRecord,
-} from "@marketplace/shared";
+} from "@/lib/marketplace-shared";
 
 import { ProviderSessionGate } from "@/components/provider-session-gate";
 import { Badge } from "@/components/ui/badge";

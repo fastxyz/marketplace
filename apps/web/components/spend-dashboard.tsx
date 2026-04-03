@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import type { BuyerActivityResponse, MarketplaceDeploymentNetwork } from "@marketplace/shared";
+import type { BuyerActivityResponse, MarketplaceDeploymentNetwork } from "@/lib/marketplace-shared";
 
 import { BuyerSessionGate } from "@/components/buyer-session-gate";
 import { Badge } from "@/components/ui/badge";

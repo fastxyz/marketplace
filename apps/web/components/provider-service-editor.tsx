@@ -11,7 +11,7 @@ import type {
   RouteBillingType,
   UpdateExternalProviderEndpointDraftInput,
   UpdateMarketplaceProviderEndpointDraftInput,
-} from "@marketplace/shared";
+} from "@/lib/marketplace-shared";
 
 import { CopyButton } from "@/components/copy-button";
 import { ProviderSessionGate } from "@/components/provider-session-gate";

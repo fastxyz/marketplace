@@ -16,7 +16,7 @@ import type {
   SuggestionType,
   UpdateProviderEndpointDraftInput,
   UpdateProviderServiceInput
-} from "@marketplace/shared";
+} from "@/lib/marketplace-shared";
 import { clearStoredWalletSession } from "@/lib/wallet-session";
 import { getServerApiBaseUrl } from "@/lib/api-base-url";
 

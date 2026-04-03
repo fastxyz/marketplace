@@ -1,4 +1,4 @@
-import { normalizeFastWalletAddress } from "@marketplace/shared";
+import { normalizeFastWalletAddress } from "@/lib/marketplace-shared";
 
 import { SpendDashboard } from "@/components/spend-dashboard";
 import { getClientApiBaseUrl } from "@/lib/api-base-url";

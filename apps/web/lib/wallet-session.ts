@@ -1,4 +1,4 @@
-import type { MarketplaceDeploymentNetwork } from "@marketplace/shared";
+import type { MarketplaceDeploymentNetwork } from "@/lib/marketplace-shared";
 
 export interface StoredWalletSession {
   accessToken: string;

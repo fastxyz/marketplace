@@ -1,11 +1,11 @@
 import { access, readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const CANDIDATE_PATHS = [
-  resolve(process.cwd(), "SKILL.md"),
-  resolve(process.cwd(), "../SKILL.md"),
-  resolve(process.cwd(), "../../SKILL.md")
-];
+const SKILL_MARKDOWN_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../SKILL.md"
+);
 
 const LEGACY_WEB_HOST_PATTERN = /\b(?:https?:\/\/)?(?:marketplace\.example\.com|marketplace\.fast\.xyz)\b/giu;
 const LEGACY_API_HOST_PATTERN = /\b(?:https?:\/\/)?(?:api\.marketplace\.example\.com|api\.marketplace\.fast\.xyz|fastapi\.8o\.vc)\b/giu;
@@ -42,15 +42,8 @@ export async function readSkillMarkdown(input?: {
   apiBaseUrl?: string;
   webBaseUrl?: string;
 }): Promise<string> {
-  for (const candidate of CANDIDATE_PATHS) {
-    try {
-      await access(candidate);
-      const markdown = await readFile(candidate, "utf8");
-      return replaceMarketplaceReferenceUrls(markdown, input ?? {});
-    } catch {
-      continue;
-    }
-  }
+  await access(SKILL_MARKDOWN_PATH);
+  const markdown = await readFile(SKILL_MARKDOWN_PATH, "utf8");
 
-  throw new Error("SKILL.md not found.");
+  return replaceMarketplaceReferenceUrls(markdown, input ?? {});
 }
