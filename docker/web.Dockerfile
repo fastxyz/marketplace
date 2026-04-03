@@ -17,7 +17,7 @@ RUN npm ci
 COPY apps ./apps
 COPY packages ./packages
 
-RUN npm run build:web
+RUN npm run build:runtime && npm run build:web
 
 FROM node:20-bookworm-slim AS runner
 
@@ -28,6 +28,7 @@ ENV HOSTNAME=0.0.0.0
 
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
 

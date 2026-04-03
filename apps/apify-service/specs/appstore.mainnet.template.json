@@ -1,0 +1,97 @@
+{
+  "profile": {
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
+    "contactEmail": "marketplace@fast.xyz"
+  },
+  "service": {
+    "serviceType": "marketplace_proxy",
+    "slug": "apify-apple-app-store-scraper",
+    "apiNamespace": "apify-appstore",
+    "name": "Apple App Store Scraper",
+    "tagline": "Search Apple App Store listings and app metadata through a Fast-native async proxy.",
+    "about": "Apple App Store Scraper exposes an Apify-backed app-store workflow through the marketplace for keyword discovery, chart monitoring, pricing research, and metadata extraction across Apple App Store listings.",
+    "categories": [
+      "App Stores",
+      "Research",
+      "Competitive Intel"
+    ],
+    "promptIntro": "I want to use the Apple App Store Scraper service on Fast Marketplace.",
+    "setupInstructions": [
+      "Fund a Fast wallet on mainnet.",
+      "Provide a search term and optional country, category, or chart filters.",
+      "Keep the returned job token and poll the marketplace job route for completion."
+    ],
+    "websiteUrl": "https://fastmainnetapifyappstore.8o.vc",
+    "payoutWallet": "fast1rv8wsdd5pnkwt4u637g2yj4tpuyq26rzw8380rfhpnsnljz7v3tqv4njuq"
+  },
+  "endpoints": [
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "search-apps",
+      "title": "Search Apps",
+      "description": "Search Apple App Store listings by keyword, country, category, or chart and return structured app metadata.",
+      "billingType": "fixed_x402",
+      "price": "$0.0001",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["searchTerm"],
+        "properties": {
+          "searchTerm": {
+            "type": "string",
+            "minLength": 1
+          },
+          "country": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 2
+          },
+          "category": {
+            "type": "string"
+          },
+          "chart": {
+            "type": "string",
+            "enum": ["top-free", "top-paid", "top-grossing"]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "searchTerm": "budget planner",
+        "country": "us",
+        "chart": "top-free",
+        "limit": 25
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "trackId": 123456789,
+            "trackName": "Example iOS App",
+            "sellerName": "Example Labs",
+            "averageUserRating": 4.7
+          }
+        ]
+      },
+      "usageNotes": "Use this for iOS app discovery, chart monitoring, and metadata enrichment.",
+      "upstreamBaseUrl": "https://fastmainnetapifyappstore.8o.vc",
+      "upstreamPath": "/search-apps",
+      "upstreamAuthMode": "none"
+    }
+  ]
+}

@@ -4,15 +4,11 @@ const cwd = "/Users/chris/Documents/Workspace/ai-agent-marketplace";
 const serverUuid = "j404s8cc04o8g4coss4kkk8c";
 const projectUuid = "eo0w0w04s4g8osgo4oocg84w";
 const repo = "https://github.com/seichris/ai-agent-marketplace.git";
-const branch = "main";
-const apifyToken = process.env.APIFY_TOKEN;
-const sharedBuild = "npm install && npm run build";
+const branch = process.env.APIFY_ROLLOUT_BRANCH
+  ?? (execFileSync("git", ["branch", "--show-current"], { cwd, encoding: "utf8" }).trim() || "main");
+const sharedBuild = "npm install && npm run build:runtime";
 const sharedStart = "npm run start:apify-service";
 const healthPath = "/health";
-
-if (!apifyToken) {
-  throw new Error("APIFY_TOKEN is required");
-}
 
 const apps = [
   {
@@ -133,6 +129,51 @@ const apps = [
       "Marketplace-hosted async proxy for the Apify Amazon Product Scraper actor.",
     verificationToken: "verify_pending_amazon",
   },
+  {
+    name: "fast-provider-apify-google-search",
+    domain: "fastmainnetapifygooglesearch.8o.vc",
+    actorId: "apify/google-search-scraper",
+    serviceName: "Google Search Results Scraper",
+    serviceDescription:
+      "Marketplace-hosted async proxy for the Apify Google Search Results Scraper actor.",
+    verificationToken: "verify_pending_google_search",
+  },
+  {
+    name: "fast-provider-apify-trustpilot",
+    domain: "fastmainnetapifytrustpilot.8o.vc",
+    actorId: "automation-lab/trustpilot",
+    serviceName: "Trustpilot Reviews Scraper",
+    serviceDescription:
+      "Marketplace-hosted async proxy for the Apify Trustpilot Reviews Scraper actor.",
+    verificationToken: "verify_pending_trustpilot",
+  },
+  {
+    name: "fast-provider-apify-google-play",
+    domain: "fastmainnetapifygoogleplay.8o.vc",
+    actorId: "curious_coder/google-play-scraper",
+    serviceName: "Google Play Scraper",
+    serviceDescription:
+      "Marketplace-hosted async proxy for the Apify Google Play Scraper actor.",
+    verificationToken: "verify_pending_google_play",
+  },
+  {
+    name: "fast-provider-apify-appstore",
+    domain: "fastmainnetapifyappstore.8o.vc",
+    actorId: "4bdullatif/appstore-scraper",
+    serviceName: "Apple App Store Scraper",
+    serviceDescription:
+      "Marketplace-hosted async proxy for the Apify Apple App Store Scraper actor.",
+    verificationToken: "verify_pending_appstore",
+  },
+  {
+    name: "fast-provider-apify-reddit",
+    domain: "fastmainnetapifyreddit.8o.vc",
+    actorId: "shahidirfan/reddit-community-scraper",
+    serviceName: "Reddit Community Scraper",
+    serviceDescription:
+      "Marketplace-hosted async proxy for the Apify Reddit Community Scraper actor.",
+    verificationToken: "verify_pending_reddit",
+  },
 ];
 
 function run(args) {
@@ -200,6 +241,8 @@ function updateApp(appUuid, entry) {
     appUuid,
     "--name",
     entry.name,
+    "--git-branch",
+    branch,
     "--domains",
     `https://${entry.domain}`,
     "--build-command",
@@ -237,6 +280,26 @@ function startApp(appUuid) {
 
 const currentApps = getAppList();
 const byName = new Map(currentApps.map((app) => [app.name, app]));
+let apifyToken = process.env.APIFY_TOKEN ?? process.env.APIFY_API_TOKEN ?? null;
+if (!apifyToken) {
+  const existingTokenApp = byName.get("fast-provider-apify-website-content");
+  if (!existingTokenApp?.uuid) {
+    throw new Error("APIFY token is not set and no existing Apify app was found to copy it from.");
+  }
+  const existingEnv = getEnvList(existingTokenApp.uuid);
+  const tokenEnv = existingEnv.find((item) => item.key === "APIFY_API_TOKEN");
+  if (!tokenEnv?.real_value) {
+    throw new Error("APIFY token is not set and could not be read from the existing Apify app env.");
+  }
+  apifyToken = String(tokenEnv.real_value);
+}
+
+const only = new Set(
+  String(process.env.APIFY_ROLLOUT_ONLY ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean),
+);
 const byDomain = new Map();
 for (const app of currentApps) {
   for (const domain of String(app.fqdn ?? "")
@@ -249,6 +312,15 @@ for (const app of currentApps) {
 const results = [];
 
 for (const entry of apps) {
+  if (
+    only.size > 0
+    && !only.has(entry.name)
+    && !only.has(entry.domain)
+    && !only.has(entry.actorId)
+  ) {
+    continue;
+  }
+
   const targetDomain = `https://${entry.domain}`;
   const existing = byName.get(entry.name) ?? byDomain.get(targetDomain);
   const appUuid = existing?.uuid ?? entry.existingUuid ?? createApp();
@@ -264,7 +336,7 @@ for (const entry of apps) {
     ["APIFY_DEFAULT_POLL_AFTER_MS", "5000"],
     ["APIFY_DATASET_ITEM_LIMIT", "100"],
     ["APIFY_SERVICE_PORT", "4040"],
-    ["MARKETPLACE_VERIFICATION_TOKEN", entry.verificationToken],
+    ["APIFY_SITE_PROOF", entry.verificationToken],
   ]);
 
   startApp(appUuid);

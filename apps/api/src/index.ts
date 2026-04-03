@@ -55,7 +55,8 @@ const app = createMarketplaceApi({
   }),
   baseUrl,
   webBaseUrl,
-  secretsKey
+  secretsKey,
+  siteProofToken: process.env.MARKETPLACE_SITE_PROOF
 });
 
 const server = app.listen(port, () => {

@@ -18,7 +18,7 @@ const app = createApifyServiceApp({
   apifyApiBaseUrl: process.env.APIFY_API_BASE_URL,
   serviceName: process.env.APIFY_SERVICE_NAME,
   serviceDescription: process.env.APIFY_SERVICE_DESCRIPTION,
-  verificationToken: process.env.MARKETPLACE_VERIFICATION_TOKEN,
+  verificationToken: process.env.APIFY_SITE_PROOF ?? process.env.MARKETPLACE_VERIFICATION_TOKEN,
   defaultPollAfterMs: Number(process.env.APIFY_DEFAULT_POLL_AFTER_MS ?? 5000),
   datasetItemLimit: Number(process.env.APIFY_DATASET_ITEM_LIMIT ?? 100)
 });

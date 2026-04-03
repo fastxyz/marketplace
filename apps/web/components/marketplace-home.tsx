@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useDeferredValue, useMemo, useState } from "react";
-import type { ServiceSummary } from "@marketplace/shared";
+import type { ServiceSummary } from "@/lib/marketplace-shared";
 
 import { Input } from "@/components/ui/input";
 import { ServicesDataTable } from "@/components/services-data-table";

@@ -102,6 +102,63 @@
       "upstreamBaseUrl": "https://fastmainnetapifyindeed.8o.vc",
       "upstreamPath": "/search-jobs",
       "upstreamAuthMode": "none"
+    },
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "search-url-jobs",
+      "title": "Search URL Jobs",
+      "description": "Scrape jobs from one or more direct Indeed search result URLs.",
+      "billingType": "fixed_x402",
+      "price": "$0.0001",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["startUrls"],
+        "properties": {
+          "startUrls": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "maxItems": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "startUrls": [
+          "https://www.indeed.com/jobs?q=data+engineer&l=Remote"
+        ],
+        "maxItems": 50
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "positionName": "Data Engineer",
+            "company": "Example Corp",
+            "location": "Remote"
+          }
+        ]
+      },
+      "usageNotes": "Use this when you already have a curated Indeed search URL and want that exact results page scraped.",
+      "upstreamBaseUrl": "https://fastmainnetapifyindeed.8o.vc",
+      "upstreamPath": "/search-url-jobs",
+      "upstreamAuthMode": "none"
     }
   ]
 }

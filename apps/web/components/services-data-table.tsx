@@ -16,7 +16,7 @@ import type {
   MarketplaceServiceCatalogEndpoint,
   ServiceDetail,
   ServiceSummary
-} from "@marketplace/shared";
+} from "@/lib/marketplace-shared";
 
 import { fetchServiceDetail } from "@/lib/api";
 import { getClientApiBaseUrl } from "@/lib/api-base-url";

@@ -107,6 +107,7 @@ export interface MarketplaceApiOptions {
   baseUrl?: string;
   webBaseUrl?: string;
   secretsKey: string;
+  siteProofToken?: string | null;
 }
 
 type PublishedCatalogService = {
@@ -423,6 +424,13 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
         routes: catalog.routes
       })
     );
+  });
+
+  app.get("/.well-known/fast-marketplace-verification.txt", (_req, res) => {
+    if (!options.siteProofToken) {
+      return res.status(404).type("text/plain").send("Not found");
+    }
+    return res.type("text/plain").send(options.siteProofToken);
   });
 
   app.get("/catalog/services", async (_req, res) => {

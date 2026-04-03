@@ -12,7 +12,7 @@ import {
   suspendAdminProviderService,
   updateAdminProviderServiceSettlementMode
 } from "@/lib/api";
-import type { SettlementMode } from "@marketplace/shared";
+import type { SettlementMode } from "@/lib/marketplace-shared";
 
 export interface SuggestionActionState {
   ok: boolean;

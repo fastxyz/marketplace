@@ -115,6 +115,34 @@ describe("apify service", () => {
     );
   });
 
+  it("registers expanded Amazon actor routes in OpenAPI", async () => {
+    const app = createApifyServiceApp({
+      apifyApiToken: "apify-test-token",
+      actorId: "junglee/amazon-crawler"
+    });
+
+    const openapi = await request(app).get("/openapi.json");
+    expect(openapi.status).toBe(200);
+    expect(Object.keys(openapi.body.paths)).toEqual([
+      "/scrape-products",
+      "/product-details",
+      "/category-products"
+    ]);
+  });
+
+  it("registers Google Search actor routes in OpenAPI", async () => {
+    const app = createApifyServiceApp({
+      apifyApiToken: "apify-test-token",
+      actorId: "apify/google-search-scraper"
+    });
+
+    const openapi = await request(app).get("/openapi.json");
+    expect(openapi.status).toBe(200);
+    expect(Object.keys(openapi.body.paths)).toEqual([
+      "/search-results"
+    ]);
+  });
+
   it("polls an Apify run and returns completed dataset items", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);

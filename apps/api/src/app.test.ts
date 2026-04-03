@@ -79,6 +79,7 @@ async function createTestApp(
     refundService?: Parameters<typeof createMarketplaceApi>[0]["refundService"];
     baseUrl?: string;
     webBaseUrl?: string;
+    siteProofToken?: string | null;
   } = {}
 ) {
   const buyer = await createTestWallet();
@@ -114,7 +115,8 @@ async function createTestApp(
     },
     providers: input.providers,
     baseUrl: input.baseUrl,
-    webBaseUrl: input.webBaseUrl ?? "https://marketplace.example.com"
+    webBaseUrl: input.webBaseUrl ?? "https://marketplace.example.com",
+    siteProofToken: input.siteProofToken
   });
 
   if (previousNetwork === undefined) {
@@ -149,6 +151,17 @@ afterEach(() => {
 });
 
 describe("marketplace api", () => {
+  it("serves the optional marketplace verification proof file", async () => {
+    const { app } = await createTestApp({
+      siteProofToken: "verify-proof-token"
+    });
+
+    const response = await request(app).get("/.well-known/fast-marketplace-verification.txt");
+
+    expect(response.status).toBe(200);
+    expect(response.text).toBe("verify-proof-token");
+  });
+
   it("returns catalog services and service details with generated prompts", async () => {
     const { app } = await createTestApp({
       deploymentNetwork: "testnet"

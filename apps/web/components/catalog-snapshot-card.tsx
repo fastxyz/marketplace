@@ -1,5 +1,5 @@
 import React from "react";
-import type { ServiceSummary } from "@marketplace/shared";
+import type { ServiceSummary } from "@/lib/marketplace-shared";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 

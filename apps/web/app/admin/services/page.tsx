@@ -1,7 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { ProviderServiceStatus } from "@marketplace/shared";
+import type { ProviderServiceStatus } from "@/lib/marketplace-shared";
 
 import { adminLogoutAction } from "@/app/actions";
 import { AdminNav } from "@/components/admin-nav";
