@@ -999,6 +999,267 @@ const APIFY_PROXY_ROUTE_PRESETS: Record<string, ApifyProxyRouteDefinition[]> = {
       }
     }
   ],
+  "apify/google-search-scraper": [
+    {
+      path: "/search-results",
+      operationId: "search-results",
+      summary: "Search Google results",
+      description: "Scrape Google Search result pages, including organic results and optional SERP enrichments like ads, AI overviews, and People Also Ask.",
+      requestSchemaJson: {
+        type: "object",
+        required: ["queries"],
+        properties: {
+          queries: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "string",
+              minLength: 1
+            }
+          },
+          countryCode: {
+            type: "string",
+            minLength: 2,
+            maxLength: 2
+          },
+          languageCode: {
+            type: "string",
+            minLength: 2,
+            maxLength: 5
+          },
+          maxPagesPerQuery: {
+            type: "integer",
+            minimum: 1
+          },
+          includePaidResults: {
+            type: "boolean"
+          },
+          includeAiOverview: {
+            type: "boolean"
+          },
+          includePeopleAlsoAsk: {
+            type: "boolean"
+          }
+        },
+        additionalProperties: true
+      },
+      requestExample: {
+        queries: ["fast marketplace x402"],
+        countryCode: "US",
+        languageCode: "en",
+        maxPagesPerQuery: 2,
+        includePaidResults: false,
+        includeAiOverview: true,
+        includePeopleAlsoAsk: true
+      }
+    }
+  ],
+  "automation-lab/trustpilot": [
+    {
+      path: "/company-reviews",
+      operationId: "company-reviews",
+      summary: "Scrape Trustpilot company reviews",
+      description: "Extract Trustpilot reviews, ratings, reviewer data, and optional company metadata for one or more companies.",
+      requestSchemaJson: {
+        type: "object",
+        required: ["companyUrls"],
+        properties: {
+          companyUrls: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "string",
+              minLength: 1
+            }
+          },
+          maxReviewsPerCompany: {
+            type: "integer",
+            minimum: 1
+          },
+          sort: {
+            type: "string",
+            enum: ["recency", "relevance"]
+          },
+          includeCompanyInfo: {
+            type: "boolean"
+          },
+          stars: {
+            type: "array",
+            items: {
+              type: "integer",
+              minimum: 1,
+              maximum: 5
+            }
+          },
+          language: {
+            type: "string"
+          },
+          verifiedOnly: {
+            type: "boolean"
+          }
+        },
+        additionalProperties: true
+      },
+      requestExample: {
+        companyUrls: ["pipedrive.com"],
+        maxReviewsPerCompany: 25,
+        sort: "recency",
+        includeCompanyInfo: true,
+        stars: [4, 5]
+      }
+    }
+  ],
+  "curious_coder/google-play-scraper": [
+    {
+      path: "/search-apps",
+      operationId: "search-apps",
+      summary: "Search Google Play apps",
+      description: "Search Google Play or fetch specific app records with app metadata, developer fields, and optional review extraction.",
+      requestSchemaJson: {
+        type: "object",
+        properties: {
+          searchTerms: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "string",
+              minLength: 1
+            }
+          },
+          appIds: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "string",
+              minLength: 1
+            }
+          },
+          country: {
+            type: "string",
+            minLength: 2,
+            maxLength: 2
+          },
+          maxApps: {
+            type: "integer",
+            minimum: 1
+          },
+          maxReviews: {
+            type: "integer",
+            minimum: 0
+          }
+        },
+        anyOf: [
+          { required: ["searchTerms"] },
+          { required: ["appIds"] }
+        ],
+        additionalProperties: true
+      },
+      requestExample: {
+        searchTerms: ["habit tracker"],
+        country: "us",
+        maxApps: 20,
+        maxReviews: 50
+      }
+    }
+  ],
+  "4bdullatif/appstore-scraper": [
+    {
+      path: "/search-apps",
+      operationId: "search-apps",
+      summary: "Search Apple App Store apps",
+      description: "Search Apple App Store listings by keyword, country, category, or chart and return structured app metadata.",
+      requestSchemaJson: {
+        type: "object",
+        required: ["searchTerm"],
+        properties: {
+          searchTerm: {
+            type: "string",
+            minLength: 1
+          },
+          country: {
+            type: "string",
+            minLength: 2,
+            maxLength: 2
+          },
+          category: {
+            type: "string"
+          },
+          chart: {
+            type: "string",
+            enum: ["top-free", "top-paid", "top-grossing"]
+          },
+          limit: {
+            type: "integer",
+            minimum: 1
+          }
+        },
+        additionalProperties: true
+      },
+      requestExample: {
+        searchTerm: "budget planner",
+        country: "us",
+        chart: "top-free",
+        limit: 25
+      }
+    }
+  ],
+  "shahidirfan/reddit-community-scraper": [
+    {
+      path: "/community-posts",
+      operationId: "community-posts",
+      summary: "Scrape Reddit communities",
+      description: "Extract Reddit posts, comments, community metadata, and related discussion signals from one or more subreddits or search queries.",
+      requestSchemaJson: {
+        type: "object",
+        properties: {
+          subreddits: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "string",
+              minLength: 1
+            }
+          },
+          searchQueries: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "string",
+              minLength: 1
+            }
+          },
+          sort: {
+            type: "string",
+            enum: ["hot", "new", "top", "relevance"]
+          },
+          time: {
+            type: "string",
+            enum: ["hour", "day", "week", "month", "year", "all"]
+          },
+          maxItems: {
+            type: "integer",
+            minimum: 1
+          },
+          maxComments: {
+            type: "integer",
+            minimum: 0
+          }
+        },
+        anyOf: [
+          { required: ["subreddits"] },
+          { required: ["searchQueries"] }
+        ],
+        additionalProperties: true
+      },
+      requestExample: {
+        subreddits: ["LocalLLaMA"],
+        sort: "top",
+        time: "month",
+        maxItems: 25,
+        maxComments: 20
+      }
+    }
+  ],
   "apify/website-content-crawler": [
     {
       path: "/crawl-content",

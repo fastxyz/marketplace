@@ -1,0 +1,114 @@
+{
+  "profile": {
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
+    "contactEmail": "marketplace@fast.xyz"
+  },
+  "service": {
+    "serviceType": "marketplace_proxy",
+    "slug": "apify-google-search-scraper",
+    "apiNamespace": "apify-google-search",
+    "name": "Google Search Results Scraper",
+    "tagline": "Scrape Google SERPs, AI overviews, and related search signals through a Fast-native async proxy.",
+    "about": "Google Search Results Scraper exposes an Apify-backed Google SERP workflow through the marketplace for SEO tracking, query monitoring, competitor research, AI overview capture, and People Also Ask extraction.",
+    "categories": [
+      "Search",
+      "SEO",
+      "Research"
+    ],
+    "promptIntro": "I want to use the Google Search Results Scraper service on Fast Marketplace.",
+    "setupInstructions": [
+      "Fund a Fast wallet on mainnet.",
+      "Provide one or more queries and optional locale settings.",
+      "Keep the returned job token and poll the marketplace job route for completion."
+    ],
+    "websiteUrl": "https://fastmainnetapifygooglesearch.8o.vc",
+    "payoutWallet": "fast1rv8wsdd5pnkwt4u637g2yj4tpuyq26rzw8380rfhpnsnljz7v3tqv4njuq"
+  },
+  "endpoints": [
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "search-results",
+      "title": "Search Results",
+      "description": "Scrape Google Search result pages, including organic results and optional SERP enrichments like ads, AI overviews, and People Also Ask.",
+      "billingType": "fixed_x402",
+      "price": "$0.0001",
+      "method": "POST",
+      "mode": "async",
+      "asyncStrategy": "poll",
+      "asyncTimeoutMs": 1800000,
+      "pollPath": "/runs/poll",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": ["queries"],
+        "properties": {
+          "queries": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "countryCode": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 2
+          },
+          "languageCode": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 5
+          },
+          "maxPagesPerQuery": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "includePaidResults": {
+            "type": "boolean"
+          },
+          "includeAiOverview": {
+            "type": "boolean"
+          },
+          "includePeopleAlsoAsk": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "requestExample": {
+        "queries": ["fast marketplace x402"],
+        "countryCode": "US",
+        "languageCode": "en",
+        "maxPagesPerQuery": 2,
+        "includePaidResults": false,
+        "includeAiOverview": true,
+        "includePeopleAlsoAsk": true
+      },
+      "responseExample": {
+        "runId": "apify_run_123",
+        "status": "SUCCEEDED",
+        "items": [
+          {
+            "searchQuery": "fast marketplace x402",
+            "organicResults": [
+              {
+                "title": "Example SERP Result",
+                "url": "https://example.com/article"
+              }
+            ]
+          }
+        ]
+      },
+      "usageNotes": "Use this for SERP monitoring, SEO research, AI overview capture, and query-driven market intelligence.",
+      "upstreamBaseUrl": "https://fastmainnetapifygooglesearch.8o.vc",
+      "upstreamPath": "/search-results",
+      "upstreamAuthMode": "none"
+    }
+  ]
+}

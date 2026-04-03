@@ -10,7 +10,7 @@ Each service should be:
 - published as `verified_escrow`
 - modeled as an async `fixed_x402` route for now
 
-The six rows at the top are already deployed in Coolify. The remaining rows are the new batch requested for marketplace onboarding.
+Rows marked `live` are already deployed and published. Rows marked `new` are the existing onboarding backlog. Rows marked `planned` are the next platform-expansion batch.
 
 ## Suggested Mapping
 
@@ -35,6 +35,11 @@ The six rows at the top are already deployed in Coolify. The remaining rows are 
 | new | `powerai/g2-product-reviews-scraper` | `G2 Product Reviews Scraper` | `apify-g2-product-reviews-scraper` | `apify-g2-reviews` | `fast-provider-apify-g2-reviews` | `fastmainnetapifyg2reviews.8o.vc` | `g2-product-reviews.mainnet.template.json` |
 | new | `apify/cheerio-scraper` | `Cheerio Scraper` | `apify-cheerio-scraper` | `apify-cheerio` | `fast-provider-apify-cheerio` | `fastmainnetapifycheerio.8o.vc` | `cheerio.mainnet.template.json` |
 | new | `junglee/amazon-crawler` | `Amazon Product Scraper` | `apify-amazon-product-scraper` | `apify-amazon` | `fast-provider-apify-amazon` | `fastmainnetapifyamazon.8o.vc` | `amazon.mainnet.template.json` |
+| planned | `apify/google-search-scraper` | `Google Search Results Scraper` | `apify-google-search-scraper` | `apify-google-search` | `fast-provider-apify-google-search` | `fastmainnetapifygooglesearch.8o.vc` | `google-search.mainnet.template.json` |
+| planned | `automation-lab/trustpilot` | `Trustpilot Reviews Scraper` | `apify-trustpilot-reviews-scraper` | `apify-trustpilot` | `fast-provider-apify-trustpilot` | `fastmainnetapifytrustpilot.8o.vc` | `trustpilot.mainnet.template.json` |
+| planned | `curious_coder/google-play-scraper` | `Google Play Scraper` | `apify-google-play-scraper` | `apify-google-play` | `fast-provider-apify-google-play` | `fastmainnetapifygoogleplay.8o.vc` | `google-play.mainnet.template.json` |
+| planned | `4bdullatif/appstore-scraper` | `Apple App Store Scraper` | `apify-apple-app-store-scraper` | `apify-appstore` | `fast-provider-apify-appstore` | `fastmainnetapifyappstore.8o.vc` | `appstore.mainnet.template.json` |
+| planned | `shahidirfan/reddit-community-scraper` | `Reddit Community Scraper` | `apify-reddit-community-scraper` | `apify-reddit` | `fast-provider-apify-reddit` | `fastmainnetapifyreddit.8o.vc` | `reddit-community.mainnet.template.json` |
 
 ## Required Coolify Env Per App
 
