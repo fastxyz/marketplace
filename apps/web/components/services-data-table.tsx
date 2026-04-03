@@ -49,6 +49,8 @@ function inferWebsiteUrlFromServiceName(serviceName: string): string | null {
   const normalized = serviceName.toLowerCase();
 
   const exactMappings: Array<[string, string]> = [
+    ["trustpilot reviews scraper", "https://www.trustpilot.com"],
+    ["apple app store scraper", "https://www.apple.com"],
     ["cheerio scraper", "https://cheerio.js.org"],
     ["tweet scraper", "https://x.com"],
     ["tavily proxy", "https://tavily.com"],
@@ -102,6 +104,7 @@ export function ServicesDataTable({ services }: { services: ServiceSummary[] }) 
   const [sorting, setSorting] = React.useState<SortingState>([{ id: "name", desc: false }]);
   const [expandedSlug, setExpandedSlug] = React.useState<string | null>(null);
   const [detailsBySlug, setDetailsBySlug] = React.useState<Record<string, ServiceDetail>>({});
+  const [detailErrorsBySlug, setDetailErrorsBySlug] = React.useState<Record<string, string>>({});
   const [loadingSlug, setLoadingSlug] = React.useState<string | null>(null);
   const clientApiBaseUrl = React.useMemo(() => getClientApiBaseUrl(), []);
   const detailsBySlugRef = React.useRef(detailsBySlug);
@@ -126,11 +129,31 @@ export function ServicesDataTable({ services }: { services: ServiceSummary[] }) 
     const request = (async () => {
       const detail = await fetchServiceDetail(service.slug, clientApiBaseUrl);
       if (detail) {
+        setDetailErrorsBySlug((current) => {
+          if (!(service.slug in current)) {
+            return current;
+          }
+
+          const { [service.slug]: _omitted, ...rest } = current;
+          return rest;
+        });
         setDetailsBySlug((current) => ({ ...current, [service.slug]: detail }));
+      } else {
+        setDetailErrorsBySlug((current) => {
+          if (current[service.slug] === "Service details not found.") {
+            return current;
+          }
+
+          return { ...current, [service.slug]: "Service details not found." };
+        });
       }
 
       return detail;
-    })();
+    })().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : "Failed to load service details.";
+      setDetailErrorsBySlug((current) => ({ ...current, [service.slug]: message }));
+      throw error;
+    });
 
     inFlightDetailsRef.current[service.slug] = request;
 
@@ -143,7 +166,7 @@ export function ServicesDataTable({ services }: { services: ServiceSummary[] }) 
   }, [clientApiBaseUrl]);
 
   const preloadDetails = React.useCallback((service: ServiceSummary) => {
-    void loadDetails(service);
+    void loadDetails(service).catch(() => null);
   }, [loadDetails]);
 
   const toggleExpanded = React.useCallback(async (service: ServiceSummary) => {
@@ -153,7 +176,11 @@ export function ServicesDataTable({ services }: { services: ServiceSummary[] }) 
     }
 
     setExpandedSlug(service.slug);
-    await loadDetails(service);
+    try {
+      await loadDetails(service);
+    } catch {
+      return;
+    }
   }, [expandedSlug, loadDetails]);
 
   const columns = React.useMemo<ColumnDef<ServiceSummary>[]>(() => [
@@ -272,6 +299,7 @@ export function ServicesDataTable({ services }: { services: ServiceSummary[] }) 
             const service = row.original;
             const expanded = expandedSlug === service.slug;
             const detail = detailsBySlug[service.slug];
+            const detailError = detailErrorsBySlug[service.slug];
             const loading = loadingSlug === service.slug;
 
             return (
@@ -293,6 +321,7 @@ export function ServicesDataTable({ services }: { services: ServiceSummary[] }) 
                   <TableRow>
                     <TableCell colSpan={columns.length} className="bg-muted/20 px-2 py-4">
                       {loading && !detail ? <div className="text-sm text-muted-foreground">Loading details…</div> : null}
+                      {detailError && !loading && !detail ? <div className="text-sm text-destructive">{detailError}</div> : null}
                       {detail ? <EndpointSubtable detail={detail} /> : null}
                     </TableCell>
                   </TableRow>

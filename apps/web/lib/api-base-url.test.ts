@@ -3,14 +3,14 @@ import { describe, expect, it } from "vitest";
 import { getClientApiBaseUrl } from "./api-base-url";
 
 describe("getClientApiBaseUrl", () => {
-  it("defaults localhost web dev to the local API port when no client API base URL is configured", () => {
+  it("defaults browser requests to same-origin when no client API base URL is configured", () => {
     expect(
       getClientApiBaseUrl({
         NODE_ENV: "development",
         MARKETPLACE_API_BASE_URL: undefined,
         NEXT_PUBLIC_MARKETPLACE_API_BASE_URL: undefined
       })
-    ).toBe("http://localhost:3000");
+    ).toBe("");
   });
 
   it("keeps an explicitly configured production API base URL in development", () => {

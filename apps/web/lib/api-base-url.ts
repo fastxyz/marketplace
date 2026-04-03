@@ -8,12 +8,5 @@ export function getClientApiBaseUrl(
   env: Partial<Pick<NodeJS.ProcessEnv, "NODE_ENV" | "NEXT_PUBLIC_MARKETPLACE_API_BASE_URL" | "MARKETPLACE_API_BASE_URL">> = process.env
 ): string {
   const configured = env.NEXT_PUBLIC_MARKETPLACE_API_BASE_URL ?? env.MARKETPLACE_API_BASE_URL ?? "";
-
-  if (env.NODE_ENV !== "production") {
-    if (!configured) {
-      return DEFAULT_LOCAL_API_BASE_URL;
-    }
-  }
-
   return configured;
 }

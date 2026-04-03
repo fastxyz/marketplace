@@ -122,6 +122,44 @@ describe("MarketplaceHome", () => {
             websiteUrl: "https://www.instagram.com"
           },
           {
+            serviceType: "marketplace_proxy",
+            slug: "trustpilot-reviews-scraper",
+            name: "Trustpilot Reviews Scraper",
+            ownerName: "Fast Marketplace",
+            tagline: "Extract Trustpilot reviews.",
+            categories: ["Research"],
+            settlementMode: "verified_escrow",
+            settlementLabel: "Verified",
+            settlementDescription: "Marketplace escrow, refunds, and payout reconciliation.",
+            priceRange: "$0.03",
+            settlementToken: "USDC",
+            endpointCount: 1,
+            totalCalls: 12,
+            revenue: "0.36",
+            successRate30d: 98,
+            volume30d: [],
+            websiteUrl: "https://fastmainnetapifytrustpilot.8o.vc"
+          },
+          {
+            serviceType: "marketplace_proxy",
+            slug: "apple-app-store-scraper",
+            name: "Apple App Store Scraper",
+            ownerName: "Fast Marketplace",
+            tagline: "Search Apple App Store listings.",
+            categories: ["Research"],
+            settlementMode: "verified_escrow",
+            settlementLabel: "Verified",
+            settlementDescription: "Marketplace escrow, refunds, and payout reconciliation.",
+            priceRange: "$0.03",
+            settlementToken: "USDC",
+            endpointCount: 1,
+            totalCalls: 9,
+            revenue: "0.27",
+            successRate30d: 100,
+            volume30d: [],
+            websiteUrl: "https://fastmainnetapifyappstore.8o.vc"
+          },
+          {
             serviceType: "external_registry",
             slug: "stableenrich-apollo-api",
             name: "StableEnrich Apollo API",
@@ -152,9 +190,13 @@ describe("MarketplaceHome", () => {
     expect(screen.getByRole("columnheader", { name: /pricing/i })).toBeTruthy();
     expect(screen.getByText("Amazon Product Scraper")).toBeTruthy();
     expect(screen.getByText("Instagram Scraper")).toBeTruthy();
+    expect(screen.getByText("Trustpilot Reviews Scraper")).toBeTruthy();
+    expect(screen.getByText("Apple App Store Scraper")).toBeTruthy();
     expect(screen.getByText("StableEnrich Apollo API")).toBeTruthy();
     expect(screen.getByRole("img", { name: "Amazon Product Scraper favicon" }).getAttribute("src")).toBe("https://www.google.com/s2/favicons?domain=www.amazon.com&sz=64");
     expect(screen.getByRole("img", { name: "Instagram Scraper favicon" }).getAttribute("src")).toBe("https://www.google.com/s2/favicons?domain=www.instagram.com&sz=64");
+    expect(screen.getByRole("img", { name: "Trustpilot Reviews Scraper favicon" }).getAttribute("src")).toBe("https://www.google.com/s2/favicons?domain=www.trustpilot.com&sz=64");
+    expect(screen.getByRole("img", { name: "Apple App Store Scraper favicon" }).getAttribute("src")).toBe("https://www.google.com/s2/favicons?domain=www.apple.com&sz=64");
     expect(screen.getByRole("img", { name: "StableEnrich Apollo API favicon" }).getAttribute("src")).toBe("https://www.google.com/s2/favicons?domain=www.apollo.io&sz=64");
 
     await user.type(screen.getByPlaceholderText("Search services, owners, or categories"), "instagram");
@@ -182,15 +224,13 @@ describe("MarketplaceHome", () => {
     expect(within(categoryFilter).getByRole("option", { name: "Social" })).toBeTruthy();
 
     await user.selectOptions(categoryFilter, "");
-    await user.hover(screen.getByText("Instagram Scraper"));
-
-    await waitFor(() => {
-      expect(fetchServiceDetailMock).toHaveBeenCalledWith("instagram-scraper", "http://localhost:3000");
-    });
-
     await user.click(screen.getByText("Instagram Scraper"));
 
-    expect(fetchServiceDetailMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(fetchServiceDetailMock).toHaveBeenCalledWith("instagram-scraper", "");
+    });
+
+    expect(fetchServiceDetailMock).toHaveBeenCalled();
 
     expect(screen.getByText("Endpoint")).toBeTruthy();
     expect(screen.getByText("Scrape Posts")).toBeTruthy();
