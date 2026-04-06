@@ -148,7 +148,7 @@ describe("WalletLoginButton", () => {
       />
     );
 
-    await user.hover(screen.getByRole("button", { name: /wallet menu for fast1pro\.\.\.000000/i }));
+    await user.click(screen.getByRole("button", { name: /wallet menu for fast1pro\.\.\.000000/i }));
 
     const dashboardMenuItem = await screen.findByRole("menuitem", { name: "My Dashboard" });
     expect(dashboardMenuItem.getAttribute("href")).toBe("/spend");

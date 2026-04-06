@@ -67,28 +67,6 @@ export function WalletLoginButton({
   const [session, setSession] = React.useState<SessionState | null>(null);
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [menuOpen, setMenuOpen] = React.useState(false);
-  const menuCloseTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearMenuCloseTimeout = React.useCallback(() => {
-    if (menuCloseTimeoutRef.current !== null) {
-      clearTimeout(menuCloseTimeoutRef.current);
-      menuCloseTimeoutRef.current = null;
-    }
-  }, []);
-
-  const openMenu = React.useCallback(() => {
-    clearMenuCloseTimeout();
-    setMenuOpen(true);
-  }, [clearMenuCloseTimeout]);
-
-  const scheduleMenuClose = React.useCallback(() => {
-    clearMenuCloseTimeout();
-    menuCloseTimeoutRef.current = setTimeout(() => {
-      setMenuOpen(false);
-      menuCloseTimeoutRef.current = null;
-    }, 120);
-  }, [clearMenuCloseTimeout]);
 
   React.useEffect(() => {
     function syncSession() {
@@ -104,8 +82,6 @@ export function WalletLoginButton({
       window.removeEventListener("storage", syncSession);
     };
   }, [deploymentNetwork]);
-
-  React.useEffect(() => () => clearMenuCloseTimeout(), [clearMenuCloseTimeout]);
 
   async function connectWallet() {
     setPending(true);
@@ -204,7 +180,6 @@ export function WalletLoginButton({
     } finally {
       clearStoredWalletSession();
       setSession(null);
-      setMenuOpen(false);
       setPending(false);
     }
   }
@@ -218,25 +193,18 @@ export function WalletLoginButton({
           </Badge>
         ) : null}
         {session ? (
-          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+          <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
                 className="inline-flex items-center gap-2 rounded-pill px-4 py-3 text-sm font-medium tracking-headline transition hover:text-foreground/80"
-                onMouseEnter={openMenu}
-                onMouseLeave={scheduleMenuClose}
                 aria-label={`Wallet menu for ${shortenWalletAddress(session.wallet)}`}
               >
                 <Wallet className="h-4 w-4" />
                 {shortenWalletAddress(session.wallet)}
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-52"
-              onMouseEnter={openMenu}
-              onMouseLeave={scheduleMenuClose}
-            >
+            <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem asChild>
                 <Link href="/spend" className="cursor-pointer">
                   My Dashboard
