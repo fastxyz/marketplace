@@ -32,9 +32,8 @@ jobs:
 
             Constraints:
             - Use Fast tools only for the approved route refs in the CI config.
-            - If you need external research, prefer the sync route placeholder `research.search`.
-            - If you need async enrichment, call the placeholder `enrichment.run` route and poll with `marketplace_get_job`.
-            - Treat those route refs as examples. Replace them with your published route refs before enabling this workflow in production.
+            - For sync external research, prefer `tavily.search`.
+            - For async SERP enrichment, call `apify-google-search.search-results` and poll with `marketplace_get_job`.
             - Summarize any external findings directly in the PR response.
           allowed_tools: "Bash(git:*),View,GlobTool,GrepTool,BatchTool,mcp__fast-pay__marketplace_search,mcp__fast-pay__marketplace_show,mcp__fast-pay__marketplace_call,mcp__fast-pay__marketplace_get_job"
           mcp_config: |

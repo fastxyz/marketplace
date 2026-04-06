@@ -47,12 +47,20 @@ The recommended baseline is:
 - `marketplace_topup`
 - `marketplace_get_job`
 
+The template currently standardizes on this pair:
+
+- sync: `tavily.search`
+- async: `apify-google-search.search-results`
+
 The template assumes two common CI paths:
 
 1. A sync enrichment call, for example research or documentation lookup through a Fast-executed proxy route
 2. An async job kickoff followed by `marketplace_get_job` polling
 
-The checked-in example route refs are placeholders. Replace them with published route refs from your marketplace environment before enabling the workflow in a live repository.
+Both refs map to currently deployed marketplace-operated services:
+
+- `tavily.search` from the Tavily proxy at `fast-mainnet-provider-tavily`
+- `apify-google-search.search-results` from the Google Search Results Scraper at `fast-provider-apify-google-search`
 
 ## Workflow Notes
 
@@ -64,7 +72,7 @@ The checked-in example route refs are placeholders. Replace them with published 
 ## Minimal Adoption Steps
 
 1. Copy [examples/github-actions/claude-code-fast-pay.yml](../examples/github-actions/claude-code-fast-pay.yml) into your repo’s `.github/workflows/`
-2. Replace the placeholder route refs in the prompt and allowlist config
+2. Confirm the route refs still match the published marketplace services in your target environment
 3. Add the required GitHub secrets
 4. Fund the dedicated CI wallet
 5. Start with `workflow_dispatch` before enabling automatic PR triggers

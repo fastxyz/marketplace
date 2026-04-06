@@ -3,8 +3,8 @@
     "maxPerCallRaw": "250000",
     "dailyCapRaw": "1000000",
     "allowlist": [
-      "research.search",
-      "enrichment.run"
+      "tavily.search",
+      "apify-google-search.search-results"
     ]
   }
 }
