@@ -130,6 +130,16 @@ describe("shared marketplace helpers", () => {
       paymentId: "upper-id",
       paymentPayload: "upper-header"
     });
+
+    expect(
+      normalizePaymentHeaders({
+        "X-PAYMENT": "legacy-header",
+        "X-PAYMENT-IDENTIFIER": "legacy-id"
+      })
+    ).toEqual({
+      paymentId: "legacy-id",
+      paymentPayload: "legacy-header"
+    });
   });
 
   it("hashes normalized requests deterministically", () => {
