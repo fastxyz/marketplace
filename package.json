@@ -20,7 +20,6 @@
     "dev:apify-service": "tsx apps/apify-service/src/index.ts",
     "dev:facilitator": "tsx apps/facilitator/src/index.ts",
     "dev:tavily-service": "tsx apps/tavily-service/src/index.ts",
-    "dev:valyu-service": "tsx apps/valyu-service/src/index.ts",
     "dev:worker": "tsx apps/worker/src/index.ts",
     "dev:web": "npm run dev --workspace @marketplace/web",
     "cli": "tsx packages/cli/src/index.ts",
@@ -28,7 +27,6 @@
     "start:apify-service": "node dist/apps/apify-service/index.js",
     "start:facilitator": "node dist/apps/facilitator/index.js",
     "start:tavily-service": "node dist/apps/tavily-service/index.js",
-    "start:valyu-service": "node dist/apps/valyu-service/index.js",
     "start:worker": "node dist/apps/worker/index.js",
     "start:web": "npm run start --workspace @marketplace/web",
     "start:cli": "node dist/packages/cli/index.js"
@@ -39,8 +37,8 @@
     "@fastxyz/x402-client": "^0.1.2",
     "@fastxyz/x402-facilitator": "^0.1.2",
     "@fastxyz/x402-server": "^0.1.2",
-    "@noble/ed25519": "^3.0.1",
-    "@noble/hashes": "^2.0.1",
+    "@noble/ed25519": "^2.3.0",
+    "@noble/hashes": "^1.8.0",
     "ajv": "^8.18.0",
     "commander": "^14.0.3",
     "dotenv": "^17.3.1",
@@ -51,9 +49,7 @@
   },
   "optionalDependencies": {
     "@next/swc-linux-x64-gnu": "^16.1.7",
-    "@rollup/rollup-linux-x64-gnu": "^4.59.0",
-    "@tailwindcss/oxide-linux-x64-gnu": "^4.2.2",
-    "lightningcss-linux-x64-gnu": "^1.32.0"
+    "@rollup/rollup-linux-x64-gnu": "^4.59.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.2",

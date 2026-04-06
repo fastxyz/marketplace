@@ -227,9 +227,9 @@ The MCP server reuses the CLI wallet loader and spend controls. If `FAST_MARKETP
 
 For GitHub Actions and Claude Code runner setup, use:
 
-- [docs/claude-code-fast-pay.md](/Users/chris/Documents/Workspace/ai-agent-marketplace/docs/claude-code-fast-pay.md)
-- [examples/github-actions/claude-code-fast-pay.yml](/Users/chris/Documents/Workspace/ai-agent-marketplace/examples/github-actions/claude-code-fast-pay.yml)
-- [examples/fast-marketplace.ci.config.json](/Users/chris/Documents/Workspace/ai-agent-marketplace/examples/fast-marketplace.ci.config.json)
+- [docs/claude-code-fast-pay.md](docs/claude-code-fast-pay.md)
+- [examples/github-actions/claude-code-fast-pay.yml](examples/github-actions/claude-code-fast-pay.yml)
+- [examples/fast-marketplace.ci.config.json](examples/fast-marketplace.ci.config.json)
 
 Provider-agent workflow:
 

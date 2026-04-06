@@ -1,6 +1,6 @@
 # Implementation Plan: `#6` GitHub Action / CI Payment Bot
 
-Issue reference: [#29](https://github.com/seichris/ai-agent-marketplace/issues/29)
+Issue reference: [#29](https://github.com/fastxyz/marketplace/issues/29)
 
 ## Summary
 

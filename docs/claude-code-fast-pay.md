@@ -2,7 +2,7 @@
 
 This repo ships `fast-pay-mcp` as a local stdio MCP server. The recommended first CI integration is to run that MCP server inside the GitHub runner and let Claude Code call marketplace tools through a dedicated Fast wallet.
 
-The ready-to-copy workflow template lives at [examples/github-actions/claude-code-fast-pay.yml](/Users/chris/Documents/Workspace/ai-agent-marketplace/examples/github-actions/claude-code-fast-pay.yml). It stays outside `.github/workflows/` on purpose so it does not run in this repo by default.
+The ready-to-copy workflow template lives at [examples/github-actions/claude-code-fast-pay.yml](../examples/github-actions/claude-code-fast-pay.yml). It stays outside `.github/workflows/` on purpose so it does not run in this repo by default.
 
 ## What This Template Covers
 
@@ -11,7 +11,7 @@ The ready-to-copy workflow template lives at [examples/github-actions/claude-cod
 - a dedicated Fast CI wallet passed in through GitHub secrets
 - local spend controls through `FAST_MARKETPLACE_CONFIG`
 - one sync route example and one async route example
-- post-run spend review through `/spend`
+- post-run spend review through `/me/spend`
 
 ## Required GitHub Secrets
 
@@ -26,7 +26,7 @@ Do not reuse a personal day-to-day wallet for CI. Use a dedicated wallet with a 
 
 ## Recommended CI Config
 
-Point `FAST_MARKETPLACE_CONFIG` at a checked-in config file such as [examples/fast-marketplace.ci.config.json](/Users/chris/Documents/Workspace/ai-agent-marketplace/examples/fast-marketplace.ci.config.json).
+Point `FAST_MARKETPLACE_CONFIG` at a checked-in config file such as [examples/fast-marketplace.ci.config.json](../examples/fast-marketplace.ci.config.json).
 
 The recommended baseline is:
 
@@ -63,13 +63,13 @@ The checked-in example route refs are placeholders. Replace them with published 
 
 ## Minimal Adoption Steps
 
-1. Copy [examples/github-actions/claude-code-fast-pay.yml](/Users/chris/Documents/Workspace/ai-agent-marketplace/examples/github-actions/claude-code-fast-pay.yml) into your repo’s `.github/workflows/`
+1. Copy [examples/github-actions/claude-code-fast-pay.yml](../examples/github-actions/claude-code-fast-pay.yml) into your repo’s `.github/workflows/`
 2. Replace the placeholder route refs in the prompt and allowlist config
 3. Add the required GitHub secrets
 4. Fund the dedicated CI wallet
 5. Start with `workflow_dispatch` before enabling automatic PR triggers
 
-After the first run, review marketplace spend in the wallet-authenticated spend dashboard at `/spend`.
+After the first run, review marketplace spend in the wallet-authenticated spend dashboard at `/me/spend`.
 
 ## Local Verification
 
