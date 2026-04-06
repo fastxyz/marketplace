@@ -1,0 +1,64 @@
+name: Claude Code Fast Pay
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  fast-pay-review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Claude Code with Fast marketplace MCP
+        uses: anthropics/claude-code-base-action@beta
+        with:
+          prompt: |
+            Review this pull request with Fast marketplace tools enabled.
+
+            Constraints:
+            - Use Fast tools only for the approved route refs in the CI config.
+            - If you need external research, prefer the sync route placeholder `research.search`.
+            - If you need async enrichment, call the placeholder `enrichment.run` route and poll with `marketplace_get_job`.
+            - Treat those route refs as examples. Replace them with your published route refs before enabling this workflow in production.
+            - Summarize any external findings directly in the PR response.
+          allowed_tools: "Bash(git:*),View,GlobTool,GrepTool,BatchTool,mcp__fast-pay__marketplace_search,mcp__fast-pay__marketplace_show,mcp__fast-pay__marketplace_call,mcp__fast-pay__marketplace_get_job"
+          mcp_config: |
+            {
+              "mcpServers": {
+                "fast-pay": {
+                  "command": "npx",
+                  "args": ["tsx", "packages/mcp/src/index.ts"],
+                  "env": {
+                    "MARKETPLACE_API_BASE_URL": "${{ secrets.MARKETPLACE_API_BASE_URL }}",
+                    "MARKETPLACE_FAST_NETWORK": "${{ secrets.MARKETPLACE_FAST_NETWORK }}",
+                    "FAST_PRIVATE_KEY": "${{ secrets.FAST_PRIVATE_KEY }}",
+                    "FAST_MARKETPLACE_CONFIG": "${{ github.workspace }}/examples/fast-marketplace.ci.config.json"
+                  }
+                }
+              }
+            }
+          claude_env: |
+            FAST_MARKETPLACE_CONFIG: ${{ github.workspace }}/examples/fast-marketplace.ci.config.json
+            MARKETPLACE_API_BASE_URL: ${{ secrets.MARKETPLACE_API_BASE_URL }}
+            MARKETPLACE_FAST_NETWORK: ${{ secrets.MARKETPLACE_FAST_NETWORK }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

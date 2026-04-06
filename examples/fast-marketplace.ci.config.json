@@ -1,0 +1,10 @@
+{
+  "spendControls": {
+    "maxPerCallRaw": "250000",
+    "dailyCapRaw": "1000000",
+    "allowlist": [
+      "research.search",
+      "enrichment.run"
+    ]
+  }
+}
