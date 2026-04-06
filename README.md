@@ -229,6 +229,8 @@ For GitHub Actions and Claude Code runner setup, use:
 
 - [docs/claude-code-fast-pay.md](docs/claude-code-fast-pay.md)
 - [examples/github-actions/claude-code-fast-pay.yml](examples/github-actions/claude-code-fast-pay.yml)
+- [examples/github-actions/codex-fast-pay.yml](examples/github-actions/codex-fast-pay.yml)
+- [examples/github-actions/gemini-fast-pay.yml](examples/github-actions/gemini-fast-pay.yml)
 - [examples/fast-marketplace.ci.config.json](examples/fast-marketplace.ci.config.json)
 
 Provider-agent workflow:

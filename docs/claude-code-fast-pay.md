@@ -1,8 +1,14 @@
-# Claude Code Fast Pay CI Template
+# Fast Pay CI Templates
 
-This repo ships `fast-pay-mcp` as a local stdio MCP server. The recommended first CI integration is to run that MCP server inside the GitHub runner and let Claude Code call marketplace tools through a dedicated Fast wallet.
+This repo ships `fast-pay-mcp` as a local stdio MCP server. The recommended first CI integration is still Claude Code, but the same Fast marketplace MCP setup can also be used from Codex and Gemini workflows in GitHub Actions.
 
-The ready-to-copy workflow template lives at [examples/github-actions/claude-code-fast-pay.yml](../examples/github-actions/claude-code-fast-pay.yml). It stays outside `.github/workflows/` on purpose so it does not run in this repo by default.
+The ready-to-copy workflow templates live at:
+
+- [examples/github-actions/claude-code-fast-pay.yml](../examples/github-actions/claude-code-fast-pay.yml)
+- [examples/github-actions/codex-fast-pay.yml](../examples/github-actions/codex-fast-pay.yml)
+- [examples/github-actions/gemini-fast-pay.yml](../examples/github-actions/gemini-fast-pay.yml)
+
+They stay outside `.github/workflows/` on purpose so they do not run in this repo by default.
 
 ## What This Template Covers
 
@@ -13,14 +19,41 @@ The ready-to-copy workflow template lives at [examples/github-actions/claude-cod
 - one sync route example and one async route example
 - post-run spend review through `/me/spend`
 
+## Supported Runners
+
+### Claude Code
+
+- Action: `anthropics/claude-code-base-action`
+- Auth: `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`
+- MCP config: inline `mcp_config`
+
+### Codex
+
+- Action: `openai/codex-action`
+- Auth: `OPENAI_API_KEY`
+- MCP config: `config.toml` inside `codex-home`
+
+There is no GitHub Actions equivalent of Claude Code OAuth for Codex in the official action today. The supported production path is API-key based.
+
+### Gemini
+
+- Action: `google-github-actions/run-gemini-cli`
+- Auth: `GEMINI_API_KEY`
+- MCP config: `settings` written to `.gemini/settings.json`
+
 ## Required GitHub Secrets
 
 Add these as repository or organization Actions secrets before copying the example workflow into a live repo:
 
-- `ANTHROPIC_API_KEY`: Claude Code model access
 - `MARKETPLACE_API_BASE_URL`: Fast marketplace API base URL, for example `https://api.marketplace.fast.xyz`
 - `MARKETPLACE_FAST_NETWORK`: `mainnet` or `testnet`
 - `FAST_PRIVATE_KEY`: dedicated CI wallet private key as a 32-byte hex string
+
+Then add the runner-specific model credential:
+
+- Claude: `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`
+- Codex: `OPENAI_API_KEY`
+- Gemini: `GEMINI_API_KEY`
 
 Do not reuse a personal day-to-day wallet for CI. Use a dedicated wallet with a small balance and narrow local spend controls.
 
@@ -64,16 +97,21 @@ Both refs map to currently deployed marketplace-operated services:
 
 ## Workflow Notes
 
-- The template runs the MCP server from source with `npx tsx packages/mcp/src/index.ts`. That avoids requiring a prebuilt published MCP package.
+- The templates run the MCP server from source with `npx tsx packages/mcp/src/index.ts`. That avoids requiring a prebuilt published MCP package.
 - The runner still needs this repo checked out because the MCP server and CLI live in the workspace.
-- The example uses `anthropics/claude-code-base-action@beta` because it has an explicit `mcp_config` input for inline stdio server setup. Once teams are happy with the template, they can wrap the same MCP config in a higher-level Claude Code workflow.
-- Keep the workflow outside `.github/workflows/` until you are ready to run it for real.
+- The Claude example uses `anthropics/claude-code-base-action@beta` because it has an explicit `mcp_config` input for inline stdio server setup.
+- The Codex example uses `openai/codex-action@v1` and writes a `config.toml` into `codex-home` before invoking the action.
+- The Gemini example uses `google-github-actions/run-gemini-cli@v0` and passes an inline `settings` JSON payload with `mcpServers`.
+- Keep the templates outside `.github/workflows/` until you are ready to run them for real.
 
 ## Minimal Adoption Steps
 
-1. Copy [examples/github-actions/claude-code-fast-pay.yml](../examples/github-actions/claude-code-fast-pay.yml) into your repo’s `.github/workflows/`
+1. Copy one of the templates into your repo’s `.github/workflows/`
+   - [examples/github-actions/claude-code-fast-pay.yml](../examples/github-actions/claude-code-fast-pay.yml)
+   - [examples/github-actions/codex-fast-pay.yml](../examples/github-actions/codex-fast-pay.yml)
+   - [examples/github-actions/gemini-fast-pay.yml](../examples/github-actions/gemini-fast-pay.yml)
 2. Confirm the route refs still match the published marketplace services in your target environment
-3. Add the required GitHub secrets
+3. Add the required GitHub secrets for the selected runner
 4. Fund the dedicated CI wallet
 5. Start with `workflow_dispatch` before enabling automatic PR triggers
 

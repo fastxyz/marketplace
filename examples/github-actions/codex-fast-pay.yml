@@ -1,0 +1,61 @@
+name: Codex Fast Pay
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  fast-pay-review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write Codex MCP config
+        env:
+          MARKETPLACE_API_BASE_URL: ${{ secrets.MARKETPLACE_API_BASE_URL }}
+          MARKETPLACE_FAST_NETWORK: ${{ secrets.MARKETPLACE_FAST_NETWORK }}
+          FAST_PRIVATE_KEY: ${{ secrets.FAST_PRIVATE_KEY }}
+          FAST_MARKETPLACE_CONFIG: ${{ github.workspace }}/examples/fast-marketplace.ci.config.json
+        run: |
+          mkdir -p .codex
+          cat > .codex/config.toml <<EOF
+          [mcp_servers.fast-pay]
+          command = "npx"
+          args = ["tsx", "packages/mcp/src/index.ts"]
+
+          [mcp_servers.fast-pay.env]
+          MARKETPLACE_API_BASE_URL = "${MARKETPLACE_API_BASE_URL}"
+          MARKETPLACE_FAST_NETWORK = "${MARKETPLACE_FAST_NETWORK}"
+          FAST_PRIVATE_KEY = "${FAST_PRIVATE_KEY}"
+          FAST_MARKETPLACE_CONFIG = "${FAST_MARKETPLACE_CONFIG}"
+          EOF
+
+      - name: Run Codex with Fast marketplace MCP
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          codex-home: ${{ github.workspace }}/.codex
+          prompt: |
+            Review this pull request with Fast marketplace tools enabled.
+
+            Constraints:
+            - Use Fast tools only for the approved route refs in the CI config.
+            - For sync external research, prefer `tavily.search`.
+            - For async SERP enrichment, call `apify-google-search.search-results`.
+            - Poll async jobs before concluding.
+            - Summarize any external findings directly in the PR response.
+          safety-strategy: drop-sudo
