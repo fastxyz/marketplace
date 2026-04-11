@@ -840,6 +840,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
   private readonly commerceConsentIdByQuoteWallet = new Map<string, string>();
   private readonly commerceOrdersById = new Map<string, CommerceOrderRecord>();
   private readonly commerceOrderIdByPaymentId = new Map<string, string>();
+  private readonly commerceOrderIdByQuoteId = new Map<string, string>();
   private readonly commerceFulfillmentsById = new Map<string, CommerceFulfillmentRecord>();
   private readonly providerRuntimeKeysByServiceId = new Map<string, ProviderRuntimeKeyRecord>();
   private readonly suggestionsById = new Map<string, SuggestionRecord>();
@@ -1739,6 +1740,13 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
         return clone(existing);
       }
     }
+    const existingQuoteOrderId = this.commerceOrderIdByQuoteId.get(input.quoteId);
+    if (existingQuoteOrderId) {
+      const existing = this.commerceOrdersById.get(existingQuoteOrderId);
+      if (existing) {
+        return clone(existing);
+      }
+    }
 
     const now = timestamp();
     const record: CommerceOrderRecord = {
@@ -1757,6 +1765,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     };
     this.commerceOrdersById.set(record.id, record);
     this.commerceOrderIdByPaymentId.set(record.paymentId, record.id);
+    this.commerceOrderIdByQuoteId.set(record.quoteId, record.id);
     return clone(record);
   }
 
@@ -1783,6 +1792,11 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
 
   async getCommerceOrderByPaymentId(paymentId: string): Promise<CommerceOrderRecord | null> {
     const id = this.commerceOrderIdByPaymentId.get(paymentId);
+    return clone(id ? (this.commerceOrdersById.get(id) ?? null) : null);
+  }
+
+  async getCommerceOrderByQuoteId(quoteId: string): Promise<CommerceOrderRecord | null> {
+    const id = this.commerceOrderIdByQuoteId.get(quoteId);
     return clone(id ? (this.commerceOrdersById.get(id) ?? null) : null);
   }
 
@@ -4221,7 +4235,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
 
       CREATE TABLE IF NOT EXISTS commerce_orders (
         id TEXT PRIMARY KEY,
-        quote_id TEXT NOT NULL REFERENCES commerce_quotes(quote_id) ON DELETE RESTRICT,
+        quote_id TEXT NOT NULL UNIQUE REFERENCES commerce_quotes(quote_id) ON DELETE RESTRICT,
         payment_id TEXT NOT NULL UNIQUE,
         buyer_wallet TEXT NOT NULL,
         route_id TEXT NOT NULL,
@@ -4243,6 +4257,9 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS commerce_orders_quote_id_idx
+      ON commerce_orders(quote_id);
 
       CREATE TABLE IF NOT EXISTS credit_accounts (
         id TEXT PRIMARY KEY,
@@ -6355,6 +6372,16 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     requestId: string;
     requestBody: unknown;
   }): Promise<CommerceOrderRecord> {
+    const existingPayment = await this.pool.query("SELECT * FROM commerce_orders WHERE payment_id = $1", [input.paymentId]);
+    if (existingPayment.rowCount) {
+      return mapCommerceOrderRow(existingPayment.rows[0]);
+    }
+
+    const existingQuote = await this.pool.query("SELECT * FROM commerce_orders WHERE quote_id = $1", [input.quoteId]);
+    if (existingQuote.rowCount) {
+      return mapCommerceOrderRow(existingQuote.rows[0]);
+    }
+
     const result = await this.pool.query(
       `
       INSERT INTO commerce_orders (
@@ -6362,7 +6389,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       ) VALUES (
         $1, $2, $3, $4, $5, $6, 'pending', $7::jsonb
       )
-      ON CONFLICT (payment_id) DO UPDATE
+      ON CONFLICT (quote_id) DO UPDATE
       SET updated_at = commerce_orders.updated_at
       RETURNING *
       `,
@@ -6411,6 +6438,11 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
 
   async getCommerceOrderByPaymentId(paymentId: string): Promise<CommerceOrderRecord | null> {
     const result = await this.pool.query("SELECT * FROM commerce_orders WHERE payment_id = $1", [paymentId]);
+    return result.rowCount ? mapCommerceOrderRow(result.rows[0]) : null;
+  }
+
+  async getCommerceOrderByQuoteId(quoteId: string): Promise<CommerceOrderRecord | null> {
+    const result = await this.pool.query("SELECT * FROM commerce_orders WHERE quote_id = $1", [quoteId]);
     return result.rowCount ? mapCommerceOrderRow(result.rows[0]) : null;
   }
 

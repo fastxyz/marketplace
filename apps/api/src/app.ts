@@ -2438,6 +2438,7 @@ async function resolveCommerceQuotePayment(input: {
   store: MarketplaceStore;
   route: PublishedEndpointVersionRecord;
   requestBody: unknown;
+  paymentId: string | null;
 }): Promise<{ quoteId: string; quotedPrice: string; price: string }> {
   const quoteId = commerceQuoteIdFromRequest(input.requestBody);
   commerceConsentFromRequest(input.requestBody);
@@ -2447,6 +2448,13 @@ async function resolveCommerceQuotePayment(input: {
   }
   if (quote.serviceId !== input.route.serviceId) {
     throw new Error("Commerce quote belongs to a different service.");
+  }
+  const existingOrder = await input.store.getCommerceOrderByQuoteId(quoteId);
+  if (existingOrder && existingOrder.paymentId !== input.paymentId) {
+    throw new Error("Commerce quote has already been used for an order.");
+  }
+  if (quote.status === "accepted" && existingOrder?.paymentId !== input.paymentId) {
+    throw new Error("Commerce quote has already been accepted.");
   }
   if (quote.status !== "quoted" && quote.status !== "accepted") {
     throw new Error(`Commerce quote is ${quote.status}.`);
@@ -2539,7 +2547,8 @@ async function handleX402Route(input: {
       ? await resolveCommerceQuotePayment({
           store: input.store,
           route: input.route,
-          requestBody
+          requestBody,
+          paymentId: paymentHeaders.paymentId
         })
       : null;
     requiredBody = buildPaymentRequiredResponse(input.route, paymentDestinationWallet, requestBody, commerceQuoteContext?.price);
@@ -2705,6 +2714,9 @@ async function handleX402Route(input: {
         requestId,
         requestBody
       });
+      if (commerceOrder.paymentId !== paymentHeaders.paymentId) {
+        throw new Error("Commerce quote has already been used for a different payment.");
+      }
     } catch (error) {
       const failedResponse = await buildRejectedSyncResponse({
         executeResult: {

@@ -1704,6 +1704,18 @@ describe("shared marketplace helpers", () => {
       status: "placed",
       providerOrderId: "order_store_test"
     });
+    const duplicateOrder = await store.createCommerceOrder({
+      quoteId: "quote_store_test",
+      paymentId: "payment_commerce_test_2",
+      buyerWallet: consent.buyerWallet,
+      routeId: "shop-fast-amazon.amazon-buy.v1",
+      requestId: "request_commerce_test_2",
+      requestBody: { quoteId: "quote_store_test" }
+    });
+    expect(duplicateOrder).toMatchObject({
+      id: order.id,
+      paymentId: "payment_commerce_test"
+    });
     expect(await store.getCommerceFulfillmentByOrderId(order.id)).toMatchObject({
       status: "pending_shipment"
     });

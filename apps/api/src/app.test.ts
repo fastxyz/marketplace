@@ -567,6 +567,13 @@ describe("marketplace api", () => {
     expect(await store.getCommerceFulfillmentByOrderId(order!.id)).toMatchObject({
       status: "pending_shipment"
     });
+
+    const duplicateBuy = await request(app)
+      .post("/api/shop-fast-amazon/amazon-buy")
+      .send(buyBody);
+
+    expect(duplicateBuy.status).toBe(400);
+    expect(duplicateBuy.body.error).toContain("already been used");
   });
 
   it("replays the same sync response for the same payment id and request", async () => {
