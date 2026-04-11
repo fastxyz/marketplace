@@ -708,6 +708,7 @@ describe("shared marketplace helpers", () => {
     ]);
     expect(listServiceDefinitions(mainnetConfig).map((service) => service.slug)).toEqual([
       "shop-fast-amazon",
+      "shopify-storefront",
       "shop-fast-amazon-execute"
     ]);
   });
@@ -1640,6 +1641,16 @@ describe("shared marketplace helpers", () => {
     expect(executable?.service.apiNamespace).toBe("shop-fast-amazon");
     expect(executable?.endpoints.map((endpoint) => endpoint.endpointType === "marketplace_proxy" ? endpoint.operation : null))
       .toEqual(["amazon-quote", "amazon-buy"]);
+
+    const shopify = await store.getPublishedServiceBySlug("shopify-storefront");
+    expect(shopify?.service.serviceType).toBe("external_registry");
+    expect(shopify?.service.categories).toContain("UCP");
+    expect(shopify?.endpoints).toHaveLength(1);
+    expect(shopify?.endpoints[0]).toMatchObject({
+      endpointType: "external_registry",
+      title: "Storefront GraphQL",
+      publicUrl: "https://{store_name}.myshopify.com/api/2026-04/graphql.json"
+    });
   });
 
   it("persists commerce quote, consent, order, and fulfillment records", async () => {
@@ -1749,6 +1760,10 @@ describe("shared marketplace helpers", () => {
         expect.objectContaining({
           id: "shop-fast-amazon:amazon-order-status",
           endpoint: "https://shop.fast.xyz/api/amazon/order-status"
+        }),
+        expect.objectContaining({
+          id: "shopify-storefront:storefront-graphql",
+          endpoint: "https://{store_name}.myshopify.com/api/2026-04/graphql.json"
         })
       ])
     );

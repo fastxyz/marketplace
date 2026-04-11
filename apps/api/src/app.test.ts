@@ -185,6 +185,10 @@ describe("marketplace api", () => {
         expect.objectContaining({
           id: "shop-fast-amazon:amazon-order-status",
           endpoint: "https://shop.fast.xyz/api/amazon/order-status"
+        }),
+        expect.objectContaining({
+          id: "shopify-storefront:storefront-graphql",
+          endpoint: "https://{store_name}.myshopify.com/api/2026-04/graphql.json"
         })
       ])
     );
