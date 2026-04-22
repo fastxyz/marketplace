@@ -1151,6 +1151,77 @@ export interface CompleteCreditTopupChargeInput {
   metadata?: Record<string, unknown>;
 }
 
+export type CommerceShopStatus = "active" | "paused" | "archived";
+
+export interface CommerceShopRecord {
+  shopId: string;
+  displayName: string;
+  baseUrl: string;
+  platform: string;
+  status: CommerceShopStatus;
+  hintSecretCiphertext: string;
+  hintSecretIv: string;
+  hintSecretAuthTag: string;
+  acceptedCurrency: string;
+  fulfillmentRegions: string[];
+  searchTimeoutMs: number;
+  rateLimitPerMin: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpsertCommerceShopInput {
+  shopId: string;
+  displayName: string;
+  baseUrl: string;
+  platform: string;
+  status?: CommerceShopStatus;
+  hintSecretCiphertext: string;
+  hintSecretIv: string;
+  hintSecretAuthTag: string;
+  acceptedCurrency?: string;
+  fulfillmentRegions?: string[];
+  searchTimeoutMs?: number;
+  rateLimitPerMin?: number;
+}
+
+export interface CommerceShopSummary {
+  shopId: string;
+  displayName: string;
+  platform: string;
+  fulfillmentRegions: string[];
+}
+
+export interface MerchantHandleHint {
+  merchantHandle: string;
+  merchantBaseUrl: string;
+  hintExp: string;
+  hintSig: string;
+}
+
+export interface CommerceSearchHit extends MerchantHandleHint {
+  shopId: string;
+  shopName: string;
+  productId: string;
+  title: string;
+  priceUsd: string;
+  imageUrl?: string;
+}
+
+export interface CommerceSearchResponse {
+  partial: boolean;
+  timedOutShops: string[];
+  hits: CommerceSearchHit[];
+}
+
+export interface CommerceOrderNotification {
+  orderId: string;
+  buyerWallet: string;
+  amountUsd: string;
+  status: string;
+  createdAt: string;
+}
+
 export interface MarketplaceStore {
   ensureSchema(): Promise<void>;
   getIdempotencyByPaymentId(paymentId: string): Promise<IdempotencyRecord | null>;
@@ -1359,6 +1430,9 @@ export interface MarketplaceStore {
   updateSuggestion(id: string, input: UpdateSuggestionInput): Promise<SuggestionRecord | null>;
   listProviderRequests(wallet: string): Promise<SuggestionRecord[]>;
   claimProviderRequest(id: string, wallet: string): Promise<SuggestionRecord | null>;
+  listActiveCommerceShops(): Promise<CommerceShopRecord[]>;
+  getCommerceShop(shopId: string): Promise<CommerceShopRecord | null>;
+  upsertCommerceShop(input: UpsertCommerceShopInput): Promise<CommerceShopRecord>;
 }
 
 export interface ChallengePayload {

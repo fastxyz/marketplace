@@ -4,6 +4,7 @@ import { URL } from "node:url";
 
 import type { Express, Request, Response as ExpressResponse } from "express";
 import express from "express";
+import { registerCommerceRoutes } from "./commerce.js";
 import { verifyPayment } from "@fastxyz/x402-server";
 import { z } from "zod";
 import {
@@ -1984,6 +1985,8 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
 
   app.get("/api/:provider/:operation", handleMarketplaceRoute);
   app.post("/api/:provider/:operation", handleMarketplaceRoute);
+
+  registerCommerceRoutes(app, { store: options.store, secretsKey });
 
   app.use((error: unknown, _req: Request, res: ExpressResponse, _next: unknown) => {
     res.status(500).json({

@@ -3,6 +3,7 @@ export * from "./async-jobs.js";
 export * from "./auth.js";
 export * from "./billing.js";
 export * from "./catalog.js";
+export * from "./commerce.js";
 export * from "./constants.js";
 export * from "./docs.js";
 export * from "./fast-wallet.js";
