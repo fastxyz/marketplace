@@ -1986,7 +1986,11 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
   app.get("/api/:provider/:operation", handleMarketplaceRoute);
   app.post("/api/:provider/:operation", handleMarketplaceRoute);
 
-  registerCommerceRoutes(app, { store: options.store, secretsKey });
+  registerCommerceRoutes(app, {
+    store: options.store,
+    secretsKey,
+    adminToken: options.adminToken
+  });
 
   app.use((error: unknown, _req: Request, res: ExpressResponse, _next: unknown) => {
     res.status(500).json({

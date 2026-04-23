@@ -291,6 +291,98 @@ curl -s 'http://localhost:3000/commerce/search?q=socks' | jq
 
 ---
 
+## Managing shops in production — `/admin/commerce/shops`
+
+Seeding via `psql` is fine for local dev but not for a deployed marketplace.
+Four bearer-authed admin endpoints let you manage shops without ever exposing
+`MARKETPLACE_SECRETS_KEY` outside the running app: you submit plaintext hint
+secrets, the API encrypts them server-side before storing.
+
+All endpoints require `Authorization: Bearer $MARKETPLACE_ADMIN_TOKEN`.
+
+### Create / upsert a shop
+
+```bash
+curl -X POST https://api.marketplace.fast.xyz/admin/commerce/shops \
+  -H "Authorization: Bearer $MARKETPLACE_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "shopId": "stance-shopify",
+    "displayName": "Stance",
+    "baseUrl": "https://stance.shop.fast.xyz",
+    "platform": "shopify",
+    "hintPlaintext": "<long-random-secret-you-generate>",
+    "fulfillmentRegions": ["US"]
+  }'
+```
+
+Constraints:
+- `shopId`: lowercase alphanumeric + `-`/`_`, max 64 chars
+- `baseUrl`: must be a valid URL, no trailing slash (signatures bind the exact string)
+- `hintPlaintext`: 16–256 chars. The merchant server must hold this SAME
+  plaintext in its `MARKETPLACE_HINT_SECRET` env var — the operator shares
+  it out-of-band.
+
+The response echoes the stored record but **never** the encrypted ciphertext
+triple or the plaintext you submitted.
+
+### List shops (admin view — includes paused/archived)
+
+```bash
+# All shops regardless of status
+curl https://api.marketplace.fast.xyz/admin/commerce/shops \
+  -H "Authorization: Bearer $MARKETPLACE_ADMIN_TOKEN"
+
+# Filter by status
+curl "https://api.marketplace.fast.xyz/admin/commerce/shops?status=paused" \
+  -H "Authorization: Bearer $MARKETPLACE_ADMIN_TOKEN"
+```
+
+Unlike the public `/commerce/shops` (which returns only `active` shops as a
+buyer-facing summary), the admin endpoint returns every shop including
+operational metadata (`status`, `searchTimeoutMs`, `rateLimitPerMin`, etc.).
+
+### Pause / resume / archive — partial updates
+
+```bash
+# Pause (disappears from /commerce/search with no restart)
+curl -X PATCH https://api.marketplace.fast.xyz/admin/commerce/shops/stance-shopify \
+  -H "Authorization: Bearer $MARKETPLACE_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"status": "paused"}'
+
+# Resume
+curl -X PATCH https://api.marketplace.fast.xyz/admin/commerce/shops/stance-shopify \
+  -H "Authorization: Bearer $MARKETPLACE_ADMIN_TOKEN" \
+  -d '{"status": "active"}'
+```
+
+Any subset of the upsert fields is accepted. Fields you omit are left
+untouched — explicitly, when `hintPlaintext` is absent the existing
+encrypted ciphertext is preserved byte-for-byte.
+
+### Rotate the hint secret
+
+```bash
+curl -X PATCH https://api.marketplace.fast.xyz/admin/commerce/shops/stance-shopify \
+  -H "Authorization: Bearer $MARKETPLACE_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"hintPlaintext": "<new-long-random-secret>"}'
+```
+
+Two-step rotation pattern: (1) PATCH the new plaintext here; (2) update
+`MARKETPLACE_HINT_SECRET` on the merchant server to match and redeploy.
+Any search hits minted before the rotation will fail merchant verification
+(`bad_signature`) — the buyer re-searches and gets fresh hints. If you care
+about avoiding even that brief window, PATCH status to `paused` first,
+rotate both sides, then PATCH back to `active`.
+
+### Why not `/admin/commerce/shops/:shopId` DELETE?
+
+Intentional — phase 1 uses soft-delete via `status: 'archived'` so existing
+order-notify callbacks can still identify the shop for auditing. Phase 2
+may add a hard-delete after a retention window.
+
 ## Where things live
 
 | Concern | File |

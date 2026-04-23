@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from "express";
+import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import {
   COMMERCE_HINT_EXP_HEADER,
@@ -6,14 +7,18 @@ import {
   COMMERCE_HINT_HANDLE_HEADER,
   COMMERCE_SHOP_ID_HEADER,
   decryptSecret,
+  encryptSecret,
   fanOutCommerceSearch,
+  parseBearerToken,
   parseMerchantHandle,
   verifyMerchantHint,
   type CommerceOrderNotification,
   type CommerceShopRecord,
+  type CommerceShopStatus,
   type CommerceShopSummary,
   type MarketplaceStore,
-  type ShopSearchClient
+  type ShopSearchClient,
+  type UpsertCommerceShopInput
 } from "@marketplace/shared";
 
 const DEFAULT_SEARCH_LIMIT = 10;
@@ -24,7 +29,30 @@ const FAN_OUT_CONCURRENCY = 32;
 export interface CommerceRoutesOptions {
   store: MarketplaceStore;
   secretsKey: string;
+  adminToken: string;
   searchClient?: ShopSearchClient;
+}
+
+/**
+ * Bearer-token check for admin-only endpoints. Mirrors the pattern used in
+ * app.ts `requireAdminToken`; kept local to avoid a cross-file import for a
+ * 6-line helper.
+ */
+function requireAdminToken(req: Request, res: Response, adminToken: string): boolean {
+  const token = parseBearerToken(req.header("authorization"));
+  if (!token || token.length !== adminToken.length) {
+    res.status(401).json({ error: "Missing or invalid admin token." });
+    return false;
+  }
+  const match = timingSafeEqual(
+    Buffer.from(token, "utf8"),
+    Buffer.from(adminToken, "utf8")
+  );
+  if (!match) {
+    res.status(401).json({ error: "Missing or invalid admin token." });
+    return false;
+  }
+  return true;
 }
 
 const searchQuerySchema = z.object({
@@ -176,11 +204,12 @@ export function registerCommerceRoutes(app: Express, options: CommerceRoutesOpti
 
       return res.json(response);
     } catch (err) {
+      // Log full detail server-side; return a generic message so we don't
+      // leak internal state (DB errors, SQL text, env-shaped messages)
+      // through the catch-all.
       // eslint-disable-next-line no-console
       console.error("[commerce] /commerce/search failed:", err);
-      return res.status(500).json({
-        error: err instanceof Error ? err.message : "Unexpected error",
-      });
+      return res.status(500).json({ error: "Internal commerce search error" });
     }
   });
 
@@ -239,11 +268,204 @@ export function registerCommerceRoutes(app: Express, options: CommerceRoutesOpti
 
       return res.status(204).end();
     } catch (err) {
+      // Log full detail server-side; return a generic message so we don't
+      // leak internal state through the catch-all.
       // eslint-disable-next-line no-console
       console.error("[commerce] /commerce/orders/notify failed:", err);
-      return res.status(500).json({
-        error: err instanceof Error ? err.message : "Unexpected error",
-      });
+      return res.status(500).json({ error: "Internal commerce notify error" });
     }
   });
+
+  // ── Admin endpoints ──────────────────────────────────────────────────
+  // All /admin/commerce/* routes require Bearer MARKETPLACE_ADMIN_TOKEN.
+  // The operator never holds MARKETPLACE_SECRETS_KEY — they submit plaintext
+  // hint secrets and the API encrypts server-side before storage.
+
+  app.post("/admin/commerce/shops", async (req: Request, res: Response) => {
+    if (!requireAdminToken(req, res, options.adminToken)) return;
+    try {
+      const parsed = upsertShopBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid shop payload", issues: parsed.error.issues });
+      }
+      const record = await upsertShopFromAdmin(options.store, options.secretsKey, parsed.data);
+      return res.status(200).json(toAdminView(record));
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[commerce] admin upsert failed:", err);
+      return res.status(500).json({ error: "Failed to upsert shop" });
+    }
+  });
+
+  app.get("/admin/commerce/shops", async (req: Request, res: Response) => {
+    if (!requireAdminToken(req, res, options.adminToken)) return;
+    try {
+      const raw = typeof req.query.status === "string" ? req.query.status : undefined;
+      let statusFilter: CommerceShopStatus | undefined;
+      if (raw !== undefined) {
+        if (!isCommerceShopStatus(raw)) {
+          return res.status(400).json({ error: "Invalid status filter" });
+        }
+        statusFilter = raw;
+      }
+      const shops = await options.store.listCommerceShops(
+        statusFilter ? { status: statusFilter } : undefined
+      );
+      return res.json({ shops: shops.map(toAdminView) });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[commerce] admin list failed:", err);
+      return res.status(500).json({ error: "Failed to list shops" });
+    }
+  });
+
+  app.get("/admin/commerce/shops/:shopId", async (req: Request, res: Response) => {
+    if (!requireAdminToken(req, res, options.adminToken)) return;
+    try {
+      const shopId = String(req.params.shopId ?? "");
+      const shop = await options.store.getCommerceShop(shopId);
+      if (!shop) return res.status(404).json({ error: "shop not found" });
+      return res.json(toAdminView(shop));
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[commerce] admin get failed:", err);
+      return res.status(500).json({ error: "Failed to fetch shop" });
+    }
+  });
+
+  app.patch("/admin/commerce/shops/:shopId", async (req: Request, res: Response) => {
+    if (!requireAdminToken(req, res, options.adminToken)) return;
+    try {
+      const parsed = patchShopBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid patch payload", issues: parsed.error.issues });
+      }
+      const shopId = String(req.params.shopId ?? "");
+      const existing = await options.store.getCommerceShop(shopId);
+      if (!existing) return res.status(404).json({ error: "shop not found" });
+
+      const merged: UpsertCommerceShopInput = {
+        shopId: existing.shopId,
+        displayName: parsed.data.displayName ?? existing.displayName,
+        baseUrl: parsed.data.baseUrl ?? existing.baseUrl,
+        platform: parsed.data.platform ?? existing.platform,
+        status: parsed.data.status ?? existing.status,
+        hintSecretCiphertext: existing.hintSecretCiphertext,
+        hintSecretIv: existing.hintSecretIv,
+        hintSecretAuthTag: existing.hintSecretAuthTag,
+        acceptedCurrency: parsed.data.acceptedCurrency ?? existing.acceptedCurrency,
+        fulfillmentRegions: parsed.data.fulfillmentRegions ?? existing.fulfillmentRegions,
+        searchTimeoutMs: parsed.data.searchTimeoutMs ?? existing.searchTimeoutMs,
+        rateLimitPerMin: parsed.data.rateLimitPerMin ?? existing.rateLimitPerMin
+      };
+
+      // If a new plaintext hint is provided, re-encrypt and overwrite the
+      // ciphertext triple. Operator never sees MARKETPLACE_SECRETS_KEY.
+      if (parsed.data.hintPlaintext !== undefined) {
+        const enc = encryptSecret({ plaintext: parsed.data.hintPlaintext, secret: options.secretsKey });
+        merged.hintSecretCiphertext = enc.ciphertext;
+        merged.hintSecretIv = enc.iv;
+        merged.hintSecretAuthTag = enc.authTag;
+      }
+
+      const record = await options.store.upsertCommerceShop(merged);
+      return res.json(toAdminView(record));
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[commerce] admin patch failed:", err);
+      return res.status(500).json({ error: "Failed to update shop" });
+    }
+  });
+}
+
+// ── Admin helpers ─────────────────────────────────────────────────────
+
+const ADMIN_STATUSES = ["active", "paused", "archived"] as const;
+
+function isCommerceShopStatus(value: string): value is CommerceShopStatus {
+  return (ADMIN_STATUSES as readonly string[]).includes(value);
+}
+
+const upsertShopBodySchema = z.object({
+  shopId: z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9_-]*$/, {
+    message: "shopId must be lowercase alphanumeric with hyphens/underscores"
+  }),
+  displayName: z.string().min(1).max(120),
+  baseUrl: z.string().url(),
+  platform: z.string().min(1).max(32),
+  hintPlaintext: z.string().min(16).max(256),
+  status: z.enum(ADMIN_STATUSES).optional(),
+  acceptedCurrency: z.string().optional(),
+  fulfillmentRegions: z.array(z.string()).optional(),
+  searchTimeoutMs: z.number().int().min(100).max(30_000).optional(),
+  rateLimitPerMin: z.number().int().min(1).max(10_000).optional()
+});
+
+const patchShopBodySchema = z.object({
+  displayName: z.string().min(1).max(120).optional(),
+  baseUrl: z.string().url().optional(),
+  platform: z.string().min(1).max(32).optional(),
+  hintPlaintext: z.string().min(16).max(256).optional(),
+  status: z.enum(ADMIN_STATUSES).optional(),
+  acceptedCurrency: z.string().optional(),
+  fulfillmentRegions: z.array(z.string()).optional(),
+  searchTimeoutMs: z.number().int().min(100).max(30_000).optional(),
+  rateLimitPerMin: z.number().int().min(1).max(10_000).optional()
+}).refine((v) => Object.keys(v).length > 0, { message: "patch body must set at least one field" });
+
+async function upsertShopFromAdmin(
+  store: MarketplaceStore,
+  secretsKey: string,
+  input: z.infer<typeof upsertShopBodySchema>
+): Promise<CommerceShopRecord> {
+  const enc = encryptSecret({ plaintext: input.hintPlaintext, secret: secretsKey });
+  return store.upsertCommerceShop({
+    shopId: input.shopId,
+    displayName: input.displayName,
+    baseUrl: input.baseUrl,
+    platform: input.platform,
+    status: input.status,
+    hintSecretCiphertext: enc.ciphertext,
+    hintSecretIv: enc.iv,
+    hintSecretAuthTag: enc.authTag,
+    acceptedCurrency: input.acceptedCurrency,
+    fulfillmentRegions: input.fulfillmentRegions,
+    searchTimeoutMs: input.searchTimeoutMs,
+    rateLimitPerMin: input.rateLimitPerMin
+  });
+}
+
+/**
+ * Admin-facing projection of a shop record. Deliberately omits the encrypted
+ * hint material — the operator never needs it (they'd only know the plaintext
+ * they submitted, and they can rotate via PATCH).
+ */
+interface AdminShopView {
+  shopId: string;
+  displayName: string;
+  baseUrl: string;
+  platform: string;
+  status: CommerceShopStatus;
+  acceptedCurrency: string;
+  fulfillmentRegions: string[];
+  searchTimeoutMs: number;
+  rateLimitPerMin: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function toAdminView(shop: CommerceShopRecord): AdminShopView {
+  return {
+    shopId: shop.shopId,
+    displayName: shop.displayName,
+    baseUrl: shop.baseUrl,
+    platform: shop.platform,
+    status: shop.status,
+    acceptedCurrency: shop.acceptedCurrency,
+    fulfillmentRegions: shop.fulfillmentRegions,
+    searchTimeoutMs: shop.searchTimeoutMs,
+    rateLimitPerMin: shop.rateLimitPerMin,
+    createdAt: shop.createdAt,
+    updatedAt: shop.updatedAt
+  };
 }

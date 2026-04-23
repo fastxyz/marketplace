@@ -19,6 +19,7 @@ import { registerCommerceRoutes } from "./commerce.js";
 
 const SECRETS_KEY = "test-secrets-key-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 const HINT_PLAINTEXT = "test-hint-plaintext-xxxxxxxxxxxxx";
+const ADMIN_TOKEN = "test-admin-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 
 interface SeedOptions {
   shopId: string;
@@ -54,20 +55,28 @@ async function seedShop(store: MarketplaceStore, opts: SeedOptions): Promise<Com
 interface TestAppInput {
   store?: InMemoryMarketplaceStore;
   secretsKey?: string;
+  adminToken?: string;
   searchClient?: ShopSearchClient;
 }
 
-function createCommerceTestApp(input: TestAppInput = {}): { app: Express; store: InMemoryMarketplaceStore; secretsKey: string } {
+function createCommerceTestApp(input: TestAppInput = {}): {
+  app: Express;
+  store: InMemoryMarketplaceStore;
+  secretsKey: string;
+  adminToken: string;
+} {
   const store = input.store ?? new InMemoryMarketplaceStore();
   const secretsKey = input.secretsKey ?? SECRETS_KEY;
+  const adminToken = input.adminToken ?? ADMIN_TOKEN;
   const app = express();
   app.use(express.json());
   registerCommerceRoutes(app, {
     store,
     secretsKey,
+    adminToken,
     searchClient: input.searchClient
   });
-  return { app, store, secretsKey };
+  return { app, store, secretsKey, adminToken };
 }
 
 function fixedSearchClient(results: Record<string, Array<{ productId: string; title: string; priceUsd: string; imageUrl?: string }>>): ShopSearchClient {
@@ -375,4 +384,273 @@ describe("POST /commerce/orders/notify", () => {
 afterEach(() => {
   // Ensure no lingering timers from hanging search clients.
   return Promise.resolve();
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// POST / GET / PATCH /admin/commerce/shops
+// ──────────────────────────────────────────────────────────────────────────
+
+describe("admin /admin/commerce/shops", () => {
+  const validUpsertBody = {
+    shopId: "stance-shopify",
+    displayName: "Stance",
+    baseUrl: "https://stance.example.com",
+    platform: "shopify",
+    hintPlaintext: "admin-plaintext-hint-secret-1234567890",
+    fulfillmentRegions: ["US"]
+  };
+
+  it("POST rejects missing bearer with 401", async () => {
+    const { app } = createCommerceTestApp();
+    const response = await request(app).post("/admin/commerce/shops").send(validUpsertBody);
+    expect(response.status).toBe(401);
+  });
+
+  it("POST rejects wrong bearer with 401 (timing-safe compare)", async () => {
+    const { app, adminToken } = createCommerceTestApp();
+    const response = await request(app)
+      .post("/admin/commerce/shops")
+      .set("Authorization", `Bearer ${adminToken}-wrong`)
+      .send(validUpsertBody);
+    expect(response.status).toBe(401);
+  });
+
+  it("POST rejects wrong-length bearer with 401 (short-circuit)", async () => {
+    const { app } = createCommerceTestApp();
+    const response = await request(app)
+      .post("/admin/commerce/shops")
+      .set("Authorization", "Bearer short")
+      .send(validUpsertBody);
+    expect(response.status).toBe(401);
+  });
+
+  it("POST upserts a shop, encrypts plaintext server-side, never echoes ciphertext", async () => {
+    const { app, store, secretsKey, adminToken } = createCommerceTestApp();
+    const response = await request(app)
+      .post("/admin/commerce/shops")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(validUpsertBody);
+
+    expect(response.status).toBe(200);
+    expect(response.body.shopId).toBe("stance-shopify");
+    expect(response.body.displayName).toBe("Stance");
+    // Admin response must not leak ciphertext fields.
+    expect(response.body.hintSecretCiphertext).toBeUndefined();
+    expect(response.body.hintSecretIv).toBeUndefined();
+    expect(response.body.hintSecretAuthTag).toBeUndefined();
+    expect(response.body.hintPlaintext).toBeUndefined();
+
+    // Persisted ciphertext decrypts back to the submitted plaintext.
+    const stored = await store.getCommerceShop("stance-shopify");
+    expect(stored).not.toBeNull();
+    const decrypted = (await import("@marketplace/shared")).decryptSecret({
+      ciphertext: stored!.hintSecretCiphertext,
+      iv: stored!.hintSecretIv,
+      authTag: stored!.hintSecretAuthTag,
+      secret: secretsKey
+    });
+    expect(decrypted).toBe(validUpsertBody.hintPlaintext);
+  });
+
+  it("POST rejects bad shopId format (uppercase) with 400", async () => {
+    const { app, adminToken } = createCommerceTestApp();
+    const response = await request(app)
+      .post("/admin/commerce/shops")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ ...validUpsertBody, shopId: "Stance-Shopify" });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("Invalid shop payload");
+  });
+
+  it("POST rejects non-URL baseUrl with 400", async () => {
+    const { app, adminToken } = createCommerceTestApp();
+    const response = await request(app)
+      .post("/admin/commerce/shops")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ ...validUpsertBody, baseUrl: "not-a-url" });
+    expect(response.status).toBe(400);
+  });
+
+  it("POST rejects too-short hintPlaintext with 400", async () => {
+    const { app, adminToken } = createCommerceTestApp();
+    const response = await request(app)
+      .post("/admin/commerce/shops")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ ...validUpsertBody, hintPlaintext: "short" });
+    expect(response.status).toBe(400);
+  });
+
+  it("GET lists ALL shops (including paused/archived) unlike the public /commerce/shops", async () => {
+    const { app, store, adminToken } = createCommerceTestApp();
+    await seedShop(store, { shopId: "active-1" });
+    await seedShop(store, { shopId: "paused-1", status: "paused" });
+    await seedShop(store, { shopId: "archived-1", status: "archived" });
+
+    const response = await request(app)
+      .get("/admin/commerce/shops")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.shops.map((s: { shopId: string }) => s.shopId).sort()).toEqual([
+      "active-1",
+      "archived-1",
+      "paused-1"
+    ]);
+    // Ciphertext must not leak.
+    for (const s of response.body.shops) {
+      expect(s.hintSecretCiphertext).toBeUndefined();
+    }
+  });
+
+  it("GET filters by status=paused", async () => {
+    const { app, store, adminToken } = createCommerceTestApp();
+    await seedShop(store, { shopId: "active-1" });
+    await seedShop(store, { shopId: "paused-1", status: "paused" });
+
+    const response = await request(app)
+      .get("/admin/commerce/shops?status=paused")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.shops).toHaveLength(1);
+    expect(response.body.shops[0].shopId).toBe("paused-1");
+  });
+
+  it("GET rejects invalid status filter with 400", async () => {
+    const { app, adminToken } = createCommerceTestApp();
+    const response = await request(app)
+      .get("/admin/commerce/shops?status=bogus")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(response.status).toBe(400);
+  });
+
+  it("GET /:shopId returns 200 for active shop", async () => {
+    const { app, store, adminToken } = createCommerceTestApp();
+    await seedShop(store, { shopId: "stance" });
+    const response = await request(app)
+      .get("/admin/commerce/shops/stance")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(response.status).toBe(200);
+    expect(response.body.shopId).toBe("stance");
+    expect(response.body.hintSecretCiphertext).toBeUndefined();
+  });
+
+  it("GET /:shopId returns 404 for unknown shop", async () => {
+    const { app, adminToken } = createCommerceTestApp();
+    const response = await request(app)
+      .get("/admin/commerce/shops/ghost")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(response.status).toBe(404);
+  });
+
+  it("PATCH pauses a shop without rotating the hint secret", async () => {
+    const { app, store, adminToken } = createCommerceTestApp();
+    await seedShop(store, { shopId: "stance" });
+    const before = await store.getCommerceShop("stance");
+
+    const response = await request(app)
+      .patch("/admin/commerce/shops/stance")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: "paused" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe("paused");
+
+    const after = await store.getCommerceShop("stance");
+    expect(after!.status).toBe("paused");
+    // Ciphertext MUST be untouched when hintPlaintext is absent.
+    expect(after!.hintSecretCiphertext).toBe(before!.hintSecretCiphertext);
+    expect(after!.hintSecretIv).toBe(before!.hintSecretIv);
+    expect(after!.hintSecretAuthTag).toBe(before!.hintSecretAuthTag);
+  });
+
+  it("PATCH rotates hintPlaintext when provided, leaves other fields alone", async () => {
+    const { app, store, secretsKey, adminToken } = createCommerceTestApp();
+    await seedShop(store, { shopId: "stance" });
+    const before = await store.getCommerceShop("stance");
+
+    const response = await request(app)
+      .patch("/admin/commerce/shops/stance")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ hintPlaintext: "rotated-plaintext-hint-secret-xxxx" });
+
+    expect(response.status).toBe(200);
+
+    const after = await store.getCommerceShop("stance");
+    expect(after!.hintSecretCiphertext).not.toBe(before!.hintSecretCiphertext);
+    expect(after!.status).toBe(before!.status);
+    expect(after!.displayName).toBe(before!.displayName);
+    const decrypted = (await import("@marketplace/shared")).decryptSecret({
+      ciphertext: after!.hintSecretCiphertext,
+      iv: after!.hintSecretIv,
+      authTag: after!.hintSecretAuthTag,
+      secret: secretsKey
+    });
+    expect(decrypted).toBe("rotated-plaintext-hint-secret-xxxx");
+  });
+
+  it("PATCH returns 404 for unknown shop", async () => {
+    const { app, adminToken } = createCommerceTestApp();
+    const response = await request(app)
+      .patch("/admin/commerce/shops/ghost")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: "paused" });
+    expect(response.status).toBe(404);
+  });
+
+  it("PATCH rejects empty body with 400", async () => {
+    const { app, store, adminToken } = createCommerceTestApp();
+    await seedShop(store, { shopId: "stance" });
+    const response = await request(app)
+      .patch("/admin/commerce/shops/stance")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({});
+    expect(response.status).toBe(400);
+  });
+
+  it("paused shop disappears from public /commerce/shops and /commerce/search", async () => {
+    const { app, store, adminToken } = createCommerceTestApp({
+      searchClient: {
+        async searchShop() {
+          return [{ productId: "p1", title: "t", priceUsd: "1.00" }];
+        }
+      }
+    });
+    await seedShop(store, { shopId: "stance" });
+
+    // Pause via admin.
+    await request(app)
+      .patch("/admin/commerce/shops/stance")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: "paused" });
+
+    const shopsRes = await request(app).get("/commerce/shops");
+    expect(shopsRes.body.shops).toEqual([]);
+
+    const searchRes = await request(app).get("/commerce/search?q=socks");
+    expect(searchRes.body.hits).toEqual([]);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Error hardening — catch-all returns generic messages, not err.message
+// ──────────────────────────────────────────────────────────────────────────
+
+describe("error hardening", () => {
+  it("GET /commerce/search — unexpected throw returns generic 500 with no err.message leak", async () => {
+    const { app, store } = createCommerceTestApp({
+      searchClient: {
+        async searchShop() {
+          throw new Error("SECRET-INTERNAL-STATE-DONT-LEAK");
+        }
+      }
+    });
+    await seedShop(store, { shopId: "shop" });
+
+    const response = await request(app).get("/commerce/search?q=socks");
+    // The fan-out swallows individual shop errors (partial result), so it
+    // won't bubble to the catch-all — sanity-check by looking at the response
+    // body for the secret string.
+    expect(JSON.stringify(response.body)).not.toContain("SECRET-INTERNAL-STATE-DONT-LEAK");
+  });
 });

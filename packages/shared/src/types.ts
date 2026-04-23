@@ -1431,6 +1431,7 @@ export interface MarketplaceStore {
   listProviderRequests(wallet: string): Promise<SuggestionRecord[]>;
   claimProviderRequest(id: string, wallet: string): Promise<SuggestionRecord | null>;
   listActiveCommerceShops(): Promise<CommerceShopRecord[]>;
+  listCommerceShops(filter?: { status?: CommerceShopStatus }): Promise<CommerceShopRecord[]>;
   getCommerceShop(shopId: string): Promise<CommerceShopRecord | null>;
   upsertCommerceShop(input: UpsertCommerceShopInput): Promise<CommerceShopRecord>;
 }

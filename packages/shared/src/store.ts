@@ -3653,6 +3653,13 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
       .map((shop) => clone(shop));
   }
 
+  async listCommerceShops(filter?: { status?: CommerceShopStatus }): Promise<CommerceShopRecord[]> {
+    return Array.from(this.commerceShopsById.values())
+      .filter((shop) => (filter?.status ? shop.status === filter.status : true))
+      .sort((a, b) => a.shopId.localeCompare(b.shopId))
+      .map((shop) => clone(shop));
+  }
+
   async getCommerceShop(shopId: string): Promise<CommerceShopRecord | null> {
     const shop = this.commerceShopsById.get(shopId);
     return shop ? clone(shop) : null;
@@ -8844,6 +8851,20 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
   async listActiveCommerceShops(): Promise<CommerceShopRecord[]> {
     const result = await this.pool.query(
       "SELECT * FROM commerce_shops WHERE status = 'active' ORDER BY shop_id"
+    );
+    return result.rows.map(mapCommerceShopRow);
+  }
+
+  async listCommerceShops(filter?: { status?: CommerceShopStatus }): Promise<CommerceShopRecord[]> {
+    if (filter?.status) {
+      const result = await this.pool.query(
+        "SELECT * FROM commerce_shops WHERE status = $1 ORDER BY shop_id",
+        [filter.status]
+      );
+      return result.rows.map(mapCommerceShopRow);
+    }
+    const result = await this.pool.query(
+      "SELECT * FROM commerce_shops ORDER BY shop_id"
     );
     return result.rows.map(mapCommerceShopRow);
   }
