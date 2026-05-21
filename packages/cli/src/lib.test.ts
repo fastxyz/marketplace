@@ -25,8 +25,81 @@ function jsonResponse(status: number, body: unknown, headers?: Record<string, st
   } as Response;
 }
 
-const FAST_MAINNET_USDC_ASSET_ID = "0xc655a12330da6af361d281b197996d2bc135aaed3b66278e729c2222291e9130";
+const FAST_MAINNET_USDC_ASSET_ID = "0x125b60bb2e805336f0934077d4f9fdb36f45bec9ded8d7b0e637516cc43a86eb";
 const API_URL = "http://localhost:3000";
+const FAST_REST_URL = "https://api.fast.xyz/proxy-rest";
+const PAYMENT_RECIPIENT = "fast19cjwajufyuqv883ydlvrp8xrhxejuvfe40pxq5dsrv675zgh89sqg9txs8";
+
+function fastAccountResponse(address: string) {
+  return jsonResponse(200, {
+    data: {
+      sender: address,
+      balance: "0",
+      next_nonce: 1,
+      pending_confirmation: null,
+      requested_state: [],
+      requested_certificates: null,
+      requested_validated_transaction: null,
+      token_balance: [
+        [FAST_MAINNET_USDC_ASSET_ID.slice(2), "100000000"]
+      ]
+    },
+    meta: {
+      timestamp: "2026-03-18T00:00:00.000Z"
+    }
+  });
+}
+
+function fastSubmitTransactionResponse(sender: string) {
+  return jsonResponse(200, {
+    data: {
+      Success: {
+        envelope: {
+          transaction: {
+            Release20260407: {
+              network_id: "fast:mainnet",
+              sender,
+              nonce: 1,
+              timestamp_nanos: "0",
+              claims: [
+                {
+                  TokenTransfer: {
+                    token_id: FAST_MAINNET_USDC_ASSET_ID.slice(2),
+                    recipient: PAYMENT_RECIPIENT,
+                    amount: "50000",
+                    user_data: null
+                  }
+                }
+              ],
+              archival: false,
+              fee_token: null
+            }
+          },
+          signature: {
+            Signature: "00".repeat(64)
+          }
+        },
+        signatures: []
+      }
+    },
+    meta: {
+      timestamp: "2026-03-18T00:00:00.000Z"
+    }
+  });
+}
+
+function maybeFastRestResponse(url: string) {
+  if (url.startsWith(`${FAST_REST_URL}/v1/accounts/`)) {
+    const address = decodeURIComponent(url.slice(`${FAST_REST_URL}/v1/accounts/`.length));
+    return fastAccountResponse(address);
+  }
+
+  if (url === `${FAST_REST_URL}/v1/submit-transaction`) {
+    return fastSubmitTransactionResponse(PAYMENT_RECIPIENT);
+  }
+
+  return null;
+}
 
 function buildServiceSummary(overrides: Record<string, unknown> = {}) {
   return {
@@ -324,6 +397,7 @@ describe("marketplace cli", () => {
 
       if (url.endsWith("/api/mock/quick-insight")) {
         const headers = new Headers(init?.headers);
+        expect(headers.get("content-type")).toBe("application/json");
         if (!headers.get("X-PAYMENT")) {
           return jsonResponse(402, {
             x402Version: 1,
@@ -331,7 +405,7 @@ describe("marketplace cli", () => {
               {
                 scheme: "exact",
                 network: "fast-mainnet",
-                maxAmountRequired: "0.05",
+                maxAmountRequired: "50000",
                 payTo: "fast19cjwajufyuqv883ydlvrp8xrhxejuvfe40pxq5dsrv675zgh89sqg9txs8",
                 asset: FAST_MAINNET_USDC_ASSET_ID
               }
@@ -340,6 +414,11 @@ describe("marketplace cli", () => {
         }
 
         return jsonResponse(200, { ok: true, route: "mock.quick-insight" }, { "payment-response": "encoded" });
+      }
+
+      const fastRestResponse = maybeFastRestResponse(url);
+      if (fastRestResponse) {
+        return fastRestResponse;
       }
 
       const body = JSON.parse(String(init?.body ?? "{}")) as {
@@ -461,7 +540,7 @@ describe("marketplace cli", () => {
               {
                 scheme: "exact",
                 network: "fast-mainnet",
-                maxAmountRequired: "0.05",
+                maxAmountRequired: "50000",
                 payTo: "fast19cjwajufyuqv883ydlvrp8xrhxejuvfe40pxq5dsrv675zgh89sqg9txs8",
                 asset: FAST_MAINNET_USDC_ASSET_ID
               }
@@ -470,6 +549,11 @@ describe("marketplace cli", () => {
         }
 
         return jsonResponse(200, { city: "Paris", forecast: "sunny" });
+      }
+
+      const fastRestResponse = maybeFastRestResponse(url);
+      if (fastRestResponse) {
+        return fastRestResponse;
       }
 
       const body = JSON.parse(String(init?.body ?? "{}")) as {

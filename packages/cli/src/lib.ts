@@ -443,7 +443,9 @@ export async function invokePaidRoute(
   if (!maxAmountRequired) {
     throw new Error("Marketplace did not return a usable payment requirement.");
   }
-  const amountRaw = decimalToRawString(maxAmountRequired, 6);
+  const amountRaw = maxAmountRequired.includes(".")
+    ? decimalToRawString(maxAmountRequired, 6)
+    : maxAmountRequired;
 
   await enforceSpendControls({
     routeKey: route.ref,
@@ -468,6 +470,7 @@ export async function invokePaidRoute(
       method: route.method,
       ...(requestTarget.body ? { body: requestTarget.body } : {}),
       headers: {
+        ...(requestTarget.body ? { "content-type": "application/json" } : {}),
         ...headers
       },
       wallet: loaded.paymentWallet,
@@ -884,7 +887,7 @@ function createProvider(input: {
     rpcUrl: input.rpcUrl
   });
   return new FastProvider({
-    rpcUrl: network.rpcUrl
+    url: network.rpcUrl
   });
 }
 
@@ -916,7 +919,11 @@ async function normalizeMarketplacePaymentRequirement(response: Response): Promi
       accepts: paymentRequired.accepts.map((accept) => ({
         ...accept,
         ...(accept.maxAmountRequired
-          ? { maxAmountRequired: decimalToRawString(accept.maxAmountRequired, 6) }
+          ? {
+              maxAmountRequired: accept.maxAmountRequired.includes(".")
+                ? decimalToRawString(accept.maxAmountRequired, 6)
+                : accept.maxAmountRequired
+            }
           : {})
       }))
     }),

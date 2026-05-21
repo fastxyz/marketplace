@@ -19,7 +19,7 @@ function createFastTreasurySender(input: FastTreasuryServiceInput) {
     rpcUrl: input.rpcUrl
   });
   const provider = new FastProvider({
-    rpcUrl: network.rpcUrl
+    url: network.rpcUrl
   });
 
   let walletPromise: Promise<MarketplaceFastWallet> | null = null;

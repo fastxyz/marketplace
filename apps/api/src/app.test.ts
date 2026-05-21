@@ -22,7 +22,7 @@ const OTHER_PRIVATE_KEY = "44".repeat(32);
 
 async function createTestWallet(privateKey = TEST_PRIVATE_KEY) {
   const provider = new FastProvider({
-    rpcUrl: "https://api.fast.xyz/proxy"
+    url: "https://api.fast.xyz/proxy-rest"
   });
   const wallet = await MarketplaceFastWallet.fromPrivateKey(privateKey, provider);
   const exported = await wallet.exportKeys();
