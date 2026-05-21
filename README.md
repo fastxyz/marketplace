@@ -109,7 +109,7 @@ Optional refund worker variables:
 
 ```bash
 export MARKETPLACE_TREASURY_PRIVATE_KEY=<fast-ed25519-private-key-hex>
-export FAST_RPC_URL=https://api.fast.xyz/proxy
+export FAST_RPC_URL=https://api.fast.xyz/proxy-rest
 ```
 
 Optional upstream x402 payment variables for marketplace-proxied providers:
@@ -128,7 +128,7 @@ Optional facilitator variables:
 
 ```bash
 export FACILITATOR_PORT=4020
-export FACILITATOR_FAST_RPC_URL=https://api.fast.xyz/proxy
+export FACILITATOR_FAST_RPC_URL=https://api.fast.xyz/proxy-rest
 export FACILITATOR_EVM_PRIVATE_KEY=<evm-private-key-if-you-later-enable-evm-settlement>
 ```
 
@@ -315,7 +315,7 @@ DATABASE_URL=postgres://...
 MARKETPLACE_TREASURY_PRIVATE_KEY=<fast-ed25519-private-key-hex>
 MARKETPLACE_SECRETS_KEY=change-me-again
 MARKETPLACE_FAST_NETWORK=mainnet
-FAST_RPC_URL=https://api.fast.xyz/proxy
+FAST_RPC_URL=https://api.fast.xyz/proxy-rest
 WORKER_POLL_INTERVAL_MS=5000
 ```
 
@@ -329,7 +329,7 @@ Facilitator environment:
 
 ```bash
 FACILITATOR_PORT=4020
-FACILITATOR_FAST_RPC_URL=https://api.fast.xyz/proxy
+FACILITATOR_FAST_RPC_URL=https://api.fast.xyz/proxy-rest
 ```
 
 Required web environment:

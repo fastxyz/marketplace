@@ -130,6 +130,49 @@ describe("apify service", () => {
     ]);
   });
 
+  it("maps documented Amazon startUrls to the Apify actor categoryOrProductUrls field", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      data: {
+        id: "run_amazon",
+        status: "RUNNING",
+        defaultDatasetId: "dataset_amazon",
+        defaultKeyValueStoreId: "store_amazon"
+      }
+    }), {
+      status: 201,
+      headers: {
+        "content-type": "application/json"
+      }
+    }));
+
+    const app = createApifyServiceApp({
+      apifyApiToken: "apify-test-token",
+      actorId: "junglee/amazon-crawler"
+    });
+
+    const startUrls = [{ url: "https://www.amazon.com/dp/B09X7MPX8L" }];
+    const response = await request(app)
+      .post("/scrape-products")
+      .send({
+        startUrls,
+        maxItems: 1
+      });
+
+    expect(response.status).toBe(202);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.apify.com/v2/acts/junglee%2Famazon-crawler/runs",
+      expect.objectContaining({
+        method: "POST"
+      })
+    );
+    const [, init] = fetchMock.mock.calls[0]!;
+    expect(JSON.parse(String(init?.body))).toEqual({
+      startUrls,
+      categoryOrProductUrls: startUrls,
+      maxItems: 1
+    });
+  });
+
   it("registers Google Search actor routes in OpenAPI", async () => {
     const app = createApifyServiceApp({
       apifyApiToken: "apify-test-token",
