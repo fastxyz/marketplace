@@ -8,8 +8,8 @@
     "fast-marketplace": "./dist/index.js"
   },
   "dependencies": {
-    "@fastxyz/sdk": "1.0.1",
-    "@fastxyz/x402-client": "0.1.3",
+    "@fastxyz/sdk": "^2.2.0",
+    "@fastxyz/x402-client": "^1.0.5",
     "@noble/ed25519": "^3.0.1",
     "@noble/hashes": "^2.0.1",
     "ajv": "^8.18.0",

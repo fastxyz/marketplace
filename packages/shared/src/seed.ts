@@ -103,10 +103,38 @@ export const SHOP_FAST_EXECUTION_SERVICE_SEED: ProviderServiceRecord = {
   updatedAt: SEEDED_AT
 };
 
+export const SHOPIFY_STOREFRONT_SERVICE_SEED: ProviderServiceRecord = {
+  id: "service_shopify_storefront",
+  providerAccountId: MARKETPLACE_PROVIDER_ACCOUNT_SEED.id,
+  serviceType: "external_registry",
+  settlementMode: null,
+  slug: "shopify-storefront",
+  apiNamespace: null,
+  name: "Shopify Storefront",
+  tagline: "Shop-specific Storefront GraphQL commerce primitives for product discovery, cart, and checkout.",
+  about:
+    "Shopify Storefront is a discovery-only listing for Shopify's Storefront GraphQL API. Each Shopify merchant exposes a shop-specific endpoint for querying products and collections, adding items to cart, calculating contextual pricing, and starting checkout flows.",
+  categories: ["Commerce", "Shopping", "UCP", "Checkout"],
+  featured: true,
+  promptIntro: 'I want to use the "Shopify Storefront" commerce API.',
+  setupInstructions: [
+    "Replace {store_name} with the merchant's Shopify store subdomain.",
+    "Use POST GraphQL requests against the Storefront API endpoint.",
+    "Use a Storefront access token when the merchant requires token-based access.",
+    "Do not execute checkout through the marketplace until merchant-specific quote, consent, order, and fulfillment records are wired."
+  ],
+  websiteUrl: "https://shopify.dev/docs/api/storefront",
+  payoutWallet: null,
+  status: "published",
+  createdAt: SEEDED_AT,
+  updatedAt: SEEDED_AT
+};
+
 export const SEEDED_PROVIDER_SERVICE_IDS = [
   MOCK_PROVIDER_SERVICE_SEED.id,
   SHOP_FAST_SERVICE_SEED.id,
-  SHOP_FAST_EXECUTION_SERVICE_SEED.id
+  SHOP_FAST_EXECUTION_SERVICE_SEED.id,
+  SHOPIFY_STOREFRONT_SERVICE_SEED.id
 ];
 
 function buildQuickInsightRoute(config: MarketplaceNetworkConfig): MarketplaceRoute {
@@ -536,11 +564,51 @@ function buildShopFastExternalEndpointDrafts(): ExternalProviderEndpointDraftRec
   ];
 }
 
+function buildShopifyExternalEndpointDrafts(): ExternalProviderEndpointDraftRecord[] {
+  return [
+    buildExternalEndpointDraft({
+      id: "draft_shopify_storefront_graphql",
+      serviceId: SHOPIFY_STOREFRONT_SERVICE_SEED.id,
+      title: "Storefront GraphQL",
+      description:
+        "Use a shop-specific Shopify Storefront GraphQL endpoint for product discovery, cart creation, pricing, and checkout primitives.",
+      publicUrl: "https://{store_name}.myshopify.com/api/2026-04/graphql.json",
+      docsUrl: "https://shopify.dev/docs/api/storefront/2026-04",
+      authNotes:
+        "Shop-specific endpoint. Tokenless requests are possible for limited public storefront queries; merchant-provided Storefront access tokens are required for token-based access.",
+      requestExample: {
+        query: "query Products($first: Int!) { products(first: $first) { nodes { id title handle } } }",
+        variables: {
+          first: 3
+        }
+      },
+      responseExample: {
+        data: {
+          products: {
+            nodes: [
+              {
+                id: "gid://shopify/Product/123",
+                title: "Example Product",
+                handle: "example-product"
+              }
+            ]
+          }
+        }
+      },
+      usageNotes:
+        "Discovery-only listing. Endpoint host is merchant-specific and checkout execution should remain merchant-controlled until marketplace quote, consent, order, and fulfillment records are implemented for that shop."
+    })
+  ];
+}
+
 function buildExternalEndpointDraft(input: {
   id: string;
+  serviceId?: string;
   title: string;
   description: string;
   publicUrl: string;
+  docsUrl?: string;
+  authNotes?: string;
   requestExample: unknown;
   responseExample: unknown;
   usageNotes: string;
@@ -548,7 +616,7 @@ function buildExternalEndpointDraft(input: {
   return {
     endpointType: "external_registry",
     id: input.id,
-    serviceId: SHOP_FAST_SERVICE_SEED.id,
+    serviceId: input.serviceId ?? SHOP_FAST_SERVICE_SEED.id,
     routeId: null,
     operation: null,
     title: input.title,
@@ -560,8 +628,8 @@ function buildExternalEndpointDraft(input: {
     responseSchemaJson: null,
     method: "POST",
     publicUrl: input.publicUrl,
-    docsUrl: "https://shop.fast.xyz/.well-known/ucp",
-    authNotes: "Discovery-only listing. Marketplace execution is not enabled yet.",
+    docsUrl: input.docsUrl ?? "https://shop.fast.xyz/.well-known/ucp",
+    authNotes: input.authNotes ?? "Discovery-only listing. Marketplace execution is not enabled yet.",
     requestExample: input.requestExample,
     responseExample: input.responseExample,
     usageNotes: input.usageNotes,
@@ -626,6 +694,16 @@ function buildSeededServiceGroups(config: MarketplaceNetworkConfig) {
       }),
       routes: [],
       externalEndpoints: buildShopFastExternalEndpointDrafts()
+    },
+    {
+      service: SHOPIFY_STOREFRONT_SERVICE_SEED,
+      publishedService: buildPublishedServiceVersion({
+        service: SHOPIFY_STOREFRONT_SERVICE_SEED,
+        routeIds: [],
+        versionId: "published_service_shopify_storefront_v1"
+      }),
+      routes: [],
+      externalEndpoints: buildShopifyExternalEndpointDrafts()
     },
     {
       service: SHOP_FAST_EXECUTION_SERVICE_SEED,

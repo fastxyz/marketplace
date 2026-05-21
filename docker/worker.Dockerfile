@@ -3,6 +3,7 @@ FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json tsconfig.json tsup.config.ts ./
+COPY patches ./patches
 COPY apps/api/package.json apps/api/package.json
 COPY apps/facilitator/package.json apps/facilitator/package.json
 COPY apps/web/package.json apps/web/package.json
@@ -25,6 +26,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
+COPY patches ./patches
 COPY apps/api/package.json apps/api/package.json
 COPY apps/facilitator/package.json apps/facilitator/package.json
 COPY apps/web/package.json apps/web/package.json

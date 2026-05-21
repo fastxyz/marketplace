@@ -35,7 +35,7 @@ function tokenConfig(token: MarketplaceTokenSymbol): { tokenId: string; networkI
   }
 
   return {
-    tokenId: "0xc655a12330da6af361d281b197996d2bc135aaed3b66278e729c2222291e9130",
+    tokenId: "0x125b60bb2e805336f0934077d4f9fdb36f45bec9ded8d7b0e637516cc43a86eb",
     networkId: "fast:mainnet"
   };
 }

@@ -1,0 +1,213 @@
+diff --git a/node_modules/@fastxyz/x402-facilitator/dist/fast-bcs.js b/node_modules/@fastxyz/x402-facilitator/dist/fast-bcs.js
+index 980d6a5..5a7e286 100644
+--- a/node_modules/@fastxyz/x402-facilitator/dist/fast-bcs.js
++++ b/node_modules/@fastxyz/x402-facilitator/dist/fast-bcs.js
+@@ -38,12 +38,27 @@ const CAMEL_TO_SNAKE = {
+  * number arrays. The Effect Schema encode path expects the exact Type format (real bigints,
+  * branded Uint8Arrays), which the JSON-roundtripped data doesn't match.
+  */
+-export function toBcsFormat(value) {
++function convertStringForBcs(key, value) {
++    if ((key === 'sender' || key === 'recipient') && (value.startsWith('fast1') || value.startsWith('set1'))) {
++        return Array.from(fromFastAddress(value.startsWith('set1') ? `fast1${value.slice(4)}` : value));
++    }
++    if (key === 'sender' || key === 'recipient' || key === 'token_id' || key === 'tokenId' || key === 'fee_token' || key === 'feeToken' || key === 'user_data' || key === 'userData') {
++        const normalized = value.startsWith('0x') ? value.slice(2) : value;
++        if (/^[0-9a-fA-F]+$/.test(normalized) && normalized.length % 2 === 0) {
++            return Array.from(fromHex(normalized));
++        }
++    }
++    return undefined;
++}
++export function toBcsFormat(value, key) {
+     if (value === null || value === undefined)
+         return value;
+     if (typeof value === 'number' || typeof value === 'bigint' || typeof value === 'boolean')
+         return value;
+     if (typeof value === 'string') {
++        const converted = convertStringForBcs(key, value);
++        if (converted)
++            return converted;
+         // Convert decimal numeric strings to bigint (handles JSON roundtrip of bigints)
+         if (/^\d+$/.test(value))
+             return BigInt(value);
+@@ -52,7 +67,7 @@ export function toBcsFormat(value) {
+     if (value instanceof Uint8Array)
+         return Array.from(value);
+     if (Array.isArray(value))
+-        return value.map(toBcsFormat);
++        return value.map((item) => toBcsFormat(item, key));
+     if (!isRecord(value))
+         return value;
+     // Typed variant: {type: "Foo", value: {...}} → {Foo: {...}}
+@@ -61,13 +76,13 @@ export function toBcsFormat(value) {
+         if (variantValue === null || variantValue === undefined) {
+             return { [value.type]: variantValue };
+         }
+-        return { [value.type]: toBcsFormat(variantValue) };
++        return { [value.type]: toBcsFormat(variantValue, value.type) };
+     }
+     // Regular object: convert keys from camelCase to snake_case
+     const result = {};
+     for (const [key, val] of Object.entries(value)) {
+         const snakeKey = CAMEL_TO_SNAKE[key] ?? key;
+-        result[snakeKey] = toBcsFormat(val);
++        result[snakeKey] = toBcsFormat(val, snakeKey);
+     }
+     return result;
+ }
+@@ -159,8 +174,9 @@ export function serializeFastTransaction(transaction) {
+     // Keyed variant: {Release20260319: {...}} or {Release20260407: {...}}
+     const version = detectVersion(transaction);
+     if (version) {
++        const bcsCompatible = toBcsFormat(transaction[version]);
+         return VersionedTransactionBcs.serialize({
+-            [version]: transaction[version],
++            [version]: bcsCompatible,
+         }).toBytes();
+     }
+     // Typed variant: {type: "Release20260319", value: {...}}
+@@ -174,9 +190,10 @@ export function serializeFastTransaction(transaction) {
+         }
+     }
+     // Bare transaction — infer version from shape
+-    const inferredVersion = inferBareVersion(transaction);
++    const bcsCompatible = toBcsFormat(transaction);
++    const inferredVersion = inferBareVersion(bcsCompatible);
+     return VersionedTransactionBcs.serialize({
+-        [inferredVersion]: transaction,
++        [inferredVersion]: bcsCompatible,
+     }).toBytes();
+ }
+ export function serializeVersionedTransaction(transaction, version) {
+diff --git a/node_modules/@fastxyz/x402-facilitator/dist/verify.js b/node_modules/@fastxyz/x402-facilitator/dist/verify.js
+index a96361e..aa2bcbd 100644
+--- a/node_modules/@fastxyz/x402-facilitator/dist/verify.js
++++ b/node_modules/@fastxyz/x402-facilitator/dist/verify.js
+@@ -238,6 +238,15 @@ function toByteArray(value) {
+         return value;
+     }
+     if (typeof value === 'string') {
++        if (value.startsWith('fast1') || value.startsWith('set1')) {
++            try {
++                const canonical = value.startsWith('set1') ? `fast1${value.slice(4)}` : value;
++                return fastAddressToBytes(canonical);
++            }
++            catch {
++                return null;
++            }
++        }
+         if (!/^(?:0x)?[0-9a-fA-F]+$/.test(value)) {
+             return null;
+         }
+diff --git a/node_modules/@fastxyz/x402-facilitator/src/fast-bcs.ts b/node_modules/@fastxyz/x402-facilitator/src/fast-bcs.ts
+index 70217a2..2c27c6b 100644
+--- a/node_modules/@fastxyz/x402-facilitator/src/fast-bcs.ts
++++ b/node_modules/@fastxyz/x402-facilitator/src/fast-bcs.ts
+@@ -88,16 +88,43 @@ const CAMEL_TO_SNAKE: Record<string, string> = {
+  * number arrays. The Effect Schema encode path expects the exact Type format (real bigints,
+  * branded Uint8Arrays), which the JSON-roundtripped data doesn't match.
+  */
+-export function toBcsFormat(value: unknown): unknown {
++function convertStringForBcs(key: string | undefined, value: string): unknown {
++  if ((key === 'sender' || key === 'recipient') && (value.startsWith('fast1') || value.startsWith('set1'))) {
++    return Array.from(fromFastAddress(value.startsWith('set1') ? `fast1${value.slice(4)}` : value));
++  }
++
++  if (
++    key === 'sender'
++    || key === 'recipient'
++    || key === 'token_id'
++    || key === 'tokenId'
++    || key === 'fee_token'
++    || key === 'feeToken'
++    || key === 'user_data'
++    || key === 'userData'
++  ) {
++    const normalized = value.startsWith('0x') ? value.slice(2) : value;
++    if (/^[0-9a-fA-F]+$/.test(normalized) && normalized.length % 2 === 0) {
++      return Array.from(fromHex(normalized));
++    }
++  }
++
++  return undefined;
++}
++
++export function toBcsFormat(value: unknown, key?: string): unknown {
+   if (value === null || value === undefined) return value;
+   if (typeof value === 'number' || typeof value === 'bigint' || typeof value === 'boolean') return value;
+   if (typeof value === 'string') {
++    const converted = convertStringForBcs(key, value);
++    if (converted) return converted;
++
+     // Convert decimal numeric strings to bigint (handles JSON roundtrip of bigints)
+     if (/^\d+$/.test(value)) return BigInt(value);
+     return value;
+   }
+   if (value instanceof Uint8Array) return Array.from(value);
+-  if (Array.isArray(value)) return value.map(toBcsFormat);
++  if (Array.isArray(value)) return value.map((item) => toBcsFormat(item, key));
+   if (!isRecord(value)) return value;
+ 
+   // Typed variant: {type: "Foo", value: {...}} → {Foo: {...}}
+@@ -106,14 +133,14 @@ export function toBcsFormat(value: unknown): unknown {
+     if (variantValue === null || variantValue === undefined) {
+       return { [value.type as string]: variantValue };
+     }
+-    return { [value.type as string]: toBcsFormat(variantValue) };
++    return { [value.type as string]: toBcsFormat(variantValue, value.type as string) };
+   }
+ 
+   // Regular object: convert keys from camelCase to snake_case
+   const result: Record<string, unknown> = {};
+   for (const [key, val] of Object.entries(value)) {
+     const snakeKey = CAMEL_TO_SNAKE[key] ?? key;
+-    result[snakeKey] = toBcsFormat(val);
++    result[snakeKey] = toBcsFormat(val, snakeKey);
+   }
+   return result;
+ }
+@@ -224,8 +251,9 @@ export function serializeFastTransaction(transaction: VersionedFastTransaction |
+   // Keyed variant: {Release20260319: {...}} or {Release20260407: {...}}
+   const version = detectVersion(transaction);
+   if (version) {
++    const bcsCompatible = toBcsFormat(transaction[version]) as Record<string, unknown>;
+     return VersionedTransactionBcs.serialize({
+-      [version]: transaction[version],
++      [version]: bcsCompatible,
+     } as any).toBytes();
+   }
+ 
+@@ -241,9 +269,10 @@ export function serializeFastTransaction(transaction: VersionedFastTransaction |
+   }
+ 
+   // Bare transaction — infer version from shape
+-  const inferredVersion = inferBareVersion(transaction);
++  const bcsCompatible = toBcsFormat(transaction) as Record<string, unknown>;
++  const inferredVersion = inferBareVersion(bcsCompatible);
+   return VersionedTransactionBcs.serialize({
+-    [inferredVersion]: transaction,
++    [inferredVersion]: bcsCompatible,
+   } as any).toBytes();
+ }
+ 
+diff --git a/node_modules/@fastxyz/x402-facilitator/src/verify.ts b/node_modules/@fastxyz/x402-facilitator/src/verify.ts
+index 3e5172f..9d8f58f 100644
+--- a/node_modules/@fastxyz/x402-facilitator/src/verify.ts
++++ b/node_modules/@fastxyz/x402-facilitator/src/verify.ts
+@@ -301,6 +301,15 @@ function toByteArray(value: unknown): Uint8Array | null {
+   }
+ 
+   if (typeof value === 'string') {
++    if (value.startsWith('fast1') || value.startsWith('set1')) {
++      try {
++        const canonical = value.startsWith('set1') ? `fast1${value.slice(4)}` : value;
++        return fastAddressToBytes(canonical);
++      } catch {
++        return null;
++      }
++    }
++
+     if (!/^(?:0x)?[0-9a-fA-F]+$/.test(value)) {
+       return null;
+     }

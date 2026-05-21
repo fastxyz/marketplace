@@ -22,7 +22,7 @@ const OTHER_PRIVATE_KEY = "44".repeat(32);
 
 async function createTestWallet(privateKey = TEST_PRIVATE_KEY) {
   const provider = new FastProvider({
-    rpcUrl: "https://api.fast.xyz/proxy"
+    url: "https://api.fast.xyz/proxy-rest"
   });
   const wallet = await MarketplaceFastWallet.fromPrivateKey(privateKey, provider);
   const exported = await wallet.exportKeys();
@@ -185,6 +185,10 @@ describe("marketplace api", () => {
         expect.objectContaining({
           id: "shop-fast-amazon:amazon-order-status",
           endpoint: "https://shop.fast.xyz/api/amazon/order-status"
+        }),
+        expect.objectContaining({
+          id: "shopify-storefront:storefront-graphql",
+          endpoint: "https://{store_name}.myshopify.com/api/2026-04/graphql.json"
         })
       ])
     );
@@ -567,6 +571,13 @@ describe("marketplace api", () => {
     expect(await store.getCommerceFulfillmentByOrderId(order!.id)).toMatchObject({
       status: "pending_shipment"
     });
+
+    const duplicateBuy = await request(app)
+      .post("/api/shop-fast-amazon/amazon-buy")
+      .send(buyBody);
+
+    expect(duplicateBuy.status).toBe(400);
+    expect(duplicateBuy.body.error).toContain("already been used");
   });
 
   it("replays the same sync response for the same payment id and request", async () => {

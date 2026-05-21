@@ -49,7 +49,7 @@ const TESTNET_SERVICE_DEFINITIONS = listServiceDefinitions(TESTNET_NETWORK_CONFI
 
 async function createTestWallet() {
   const provider = new FastProvider({
-    rpcUrl: "https://api.fast.xyz/proxy"
+    url: "https://api.fast.xyz/proxy-rest"
   });
 
   const wallet = await MarketplaceFastWallet.fromPrivateKey(TEST_PRIVATE_KEY, provider);
@@ -135,7 +135,11 @@ describe("upstream x402 payment policy", () => {
         network: "base",
         maxAmountRequired: "100",
         payTo: "0x0000000000000000000000000000000000000001",
-        asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+        asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        resource: "https://provider.example.com/run",
+        description: "Test payment",
+        mimeType: "application/json",
+        maxTimeoutSeconds: 60
       }
     ], policy!)).toMatchObject({
       network: "base",
@@ -156,14 +160,22 @@ describe("upstream x402 payment policy", () => {
         network: "arbitrum",
         maxAmountRequired: "100",
         payTo: "0x0000000000000000000000000000000000000001",
-        asset: policy.asset
+        asset: policy.asset,
+        resource: "https://provider.example.com/run",
+        description: "Test payment",
+        mimeType: "application/json",
+        maxTimeoutSeconds: 60
       },
       {
         scheme: "exact",
         network: "base",
         maxAmountRequired: "100",
         payTo: "0x0000000000000000000000000000000000000001",
-        asset: policy.asset
+        asset: policy.asset,
+        resource: "https://provider.example.com/run",
+        description: "Test payment",
+        mimeType: "application/json",
+        maxTimeoutSeconds: 60
       }
     ], policy)).toMatchObject({
       network: "base",
@@ -176,7 +188,11 @@ describe("upstream x402 payment policy", () => {
         network: "base",
         maxAmountRequired: "101",
         payTo: "0x0000000000000000000000000000000000000001",
-        asset: policy.asset
+        asset: policy.asset,
+        resource: "https://provider.example.com/run",
+        description: "Test payment",
+        mimeType: "application/json",
+        maxTimeoutSeconds: 60
       }
     ], policy)).toThrow("did not match");
   });
@@ -204,14 +220,22 @@ describe("upstream x402 payment policy", () => {
               network: "arbitrum",
               maxAmountRequired: "100",
               payTo: "0x0000000000000000000000000000000000000001",
-              asset: "0x0000000000000000000000000000000000000002"
+              asset: "0x0000000000000000000000000000000000000002",
+              resource: "https://provider.example.com/run",
+              description: "Test payment",
+              mimeType: "application/json",
+              maxTimeoutSeconds: 60
             },
             {
               scheme: "exact",
               network: "base",
               maxAmountRequired: "100",
               payTo: "0x0000000000000000000000000000000000000001",
-              asset: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+              asset: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+              resource: "https://provider.example.com/run",
+              description: "Test payment",
+              mimeType: "application/json",
+              maxTimeoutSeconds: 60
             }
           ]
         }), {
@@ -693,7 +717,7 @@ describe("shared marketplace helpers", () => {
     );
 
     expect(mainnetConfig.tokenSymbol).toBe("USDC");
-    expect(mainnetRequirement.asset).toBe("0xc655a12330da6af361d281b197996d2bc135aaed3b66278e729c2222291e9130");
+    expect(mainnetRequirement.asset).toBe("0x125b60bb2e805336f0934077d4f9fdb36f45bec9ded8d7b0e637516cc43a86eb");
     expect(testnetRequirement.asset).toBe("0xd73a0679a2be46981e2a8aedecd951c8b6690e7d5f8502b34ed3ff4cc2163b46");
   });
 
@@ -708,6 +732,7 @@ describe("shared marketplace helpers", () => {
     ]);
     expect(listServiceDefinitions(mainnetConfig).map((service) => service.slug)).toEqual([
       "shop-fast-amazon",
+      "shopify-storefront",
       "shop-fast-amazon-execute"
     ]);
   });
@@ -1640,6 +1665,16 @@ describe("shared marketplace helpers", () => {
     expect(executable?.service.apiNamespace).toBe("shop-fast-amazon");
     expect(executable?.endpoints.map((endpoint) => endpoint.endpointType === "marketplace_proxy" ? endpoint.operation : null))
       .toEqual(["amazon-quote", "amazon-buy"]);
+
+    const shopify = await store.getPublishedServiceBySlug("shopify-storefront");
+    expect(shopify?.service.serviceType).toBe("external_registry");
+    expect(shopify?.service.categories).toContain("UCP");
+    expect(shopify?.endpoints).toHaveLength(1);
+    expect(shopify?.endpoints[0]).toMatchObject({
+      endpointType: "external_registry",
+      title: "Storefront GraphQL",
+      publicUrl: "https://{store_name}.myshopify.com/api/2026-04/graphql.json"
+    });
   });
 
   it("persists commerce quote, consent, order, and fulfillment records", async () => {
@@ -1704,6 +1739,18 @@ describe("shared marketplace helpers", () => {
       status: "placed",
       providerOrderId: "order_store_test"
     });
+    const duplicateOrder = await store.createCommerceOrder({
+      quoteId: "quote_store_test",
+      paymentId: "payment_commerce_test_2",
+      buyerWallet: consent.buyerWallet,
+      routeId: "shop-fast-amazon.amazon-buy.v1",
+      requestId: "request_commerce_test_2",
+      requestBody: { quoteId: "quote_store_test" }
+    });
+    expect(duplicateOrder).toMatchObject({
+      id: order.id,
+      paymentId: "payment_commerce_test"
+    });
     expect(await store.getCommerceFulfillmentByOrderId(order.id)).toMatchObject({
       status: "pending_shipment"
     });
@@ -1737,6 +1784,10 @@ describe("shared marketplace helpers", () => {
         expect.objectContaining({
           id: "shop-fast-amazon:amazon-order-status",
           endpoint: "https://shop.fast.xyz/api/amazon/order-status"
+        }),
+        expect.objectContaining({
+          id: "shopify-storefront:storefront-graphql",
+          endpoint: "https://{store_name}.myshopify.com/api/2026-04/graphql.json"
         })
       ])
     );

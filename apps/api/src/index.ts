@@ -73,13 +73,16 @@ const app = createMarketplaceApi({
   siteProofToken: process.env.MARKETPLACE_SITE_PROOF
 });
 
-const server = app.listen(port, () => {
-  console.log(`Marketplace API listening on ${baseUrl}`);
-});
+const listenPorts = Array.from(new Set([port, 3000, 8080].filter((value) => Number.isFinite(value) && value > 0)));
+const servers = listenPorts.map((listenPort) =>
+  app.listen(listenPort, "0.0.0.0", () => {
+    console.log(`Marketplace API listening on 0.0.0.0:${listenPort} (${baseUrl})`);
+  })
+);
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, async () => {
-    server.close();
+    await Promise.all(servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
     await pool.end();
     process.exit(0);
   });

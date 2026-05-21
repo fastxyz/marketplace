@@ -67,6 +67,7 @@ export function createApifyServiceApp(options: ApifyServiceOptions): Express {
   });
 
   const runHandler: express.RequestHandler = async (req, res) => {
+    const actorInput = normalizeActorInput(options.actorId, req.body ?? {});
     let response: globalThis.Response;
     try {
       response = await fetch(buildActorRunUrl(upstreamBaseUrl, options.actorId), {
@@ -75,7 +76,7 @@ export function createApifyServiceApp(options: ApifyServiceOptions): Express {
           authorization: `Bearer ${options.apifyApiToken}`,
           "content-type": "application/json"
         },
-        body: JSON.stringify(req.body ?? {})
+        body: JSON.stringify(actorInput)
       });
     } catch (error) {
       return res.status(502).json({
@@ -202,6 +203,25 @@ export function createApifyServiceApp(options: ApifyServiceOptions): Express {
   });
 
   return app;
+}
+
+function normalizeActorInput(actorId: string, body: unknown): unknown {
+  if (!isJsonObject(body)) {
+    return body;
+  }
+
+  if (
+    actorId === "junglee/amazon-crawler"
+    && Array.isArray(body.startUrls)
+    && !Array.isArray(body.categoryOrProductUrls)
+  ) {
+    return {
+      ...body,
+      categoryOrProductUrls: body.startUrls
+    };
+  }
+
+  return body;
 }
 
 function normalizeUpstreamBaseUrl(input: string): string {

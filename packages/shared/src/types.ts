@@ -1318,6 +1318,7 @@ export interface MarketplaceStore {
     responseBody?: unknown;
   }): Promise<CommerceOrderRecord>;
   getCommerceOrderByPaymentId(paymentId: string): Promise<CommerceOrderRecord | null>;
+  getCommerceOrderByQuoteId(quoteId: string): Promise<CommerceOrderRecord | null>;
   recordCommerceFulfillment(input: {
     orderId: string;
     status: CommerceFulfillmentStatus;
