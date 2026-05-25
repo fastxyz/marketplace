@@ -18,6 +18,46 @@ function readFixture(name: string): string {
   return readFileSync(join(fixtureDir, name), "utf8");
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+
+  return { promise, reject, resolve };
+}
+
+async function waitForFetchCallCount(fetchImpl: ReturnType<typeof vi.fn<typeof fetch>>, count: number): Promise<void> {
+  for (let attempts = 0; attempts < 20; attempts += 1) {
+    if (fetchImpl.mock.calls.length === count) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  expect(fetchImpl).toHaveBeenCalledTimes(count);
+}
+
+function buildTimeMapWithCaptures(count: number): string {
+  const entries = [
+    '<https://example.com/articles/launch>; rel="original"'
+  ];
+
+  for (let index = 1; index <= count; index += 1) {
+    const day = String(index).padStart(2, "0");
+    entries.push(`<http://archive.md/202401${day}120000/https://example.com/articles/launch>; rel="memento"; datetime="Mon, ${day} Jan 2024 12:00:00 GMT"`);
+  }
+
+  return entries.join(", ");
+}
+
+function archiveErrorBody(message: string): string {
+  return `<div id="SOLID"><div id="CONTENT"><pre>Error: ${message}</pre></div></div>`;
+}
+
 describe("archive-is sdk", () => {
   it("constructs Archive.today TimeMap URLs while preserving query and fragment boundaries", () => {
     expect(buildTimeMapUrl({
@@ -179,6 +219,441 @@ describe("archive-is sdk", () => {
         }
       ]
     });
+  });
+
+  it("annotates archive snapshots that resolve to archive.md error pages when validation is enabled", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(readFixture("timemap-link-format.txt"), {
+        status: 200,
+        headers: {
+          "content-type": "application/link-format"
+        }
+      }))
+      .mockResolvedValueOnce(new Response("<html><article>Archived article content</article></html>", {
+        status: 200
+      }))
+      .mockResolvedValueOnce(new Response(archiveErrorBody("Error -32602: Invalid InterceptionId."), {
+        status: 200
+      }))
+      .mockResolvedValueOnce(new Response(archiveErrorBody("Task timed-out after 15 seconds of inactivity"), {
+        status: 429
+      }));
+
+    await expect(listSnapshots({
+      url: "https://example.com/articles/launch",
+      limit: 3
+    }, {
+      fetch: fetchImpl,
+      validateSnapshots: true
+    })).resolves.toMatchObject({
+      count: 3,
+      snapshots: [
+        {
+          archiveUrl: "http://archive.md/20240720170010/https://example.com/articles/launch",
+          validation: {
+            status: "usable"
+          }
+        },
+        {
+          archiveUrl: "http://archive.md/20240615153045/https://example.com/articles/launch",
+          validation: {
+            status: "broken",
+            reason: "archive_invalid_interception_id"
+          }
+        },
+        {
+          archiveUrl: "http://archive.md/20240501120000/https://example.com/articles/launch",
+          validation: {
+            status: "broken",
+            reason: "archive_task_timeout",
+            statusCode: 429
+          }
+        }
+      ]
+    });
+  });
+
+  it("marks snapshots unchecked when validation cannot read the archive page", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(readFixture("timemap-link-format.txt"), {
+        status: 200,
+        headers: {
+          "content-type": "application/link-format"
+        }
+      }))
+      .mockResolvedValueOnce(new Response("Forbidden", {
+        status: 403
+      }));
+
+    await expect(listSnapshots({
+      url: "https://example.com/articles/launch",
+      limit: 1
+    }, {
+      fetch: fetchImpl,
+      validateSnapshots: true
+    })).resolves.toMatchObject({
+      count: 1,
+      snapshots: [
+        {
+          archiveUrl: "http://archive.md/20240720170010/https://example.com/articles/launch",
+          validation: {
+            status: "unchecked",
+            reason: "validation_http_error",
+            statusCode: 403
+          }
+        }
+      ]
+    });
+  });
+
+  it("marks archive security checks unchecked instead of generic HTTP errors", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(readFixture("timemap-link-format.txt"), {
+        status: 200,
+        headers: {
+          "content-type": "application/link-format"
+        }
+      }))
+      .mockResolvedValueOnce(new Response("<html><h1>One more step</h1><div>Please complete the security check to access</div><div id=\"g-recaptcha\"></div></html>", {
+        status: 429
+      }));
+
+    await expect(listSnapshots({
+      url: "https://example.com/articles/launch",
+      limit: 1
+    }, {
+      fetch: fetchImpl,
+      validateSnapshots: true
+    })).resolves.toMatchObject({
+      count: 1,
+      snapshots: [
+        {
+          archiveUrl: "http://archive.md/20240720170010/https://example.com/articles/launch",
+          validation: {
+            status: "unchecked",
+            reason: "archive_security_check",
+            statusCode: 429
+          }
+        }
+      ]
+    });
+  });
+
+  it("marks archive security checks unchecked even when the provider returns HTTP 200", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(readFixture("timemap-link-format.txt"), {
+        status: 200,
+        headers: {
+          "content-type": "application/link-format"
+        }
+      }))
+      .mockResolvedValueOnce(new Response("<html><h1>One more step</h1><div>Please complete the security check to access</div><div id=\"g-recaptcha\"></div></html>", {
+        status: 200
+      }));
+
+    await expect(listSnapshots({
+      url: "https://example.com/articles/launch",
+      limit: 1
+    }, {
+      fetch: fetchImpl,
+      validateSnapshots: true
+    })).resolves.toMatchObject({
+      count: 1,
+      snapshots: [
+        {
+          archiveUrl: "http://archive.md/20240720170010/https://example.com/articles/launch",
+          validation: {
+            status: "unchecked",
+            reason: "archive_security_check",
+            statusCode: 200
+          }
+        }
+      ]
+    });
+  });
+
+  it("does not classify ordinary archived preformatted errors as archive error pages", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(readFixture("timemap-link-format.txt"), {
+        status: 200,
+        headers: {
+          "content-type": "application/link-format"
+        }
+      }))
+      .mockResolvedValueOnce(new Response("<html><article><pre>Error: this is sample output in the archived page</pre></article></html>", {
+        status: 200
+      }));
+
+    await expect(listSnapshots({
+      url: "https://example.com/articles/launch",
+      limit: 1
+    }, {
+      fetch: fetchImpl,
+      validateSnapshots: true
+    })).resolves.toMatchObject({
+      count: 1,
+      snapshots: [
+        {
+          archiveUrl: "http://archive.md/20240720170010/https://example.com/articles/launch",
+          validation: {
+            status: "usable"
+          }
+        }
+      ]
+    });
+  });
+
+  it("does not classify quoted archive error signatures in ordinary archived content as broken", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(readFixture("timemap-link-format.txt"), {
+        status: 200,
+        headers: {
+          "content-type": "application/link-format"
+        }
+      }))
+      .mockResolvedValueOnce(new Response("<html><article><p>Archive operators discussed Invalid InterceptionId and Task timed-out after 15 seconds of inactivity incidents.</p></article></html>", {
+        status: 200
+      }));
+
+    await expect(listSnapshots({
+      url: "https://example.com/articles/launch",
+      limit: 1
+    }, {
+      fetch: fetchImpl,
+      validateSnapshots: true
+    })).resolves.toMatchObject({
+      count: 1,
+      snapshots: [
+        {
+          archiveUrl: "http://archive.md/20240720170010/https://example.com/articles/launch",
+          validation: {
+            status: "usable"
+          }
+        }
+      ]
+    });
+  });
+
+  it("validates snapshot pages concurrently while preserving response order", async () => {
+    const validations = [
+      deferred<Response>(),
+      deferred<Response>(),
+      deferred<Response>()
+    ];
+    const validationQueue = [...validations];
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(readFixture("timemap-link-format.txt"), {
+        status: 200,
+        headers: {
+          "content-type": "application/link-format"
+        }
+      }))
+      .mockImplementation(() => {
+        const validation = validationQueue.shift();
+        if (!validation) {
+          throw new Error("unexpected fetch");
+        }
+
+        return validation.promise;
+      });
+
+    const resultPromise = listSnapshots({
+      url: "https://example.com/articles/launch",
+      limit: 3
+    }, {
+      fetch: fetchImpl,
+      validateSnapshots: true
+    });
+    await waitForFetchCallCount(fetchImpl, 4);
+
+    validations[1]?.resolve(new Response(archiveErrorBody("Error -32602: Invalid InterceptionId."), {
+      status: 200
+    }));
+    validations[2]?.resolve(new Response(archiveErrorBody("Task timed-out after 15 seconds of inactivity"), {
+      status: 200
+    }));
+    validations[0]?.resolve(new Response("<html><article>Archived article content</article></html>", {
+      status: 200
+    }));
+
+    await expect(resultPromise).resolves.toMatchObject({
+      snapshots: [
+        {
+          archiveUrl: "http://archive.md/20240720170010/https://example.com/articles/launch",
+          validation: { status: "usable" }
+        },
+        {
+          archiveUrl: "http://archive.md/20240615153045/https://example.com/articles/launch",
+          validation: {
+            status: "broken",
+            reason: "archive_invalid_interception_id"
+          }
+        },
+        {
+          archiveUrl: "http://archive.md/20240501120000/https://example.com/articles/launch",
+          validation: {
+            status: "broken",
+            reason: "archive_task_timeout"
+          }
+        }
+      ]
+    });
+  });
+
+  it("limits concurrent snapshot validation requests", async () => {
+    const validations = Array.from({ length: 6 }, () => deferred<Response>());
+    const validationQueue = [...validations];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(buildTimeMapWithCaptures(6), {
+        status: 200,
+        headers: {
+          "content-type": "application/link-format"
+        }
+      }))
+      .mockImplementation(() => {
+        const validation = validationQueue.shift();
+        if (!validation) {
+          throw new Error("unexpected fetch");
+        }
+
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        return validation.promise.finally(() => {
+          inFlight -= 1;
+        });
+      });
+
+    const resultPromise = listSnapshots({
+      url: "https://example.com/articles/launch",
+      limit: 6
+    }, {
+      fetch: fetchImpl,
+      validateSnapshots: true
+    });
+    await waitForFetchCallCount(fetchImpl, 6);
+    expect(maxInFlight).toBe(5);
+
+    validations[0]?.resolve(new Response("<html><article>Archived content 1</article></html>", { status: 200 }));
+    await waitForFetchCallCount(fetchImpl, 7);
+    for (const validation of validations.slice(1)) {
+      validation.resolve(new Response("<html><article>Archived content</article></html>", { status: 200 }));
+    }
+
+    await expect(resultPromise).resolves.toMatchObject({
+      count: 6,
+      snapshots: expect.arrayContaining([
+        expect.objectContaining({
+          validation: { status: "usable" }
+        })
+      ])
+    });
+    expect(maxInFlight).toBe(5);
+  });
+
+  it("marks snapshots unchecked when validation times out", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(readFixture("timemap-link-format.txt"), {
+        status: 200,
+        headers: {
+          "content-type": "application/link-format"
+        }
+      }))
+      .mockRejectedValueOnce(new DOMException("The operation was aborted.", "AbortError"));
+
+    await expect(listSnapshots({
+      url: "https://example.com/articles/launch",
+      limit: 1
+    }, {
+      fetch: fetchImpl,
+      validateSnapshots: true
+    })).resolves.toMatchObject({
+      count: 1,
+      snapshots: [
+        {
+          validation: {
+            status: "unchecked",
+            reason: "validation_timeout"
+          }
+        }
+      ]
+    });
+  });
+
+  it("marks snapshots unchecked when validation fetches fail", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(readFixture("timemap-link-format.txt"), {
+        status: 200,
+        headers: {
+          "content-type": "application/link-format"
+        }
+      }))
+      .mockRejectedValueOnce(new Error("connection reset"));
+
+    await expect(listSnapshots({
+      url: "https://example.com/articles/launch",
+      limit: 1
+    }, {
+      fetch: fetchImpl,
+      validateSnapshots: true
+    })).resolves.toMatchObject({
+      count: 1,
+      snapshots: [
+        {
+          validation: {
+            status: "unchecked",
+            reason: "validation_fetch_failed"
+          }
+        }
+      ]
+    });
+  });
+
+  it("preserves Archive.md redirect cookies while validating a snapshot page", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(readFixture("timemap-link-format.txt"), {
+        status: 200,
+        headers: {
+          "content-type": "application/link-format"
+        }
+      }))
+      .mockResolvedValueOnce(new Response("", {
+        status: 302,
+        headers: {
+          location: "https://archive.md/20240720170010/https://example.com/articles/launch",
+          "set-cookie": "qki=abc123; Max-Age=3600; Domain=.archive.md; Path=/"
+        }
+      }))
+      .mockResolvedValueOnce(new Response("<html><article>Archived article content</article></html>", {
+        status: 200
+      }));
+
+    await expect(listSnapshots({
+      url: "https://example.com/articles/launch",
+      limit: 1
+    }, {
+      fetch: fetchImpl,
+      validateSnapshots: true
+    })).resolves.toMatchObject({
+      count: 1,
+      snapshots: [
+        {
+          archiveUrl: "http://archive.md/20240720170010/https://example.com/articles/launch",
+          validation: {
+            status: "usable"
+          }
+        }
+      ]
+    });
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      "https://archive.md/20240720170010/https://example.com/articles/launch",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          cookie: "qki=abc123"
+        })
+      })
+    );
   });
 
   it("rejects invalid inputs with typed errors", async () => {

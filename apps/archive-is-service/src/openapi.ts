@@ -22,7 +22,10 @@ export const ARCHIVE_IS_ROUTE = {
         archiveUrl: "https://archive.today/20240501120000/https://example.com/articles/launch",
         capturedAt: "2024-05-01T12:00:00.000Z",
         archiveId: "20240501120000",
-        sourceHost: "archive.today"
+        sourceHost: "archive.today",
+        validation: {
+          status: "usable"
+        }
       }
     ]
   }
@@ -176,7 +179,7 @@ export function buildSnapshotsResponseSchema(): Record<string, unknown> {
         type: "array",
         items: {
           type: "object",
-          required: ["originalUrl", "archiveUrl", "capturedAt", "archiveId", "sourceHost"],
+          required: ["originalUrl", "archiveUrl", "capturedAt", "archiveId", "sourceHost", "validation"],
           properties: {
             originalUrl: { type: "string", format: "uri" },
             archiveUrl: { type: "string", format: "uri" },
@@ -187,7 +190,20 @@ export function buildSnapshotsResponseSchema(): Record<string, unknown> {
                 { type: "null" }
               ]
             },
-            sourceHost: { type: "string" }
+            sourceHost: { type: "string" },
+            validation: {
+              type: "object",
+              required: ["status"],
+              properties: {
+                status: {
+                  type: "string",
+                  enum: ["usable", "broken", "unchecked"]
+                },
+                reason: { type: "string" },
+                statusCode: { type: "integer" }
+              },
+              additionalProperties: false
+            }
           },
           additionalProperties: false
         }

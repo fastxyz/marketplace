@@ -1,9 +1,16 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 
 import { ArchiveIsError, type ListSnapshotsResult } from "@marketplace/archive-is";
 
 import { createArchiveIsServiceApp, normalizeArchiveIsTimeoutMs } from "./app.js";
+import { buildSnapshotsRequestSchema, buildSnapshotsResponseSchema } from "./openapi.js";
+
+const appDir = dirname(fileURLToPath(import.meta.url));
 
 function buildResult(): ListSnapshotsResult {
   return {
@@ -66,6 +73,50 @@ describe("archive-is service", () => {
     expect(listSnapshots).toHaveBeenCalledWith(expect.objectContaining({
       archiveHost: "archive.is"
     }));
+  });
+
+  it("enables snapshot validation in the production SDK path", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(
+        '<https://example.com/articles/launch>; rel="original", <http://archive.md/20240501120000/https://example.com/articles/launch>; rel="memento"; datetime="Wed, 01 May 2024 12:00:00 GMT"',
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/link-format"
+          }
+        }
+      ))
+      .mockResolvedValueOnce(new Response("<html><article>Archived article content</article></html>", {
+        status: 200
+      }));
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", fetchImpl);
+
+    try {
+      const app = createArchiveIsServiceApp({
+        archiveHost: "archive.today"
+      });
+
+      const response = await request(app)
+        .post("/snapshots")
+        .send({
+          url: "https://example.com/articles/launch",
+          limit: 1
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.snapshots).toEqual([
+        expect.objectContaining({
+          archiveUrl: "http://archive.md/20240501120000/https://example.com/articles/launch",
+          validation: {
+            status: "usable"
+          }
+        })
+      ]);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
   });
 
   it("maps invalid input to 400", async () => {
@@ -157,8 +208,21 @@ describe("archive-is service", () => {
     expect(response.body.servers).toEqual([{ url: "/" }]);
     expect(Object.keys(response.body.paths)).toEqual(["/snapshots"]);
     expect(response.body.paths["/snapshots"].post.operationId).toBe("list-snapshots");
+    expect(response.body.paths["/snapshots"].post.responses["200"].content["application/json"].schema.properties.snapshots.items.required)
+      .toContain("validation");
     expect(response.body.paths["/health"]).toBeUndefined();
     expect(response.body.paths["/.well-known/fast-marketplace-verification.txt"]).toBeUndefined();
+  });
+
+  it("keeps the provider spec template aligned with the OpenAPI schemas", () => {
+    const providerSpec = JSON.parse(readFileSync(join(appDir, "../provider-spec.mainnet.template.json"), "utf8"));
+    const endpoint = providerSpec.endpoints[0];
+
+    expect(endpoint.requestSchemaJson).toEqual(buildSnapshotsRequestSchema());
+    expect(endpoint.responseSchemaJson).toEqual(buildSnapshotsResponseSchema());
+    expect(endpoint.responseExample.snapshots[0].validation).toEqual({
+      status: "usable"
+    });
   });
 
   it("serves the marketplace verification token when configured", async () => {
