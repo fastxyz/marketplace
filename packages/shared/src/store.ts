@@ -38,6 +38,9 @@ import type {
   CreditReservationRecord,
   CreateProviderEndpointDraftInput,
   CreateProviderServiceInput,
+  CompleteProviderServiceTestRunInput,
+  CreateProviderEndpointTestResultInput,
+  CreateProviderServiceTestRunInput,
   CreateSuggestionInput,
   ExternalProviderEndpointDraftRecord,
   IdempotencyRecord,
@@ -53,9 +56,15 @@ import type {
   ProviderReviewRecord,
   ProviderRuntimeKeyRecord,
   ProviderSecretRecord,
+  ProviderEndpointTestResultRecord,
   ProviderServiceDetailRecord,
   ProviderServiceRecord,
   ProviderServiceStatus,
+  ProviderServiceTestRunKind,
+  ProviderServiceTestRunRecord,
+  ProviderServiceTestRunWithResults,
+  ProviderServiceTestStatus,
+  ProviderServiceTestSummary,
   ProviderServiceType,
   ProviderVerificationRecord,
   ProviderVerificationStatus,
@@ -249,6 +258,14 @@ function normalizeAsyncConfig(value: unknown): RouteAsyncConfig | null {
       ? null
       : undefined
   };
+}
+
+function normalizeTestRunLimit(limit: number | undefined): number {
+  if (typeof limit !== "number" || !Number.isFinite(limit)) {
+    return 50;
+  }
+
+  return Math.min(Math.max(Math.trunc(limit), 1), 500);
 }
 
 function buildRouteAsyncConfig(input: {
@@ -854,6 +871,8 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
   private readonly verificationByService = new Map<string, ProviderVerificationRecord[]>();
   private readonly reviewsByService = new Map<string, ProviderReviewRecord[]>();
   private readonly providerSecretsById = new Map<string, ProviderSecretRecord>();
+  private readonly providerServiceTestRunsById = new Map<string, ProviderServiceTestRunRecord>();
+  private readonly providerEndpointTestResultsById = new Map<string, ProviderEndpointTestResultRecord>();
   private readonly publishedServicesByVersionId = new Map<string, PublishedServiceVersionRecord>();
   private readonly publishedEndpointsByVersionId = new Map<string, PublishedEndpointVersionRecord>();
   private readonly publishedExternalEndpointsByVersionId = new Map<string, PublishedExternalEndpointVersionRecord>();
@@ -3653,6 +3672,152 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     return this.buildProviderServiceDetail(serviceId);
   }
 
+  async createProviderServiceTestRun(input: CreateProviderServiceTestRunInput): Promise<ProviderServiceTestRunRecord> {
+    const now = timestamp();
+    const record: ProviderServiceTestRunRecord = {
+      id: randomUUID(),
+      serviceId: input.serviceId,
+      publishedVersionId: input.publishedVersionId ?? null,
+      slug: input.slug,
+      runKind: input.runKind,
+      status: input.status ?? "pending",
+      startedAt: now,
+      completedAt: input.status && input.status !== "pending" ? now : null,
+      testedBy: input.testedBy ?? null,
+      summary: input.summary ?? null,
+      riskLevel: input.riskLevel ?? null,
+      riskNotes: input.riskNotes ?? null,
+      totalPaidAmount: input.totalPaidAmount ?? null,
+      paymentAsset: input.paymentAsset ?? null,
+      evidenceJson: clone(input.evidenceJson ?? {}),
+      createdAt: now,
+      updatedAt: now
+    };
+    this.providerServiceTestRunsById.set(record.id, record);
+    return clone(record);
+  }
+
+  async completeProviderServiceTestRun(
+    id: string,
+    input: CompleteProviderServiceTestRunInput
+  ): Promise<ProviderServiceTestRunRecord | null> {
+    const existing = this.providerServiceTestRunsById.get(id);
+    if (!existing) {
+      return null;
+    }
+
+    const now = timestamp();
+    const updated: ProviderServiceTestRunRecord = {
+      ...existing,
+      status: input.status,
+      completedAt: now,
+      summary: input.summary === undefined ? existing.summary : input.summary,
+      riskLevel: input.riskLevel === undefined ? existing.riskLevel : input.riskLevel,
+      riskNotes: input.riskNotes === undefined ? existing.riskNotes : input.riskNotes,
+      totalPaidAmount: input.totalPaidAmount === undefined ? existing.totalPaidAmount : input.totalPaidAmount,
+      paymentAsset: input.paymentAsset === undefined ? existing.paymentAsset : input.paymentAsset,
+      evidenceJson: input.evidenceJson === undefined ? existing.evidenceJson : clone(input.evidenceJson),
+      updatedAt: now
+    };
+    this.providerServiceTestRunsById.set(id, updated);
+    return clone(updated);
+  }
+
+  async appendProviderEndpointTestResult(input: CreateProviderEndpointTestResultInput): Promise<ProviderEndpointTestResultRecord> {
+    const record: ProviderEndpointTestResultRecord = {
+      id: randomUUID(),
+      testRunId: input.testRunId,
+      serviceId: input.serviceId,
+      endpointId: input.endpointId ?? null,
+      endpointTitle: input.endpointTitle ?? null,
+      method: input.method,
+      url: input.url,
+      testKind: input.testKind,
+      status: input.status,
+      mutability: input.mutability,
+      paymentRequired: input.paymentRequired ?? null,
+      expectedPriceAmount: input.expectedPriceAmount ?? null,
+      expectedPriceAsset: input.expectedPriceAsset ?? null,
+      dynamicPrice: input.dynamicPrice ?? false,
+      paidAmount: input.paidAmount ?? null,
+      httpStatus: input.httpStatus ?? null,
+      latencyMs: input.latencyMs ?? null,
+      resultSummary: input.resultSummary ?? null,
+      evidenceJson: clone(input.evidenceJson ?? {}),
+      createdAt: timestamp()
+    };
+    this.providerEndpointTestResultsById.set(record.id, record);
+    return clone(record);
+  }
+
+  async listProviderServiceTestRuns(
+    serviceId: string,
+    filters?: { runKind?: ProviderServiceTestRunKind; status?: ProviderServiceTestStatus; limit?: number }
+  ): Promise<ProviderServiceTestRunWithResults[]> {
+    const limit = normalizeTestRunLimit(filters?.limit);
+    const runs = Array.from(this.providerServiceTestRunsById.values())
+      .filter((run) => run.serviceId === serviceId)
+      .filter((run) => !filters?.runKind || run.runKind === filters.runKind)
+      .filter((run) => !filters?.status || run.status === filters.status)
+      .sort((left, right) => right.startedAt.localeCompare(left.startedAt))
+      .slice(0, limit);
+
+    return runs.map((run) => ({
+      run: clone(run),
+      endpointResults: Array.from(this.providerEndpointTestResultsById.values())
+        .filter((result) => result.testRunId === run.id)
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+        .map((result) => clone(result))
+    }));
+  }
+
+  async getLatestProviderServiceTestSummary(serviceId: string): Promise<ProviderServiceTestSummary | null> {
+    const service = this.providerServicesById.get(serviceId);
+    if (!service) {
+      return null;
+    }
+
+    const runs = Array.from(this.providerServiceTestRunsById.values())
+      .filter((run) => run.serviceId === serviceId)
+      .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+    const latestByKind: ProviderServiceTestSummary["latestByKind"] = {};
+    for (const run of runs) {
+      latestByKind[run.runKind] ??= clone(run);
+    }
+
+    const latestRun = runs[0] ? clone(runs[0]) : null;
+    const endpointResults = latestRun
+      ? Array.from(this.providerEndpointTestResultsById.values())
+          .filter((result) => result.testRunId === latestRun.id)
+          .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+          .map((result) => clone(result))
+      : [];
+
+    return {
+      serviceId,
+      slug: service.slug,
+      latestByKind,
+      latestRun,
+      endpointResults
+    };
+  }
+
+  async listAdminProviderServiceTestRuns(filters?: {
+    runKind?: ProviderServiceTestRunKind;
+    status?: ProviderServiceTestStatus;
+    serviceId?: string;
+    limit?: number;
+  }): Promise<ProviderServiceTestRunRecord[]> {
+    const limit = normalizeTestRunLimit(filters?.limit);
+    return Array.from(this.providerServiceTestRunsById.values())
+      .filter((run) => !filters?.serviceId || run.serviceId === filters.serviceId)
+      .filter((run) => !filters?.runKind || run.runKind === filters.runKind)
+      .filter((run) => !filters?.status || run.status === filters.status)
+      .sort((left, right) => right.startedAt.localeCompare(left.startedAt))
+      .slice(0, limit)
+      .map((run) => clone(run));
+  }
+
   async getProviderSecret(secretId: string): Promise<ProviderSecretRecord | null> {
     return clone(this.providerSecretsById.get(secretId) ?? null);
   }
@@ -4186,6 +4351,64 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS provider_service_test_runs (
+        id TEXT PRIMARY KEY,
+        service_id TEXT NOT NULL REFERENCES provider_services(id) ON DELETE CASCADE,
+        published_version_id TEXT,
+        slug TEXT NOT NULL,
+        run_kind TEXT NOT NULL,
+        status TEXT NOT NULL,
+        started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        completed_at TIMESTAMPTZ,
+        tested_by TEXT,
+        summary TEXT,
+        risk_level TEXT,
+        risk_notes TEXT,
+        total_paid_amount TEXT,
+        payment_asset TEXT,
+        evidence_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS provider_endpoint_test_results (
+        id TEXT PRIMARY KEY,
+        test_run_id TEXT NOT NULL REFERENCES provider_service_test_runs(id) ON DELETE CASCADE,
+        service_id TEXT NOT NULL REFERENCES provider_services(id) ON DELETE CASCADE,
+        endpoint_id TEXT,
+        endpoint_title TEXT,
+        method TEXT NOT NULL,
+        url TEXT NOT NULL,
+        test_kind TEXT NOT NULL,
+        status TEXT NOT NULL,
+        mutability TEXT NOT NULL,
+        payment_required BOOLEAN,
+        expected_price_amount TEXT,
+        expected_price_asset TEXT,
+        dynamic_price BOOLEAN NOT NULL DEFAULT FALSE,
+        paid_amount TEXT,
+        http_status INTEGER,
+        latency_ms INTEGER,
+        result_summary TEXT,
+        evidence_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS provider_service_test_runs_service_started_idx
+      ON provider_service_test_runs(service_id, started_at DESC);
+      CREATE INDEX IF NOT EXISTS provider_service_test_runs_slug_started_idx
+      ON provider_service_test_runs(slug, started_at DESC);
+      CREATE INDEX IF NOT EXISTS provider_service_test_runs_status_started_idx
+      ON provider_service_test_runs(status, started_at DESC);
+      CREATE INDEX IF NOT EXISTS provider_service_test_runs_kind_started_idx
+      ON provider_service_test_runs(run_kind, started_at DESC);
+      CREATE INDEX IF NOT EXISTS provider_endpoint_test_results_service_created_idx
+      ON provider_endpoint_test_results(service_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS provider_endpoint_test_results_run_idx
+      ON provider_endpoint_test_results(test_run_id);
+      CREATE INDEX IF NOT EXISTS provider_endpoint_test_results_status_created_idx
+      ON provider_endpoint_test_results(status, created_at DESC);
 
       CREATE TABLE IF NOT EXISTS provider_payouts (
         id TEXT PRIMARY KEY,
@@ -9069,6 +9292,206 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     return this.getProviderServiceDetailById(serviceId);
   }
 
+  async createProviderServiceTestRun(input: CreateProviderServiceTestRunInput): Promise<ProviderServiceTestRunRecord> {
+    const completed = input.status && input.status !== "pending";
+    const result = await this.pool.query(
+      `
+      INSERT INTO provider_service_test_runs (
+        id, service_id, published_version_id, slug, run_kind, status, completed_at, tested_by, summary,
+        risk_level, risk_notes, total_paid_amount, payment_asset, evidence_json
+      ) VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $7 THEN NOW() ELSE NULL END, $8, $9, $10, $11, $12, $13, $14::jsonb)
+      RETURNING *
+      `,
+      [
+        randomUUID(),
+        input.serviceId,
+        input.publishedVersionId ?? null,
+        input.slug,
+        input.runKind,
+        input.status ?? "pending",
+        Boolean(completed),
+        input.testedBy ?? null,
+        input.summary ?? null,
+        input.riskLevel ?? null,
+        input.riskNotes ?? null,
+        input.totalPaidAmount ?? null,
+        input.paymentAsset ?? null,
+        JSON.stringify(input.evidenceJson ?? {})
+      ]
+    );
+    return mapProviderServiceTestRunRow(result.rows[0]);
+  }
+
+  async completeProviderServiceTestRun(
+    id: string,
+    input: CompleteProviderServiceTestRunInput
+  ): Promise<ProviderServiceTestRunRecord | null> {
+    const result = await this.pool.query(
+      `
+      UPDATE provider_service_test_runs
+      SET status = $2,
+        completed_at = NOW(),
+        summary = CASE WHEN $3 THEN $4 ELSE summary END,
+        risk_level = CASE WHEN $5 THEN $6 ELSE risk_level END,
+        risk_notes = CASE WHEN $7 THEN $8 ELSE risk_notes END,
+        total_paid_amount = CASE WHEN $9 THEN $10 ELSE total_paid_amount END,
+        payment_asset = CASE WHEN $11 THEN $12 ELSE payment_asset END,
+        evidence_json = CASE WHEN $13 THEN $14::jsonb ELSE evidence_json END,
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+      `,
+      [
+        id,
+        input.status,
+        Object.prototype.hasOwnProperty.call(input, "summary"),
+        input.summary ?? null,
+        Object.prototype.hasOwnProperty.call(input, "riskLevel"),
+        input.riskLevel ?? null,
+        Object.prototype.hasOwnProperty.call(input, "riskNotes"),
+        input.riskNotes ?? null,
+        Object.prototype.hasOwnProperty.call(input, "totalPaidAmount"),
+        input.totalPaidAmount ?? null,
+        Object.prototype.hasOwnProperty.call(input, "paymentAsset"),
+        input.paymentAsset ?? null,
+        Object.prototype.hasOwnProperty.call(input, "evidenceJson"),
+        input.evidenceJson === undefined ? null : JSON.stringify(input.evidenceJson)
+      ]
+    );
+    return result.rowCount ? mapProviderServiceTestRunRow(result.rows[0]) : null;
+  }
+
+  async appendProviderEndpointTestResult(input: CreateProviderEndpointTestResultInput): Promise<ProviderEndpointTestResultRecord> {
+    const result = await this.pool.query(
+      `
+      INSERT INTO provider_endpoint_test_results (
+        id, test_run_id, service_id, endpoint_id, endpoint_title, method, url, test_kind, status, mutability,
+        payment_required, expected_price_amount, expected_price_asset, dynamic_price, paid_amount, http_status,
+        latency_ms, result_summary, evidence_json
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb)
+      RETURNING *
+      `,
+      [
+        randomUUID(),
+        input.testRunId,
+        input.serviceId,
+        input.endpointId ?? null,
+        input.endpointTitle ?? null,
+        input.method,
+        input.url,
+        input.testKind,
+        input.status,
+        input.mutability,
+        input.paymentRequired ?? null,
+        input.expectedPriceAmount ?? null,
+        input.expectedPriceAsset ?? null,
+        input.dynamicPrice ?? false,
+        input.paidAmount ?? null,
+        input.httpStatus ?? null,
+        input.latencyMs ?? null,
+        input.resultSummary ?? null,
+        JSON.stringify(input.evidenceJson ?? {})
+      ]
+    );
+    return mapProviderEndpointTestResultRow(result.rows[0]);
+  }
+
+  async listProviderServiceTestRuns(
+    serviceId: string,
+    filters?: { runKind?: ProviderServiceTestRunKind; status?: ProviderServiceTestStatus; limit?: number }
+  ): Promise<ProviderServiceTestRunWithResults[]> {
+    const limit = normalizeTestRunLimit(filters?.limit);
+    const runsResult = await this.pool.query(
+      `
+      SELECT * FROM provider_service_test_runs
+      WHERE service_id = $1
+        AND ($2::text IS NULL OR run_kind = $2)
+        AND ($3::text IS NULL OR status = $3)
+      ORDER BY started_at DESC
+      LIMIT $4
+      `,
+      [serviceId, filters?.runKind ?? null, filters?.status ?? null, limit]
+    );
+    const runs = runsResult.rows.map(mapProviderServiceTestRunRow);
+    const runIds = runs.map((run) => run.id);
+    const results = runIds.length
+      ? (await this.pool.query(
+          `
+          SELECT * FROM provider_endpoint_test_results
+          WHERE test_run_id = ANY($1::text[])
+          ORDER BY created_at ASC
+          `,
+          [runIds]
+        )).rows.map(mapProviderEndpointTestResultRow)
+      : [];
+
+    return runs.map((run) => ({
+      run,
+      endpointResults: results.filter((result) => result.testRunId === run.id)
+    }));
+  }
+
+  async getLatestProviderServiceTestSummary(serviceId: string): Promise<ProviderServiceTestSummary | null> {
+    const serviceResult = await this.pool.query("SELECT id, slug FROM provider_services WHERE id = $1", [serviceId]);
+    if (!serviceResult.rowCount) {
+      return null;
+    }
+
+    const runs = (await this.pool.query(
+      `
+      SELECT * FROM provider_service_test_runs
+      WHERE service_id = $1
+      ORDER BY started_at DESC
+      LIMIT 100
+      `,
+      [serviceId]
+    )).rows.map(mapProviderServiceTestRunRow);
+    const latestByKind: ProviderServiceTestSummary["latestByKind"] = {};
+    for (const run of runs) {
+      latestByKind[run.runKind] ??= run;
+    }
+
+    const latestRun = runs[0] ?? null;
+    const endpointResults = latestRun
+      ? (await this.pool.query(
+          `
+          SELECT * FROM provider_endpoint_test_results
+          WHERE test_run_id = $1
+          ORDER BY created_at ASC
+          `,
+          [latestRun.id]
+        )).rows.map(mapProviderEndpointTestResultRow)
+      : [];
+
+    return {
+      serviceId,
+      slug: serviceResult.rows[0].slug as string,
+      latestByKind,
+      latestRun,
+      endpointResults
+    };
+  }
+
+  async listAdminProviderServiceTestRuns(filters?: {
+    runKind?: ProviderServiceTestRunKind;
+    status?: ProviderServiceTestStatus;
+    serviceId?: string;
+    limit?: number;
+  }): Promise<ProviderServiceTestRunRecord[]> {
+    const result = await this.pool.query(
+      `
+      SELECT * FROM provider_service_test_runs
+      WHERE ($1::text IS NULL OR service_id = $1)
+        AND ($2::text IS NULL OR run_kind = $2)
+        AND ($3::text IS NULL OR status = $3)
+      ORDER BY started_at DESC
+      LIMIT $4
+      `,
+      [filters?.serviceId ?? null, filters?.runKind ?? null, filters?.status ?? null, normalizeTestRunLimit(filters?.limit)]
+    );
+    return result.rows.map(mapProviderServiceTestRunRow);
+  }
+
   async getProviderSecret(secretId: string): Promise<ProviderSecretRecord | null> {
     const result = await this.pool.query("SELECT * FROM provider_secrets WHERE id = $1", [secretId]);
     return result.rowCount ? mapProviderSecretRow(result.rows[0]) : null;
@@ -9592,6 +10015,53 @@ function mapProviderReviewRow(row: Record<string, unknown>): ProviderReviewRecor
     reviewerIdentity: (row.reviewer_identity as string | null) ?? null,
     createdAt: new Date(row.created_at as string | Date).toISOString(),
     updatedAt: new Date(row.updated_at as string | Date).toISOString()
+  };
+}
+
+function mapProviderServiceTestRunRow(row: Record<string, unknown>): ProviderServiceTestRunRecord {
+  return {
+    id: row.id as string,
+    serviceId: row.service_id as string,
+    publishedVersionId: (row.published_version_id as string | null) ?? null,
+    slug: row.slug as string,
+    runKind: row.run_kind as ProviderServiceTestRunRecord["runKind"],
+    status: row.status as ProviderServiceTestRunRecord["status"],
+    startedAt: new Date(row.started_at as string | Date).toISOString(),
+    completedAt: row.completed_at ? new Date(row.completed_at as string | Date).toISOString() : null,
+    testedBy: (row.tested_by as string | null) ?? null,
+    summary: (row.summary as string | null) ?? null,
+    riskLevel: (row.risk_level as ProviderServiceTestRunRecord["riskLevel"] | null) ?? null,
+    riskNotes: (row.risk_notes as string | null) ?? null,
+    totalPaidAmount: (row.total_paid_amount as string | null) ?? null,
+    paymentAsset: (row.payment_asset as string | null) ?? null,
+    evidenceJson: ((row.evidence_json as Record<string, unknown> | null) ?? {}),
+    createdAt: new Date(row.created_at as string | Date).toISOString(),
+    updatedAt: new Date(row.updated_at as string | Date).toISOString()
+  };
+}
+
+function mapProviderEndpointTestResultRow(row: Record<string, unknown>): ProviderEndpointTestResultRecord {
+  return {
+    id: row.id as string,
+    testRunId: row.test_run_id as string,
+    serviceId: row.service_id as string,
+    endpointId: (row.endpoint_id as string | null) ?? null,
+    endpointTitle: (row.endpoint_title as string | null) ?? null,
+    method: row.method as string,
+    url: row.url as string,
+    testKind: row.test_kind as ProviderEndpointTestResultRecord["testKind"],
+    status: row.status as ProviderEndpointTestResultRecord["status"],
+    mutability: row.mutability as ProviderEndpointTestResultRecord["mutability"],
+    paymentRequired: (row.payment_required as boolean | null) ?? null,
+    expectedPriceAmount: (row.expected_price_amount as string | null) ?? null,
+    expectedPriceAsset: (row.expected_price_asset as string | null) ?? null,
+    dynamicPrice: Boolean(row.dynamic_price),
+    paidAmount: (row.paid_amount as string | null) ?? null,
+    httpStatus: (row.http_status as number | null) ?? null,
+    latencyMs: (row.latency_ms as number | null) ?? null,
+    resultSummary: (row.result_summary as string | null) ?? null,
+    evidenceJson: ((row.evidence_json as Record<string, unknown> | null) ?? {}),
+    createdAt: new Date(row.created_at as string | Date).toISOString()
   };
 }
 

@@ -10,6 +10,7 @@ import {
   MARKETPLACE_CALLBACK_AUTH_HEADER,
   MARKETPLACE_CALLBACK_URL_HEADER,
   MARKETPLACE_JOB_TOKEN_HEADER,
+  BASE_USDC_ASSET,
   buildLlmsTxt,
   buildMarketplaceCatalog,
   buildBaseUsdcUpstreamPaymentPolicy,
@@ -87,6 +88,8 @@ import {
   type ProviderRuntimeKeyRecord,
   type ProviderServiceDetailRecord,
   type ProviderServiceRecord,
+  type ProviderServiceTestRunKind,
+  type ProviderServiceTestStatus,
   type ProviderServiceType,
   type ProviderRegistry,
   type PublishedEndpointVersionRecord,
@@ -312,6 +315,38 @@ const suspendSchema = z.object({
   reviewerIdentity: z.string().min(1).max(120).optional().nullable()
 });
 
+const providerTestRunKindSchema = z.enum([
+  "catalog_render",
+  "metadata_manifest",
+  "no_spend_probe",
+  "paid_read_smoke",
+  "legal_review",
+  "monitoring"
+]);
+const runnableProviderTestRunKindSchema = z.enum([
+  "metadata_manifest",
+  "no_spend_probe",
+  "paid_read_smoke",
+  "monitoring"
+]);
+const providerTestStatusSchema = z.enum(["pending", "passed", "failed", "skipped", "blocked", "degraded"]);
+
+const providerServiceTestRunCreateSchema = z.object({
+  runKind: runnableProviderTestRunKindSchema.default("metadata_manifest"),
+  endpointIds: z.array(z.string().min(1)).max(200).optional(),
+  maxSpend: decimalAmountSchema.optional().nullable(),
+  allowMutating: z.literal(false).optional().default(false),
+  execute: z.boolean().default(false),
+  testedBy: z.string().min(1).max(120).optional().nullable()
+});
+
+const providerServiceTestRunListSchema = z.object({
+  runKind: providerTestRunKindSchema.optional(),
+  status: providerTestStatusSchema.optional(),
+  serviceId: z.string().min(1).optional(),
+  limit: z.coerce.number().int().positive().max(500).optional()
+});
+
 const runtimeReserveSchema = z.object({
   buyerWallet: z.string().min(1),
   amount: decimalAmountSchema,
@@ -455,13 +490,17 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
     const catalog = await loadPublishedCatalog(options.store);
 
     const services = await Promise.all(
-      catalog.services.map(async (serviceDetail) =>
-        buildServiceSummary({
+      catalog.services.map(async (serviceDetail) => {
+        const summary = buildServiceSummary({
           service: serviceDetail.service,
           endpoints: serviceDetail.endpoints,
           analytics: await options.store.getServiceAnalytics(serviceDetail.service.routeIds)
-        })
-      )
+        });
+        return {
+          ...summary,
+          testing: compactTestingSummary(await options.store.getLatestProviderServiceTestSummary(serviceDetail.service.serviceId))
+        };
+      })
     );
 
     return res.json({ services });
@@ -487,16 +526,28 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
     const services = await Promise.all(
       catalog.services.map(async (serviceDetail) => ({
         ...serviceDetail,
-        analytics: await options.store.getServiceAnalytics(serviceDetail.service.routeIds)
+        analytics: await options.store.getServiceAnalytics(serviceDetail.service.routeIds),
+        testing: compactTestingSummary(await options.store.getLatestProviderServiceTestSummary(serviceDetail.service.serviceId))
       }))
     );
+    const testingBySlug = new Map(services.map((service) => [service.service.slug, service.testing]));
 
     return res.json({
       results: buildCatalogSearchResults({
         services,
         apiBaseUrl: baseUrl,
         filters: parsed.data
-      })
+      }).map((result) =>
+        result.kind === "service"
+          ? {
+              ...result,
+              summary: {
+                ...result.summary,
+                testing: testingBySlug.get(result.summary.slug) ?? result.summary.testing
+              }
+            }
+          : result
+      )
     });
   });
 
@@ -514,7 +565,15 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
       webBaseUrl
     });
 
-    return res.json(detail);
+    const testing = compactTestingSummary(await options.store.getLatestProviderServiceTestSummary(published.service.serviceId));
+    return res.json({
+      ...detail,
+      summary: {
+        ...detail.summary,
+        testing
+      },
+      testing
+    });
   });
 
   app.get("/catalog/routes/:provider/:operation", async (req, res) => {
@@ -1901,6 +1960,92 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
     }
 
     return res.json(updated);
+  });
+
+  app.get("/internal/provider-service-test-runs", async (req, res) => {
+    if (!requireAdminToken(req, res, options.adminToken)) {
+      return;
+    }
+
+    const parsed = providerServiceTestRunListSchema.safeParse(req.query ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Test run filter validation failed.", issues: parsed.error.issues });
+    }
+
+    const runs = await options.store.listAdminProviderServiceTestRuns(parsed.data);
+    return res.json({ runs });
+  });
+
+  app.get("/internal/provider-services/:id/test-runs", async (req, res) => {
+    if (!requireAdminToken(req, res, options.adminToken)) {
+      return;
+    }
+
+    const parsed = providerServiceTestRunListSchema.safeParse(req.query ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Test run filter validation failed.", issues: parsed.error.issues });
+    }
+
+    const detail = await options.store.getAdminProviderService(req.params.id);
+    if (!detail) {
+      return res.status(404).json({ error: "Provider service not found." });
+    }
+
+    const runs = await options.store.listProviderServiceTestRuns(req.params.id, parsed.data);
+    return res.json({ runs });
+  });
+
+  app.get("/internal/provider-services/:id/test-summary", async (req, res) => {
+    if (!requireAdminToken(req, res, options.adminToken)) {
+      return;
+    }
+
+    const summary = await options.store.getLatestProviderServiceTestSummary(req.params.id);
+    if (!summary) {
+      return res.status(404).json({ error: "Provider service not found." });
+    }
+
+    return res.json(summary);
+  });
+
+  app.post("/internal/provider-services/:id/test-runs", async (req, res) => {
+    if (!requireAdminToken(req, res, options.adminToken)) {
+      return;
+    }
+
+    const parsed = providerServiceTestRunCreateSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Test run request validation failed.", issues: parsed.error.issues });
+    }
+
+    const currentDetail = await options.store.getAdminProviderService(req.params.id);
+    if (!currentDetail) {
+      return res.status(404).json({ error: "Provider service not found." });
+    }
+    const detail = await loadProviderServiceDetailForTest(options.store, currentDetail);
+
+    try {
+      const run = await createAndExecuteProviderServiceTestRun({
+        store: options.store,
+        detail,
+        runKind: parsed.data.runKind,
+        endpointIds: parsed.data.endpointIds,
+        maxSpend: parsed.data.maxSpend ?? null,
+        allowMutating: parsed.data.allowMutating,
+        execute: parsed.data.execute,
+        upstreamPaymentService: options.upstreamPaymentService,
+        testedBy: parsed.data.testedBy ?? "admin-api"
+      });
+
+      return res.status(201).json(run);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Provider service test run failed.";
+      if (error instanceof ProviderServiceTestRunInputError) {
+        return res.status(400).json({ error: message });
+      }
+
+      return res.status(500).json({ error: message });
+    }
   });
 
   app.get("/api/jobs/:jobToken", async (req, res) => {
@@ -4207,6 +4352,780 @@ function parseServiceStatus(value: string | undefined | null) {
     default:
       return null;
   }
+}
+
+function compactTestingSummary(summary: Awaited<ReturnType<MarketplaceStore["getLatestProviderServiceTestSummary"]>>) {
+  if (!summary?.latestRun) {
+    return {
+      healthStatus: "untested",
+      lastCheckedAt: null,
+      latestRunKind: null,
+      latestRunStatus: null,
+      priceMetadataStatus: "unknown",
+      readOnlySmokeStatus: "unknown",
+      paidReadSmokeStatus: "unknown"
+    };
+  }
+
+  const metadata = summary.latestByKind.metadata_manifest;
+  const noSpend = summary.latestByKind.no_spend_probe ?? summary.latestByKind.monitoring;
+  const paid = summary.latestByKind.paid_read_smoke;
+  return {
+    healthStatus: summary.latestRun.status,
+    lastCheckedAt: summary.latestRun.completedAt ?? summary.latestRun.startedAt,
+    latestRunKind: summary.latestRun.runKind,
+    latestRunStatus: summary.latestRun.status,
+    priceMetadataStatus: metadata?.status ?? "unknown",
+    readOnlySmokeStatus: noSpend?.status ?? "unknown",
+    paidReadSmokeStatus: paid?.status ?? "unknown"
+  };
+}
+
+class ProviderServiceTestRunInputError extends Error {}
+
+async function loadProviderServiceDetailForTest(
+  store: MarketplaceStore,
+  detail: ProviderServiceDetailRecord
+): Promise<ProviderServiceDetailRecord> {
+  if (!detail.latestPublishedVersionId) {
+    return detail;
+  }
+
+  const publishedVersion = (await store.listPublishedServices()).find(
+    (service) => service.versionId === detail.latestPublishedVersionId
+  );
+  if (!publishedVersion) {
+    return detail;
+  }
+
+  const published = await store.getPublishedServiceBySlug(publishedVersion.slug);
+  if (!published || published.service.versionId !== detail.latestPublishedVersionId) {
+    return detail;
+  }
+
+  return {
+    ...detail,
+    service: {
+      id: published.service.serviceId,
+      providerAccountId: published.service.providerAccountId,
+      serviceType: published.service.serviceType,
+      settlementMode: published.service.settlementMode,
+      slug: published.service.slug,
+      apiNamespace: published.service.apiNamespace,
+      name: published.service.name,
+      tagline: published.service.tagline,
+      about: published.service.about,
+      categories: published.service.categories,
+      promptIntro: published.service.promptIntro,
+      setupInstructions: published.service.setupInstructions,
+      websiteUrl: published.service.websiteUrl,
+      payoutWallet: published.service.payoutWallet,
+      featured: published.service.featured,
+      status: published.service.status,
+      createdAt: published.service.createdAt,
+      updatedAt: published.service.updatedAt
+    },
+    endpoints: published.endpoints.map(mapPublishedEndpointVersionToDraft),
+    latestPublishedVersionId: published.service.versionId
+  };
+}
+
+function mapPublishedEndpointVersionToDraft(endpoint: PublishedServiceEndpointVersionRecord): ProviderEndpointDraftRecord {
+  if (endpoint.endpointType === "external_registry") {
+    return {
+      endpointType: "external_registry",
+      id: endpoint.endpointDraftId ?? endpoint.endpointVersionId,
+      serviceId: endpoint.serviceId,
+      routeId: null,
+      operation: null,
+      title: endpoint.title,
+      description: endpoint.description,
+      price: null,
+      billing: null,
+      mode: null,
+      requestSchemaJson: null,
+      responseSchemaJson: null,
+      method: endpoint.method,
+      publicUrl: endpoint.publicUrl,
+      docsUrl: endpoint.docsUrl,
+      authNotes: endpoint.authNotes ?? null,
+      requestExample: endpoint.requestExample,
+      responseExample: endpoint.responseExample,
+      usageNotes: endpoint.usageNotes ?? null,
+      executorKind: null,
+      upstreamBaseUrl: null,
+      upstreamPath: null,
+      upstreamAuthMode: null,
+      upstreamAuthHeaderName: null,
+      upstreamSecretRef: null,
+      hasUpstreamSecret: false,
+      payout: null,
+      createdAt: endpoint.createdAt,
+      updatedAt: endpoint.updatedAt
+    };
+  }
+
+  return {
+    endpointType: "marketplace_proxy",
+    id: endpoint.endpointDraftId ?? endpoint.endpointVersionId,
+    serviceId: endpoint.serviceId,
+    routeId: endpoint.routeId,
+    operation: endpoint.operation,
+    method: endpoint.method,
+    title: endpoint.title,
+    description: endpoint.description,
+    price: endpoint.price,
+    billing: endpoint.billing,
+    mode: endpoint.mode,
+    asyncConfig: endpoint.asyncConfig ?? null,
+    requestSchemaJson: endpoint.requestSchemaJson,
+    responseSchemaJson: endpoint.responseSchemaJson,
+    requestExample: endpoint.requestExample,
+    responseExample: endpoint.responseExample,
+    usageNotes: endpoint.usageNotes ?? null,
+    executorKind: endpoint.executorKind,
+    upstreamBaseUrl: endpoint.upstreamBaseUrl ?? null,
+    upstreamPath: endpoint.upstreamPath ?? null,
+    upstreamAuthMode: endpoint.upstreamAuthMode ?? null,
+    upstreamAuthHeaderName: endpoint.upstreamAuthHeaderName ?? null,
+    upstreamSecretRef: endpoint.upstreamSecretRef ?? null,
+    hasUpstreamSecret: Boolean(endpoint.upstreamSecretRef),
+    payout: endpoint.payout,
+    createdAt: endpoint.createdAt,
+    updatedAt: endpoint.updatedAt
+  };
+}
+
+async function createAndExecuteProviderServiceTestRun(input: {
+  store: MarketplaceStore;
+  detail: ProviderServiceDetailRecord;
+  runKind: ProviderServiceTestRunKind;
+  endpointIds?: string[];
+  maxSpend: string | null;
+  allowMutating: boolean;
+  execute: boolean;
+  upstreamPaymentService?: UpstreamPaymentService;
+  testedBy: string;
+}) {
+  const selectedEndpointIds = input.endpointIds ? new Set(input.endpointIds) : null;
+  const allEndpointIds = new Set(input.detail.endpoints.map((endpoint) => endpoint.id));
+  const endpoints = input.detail.endpoints.filter((endpoint) => !selectedEndpointIds || selectedEndpointIds.has(endpoint.id));
+  const missingEndpointIds = selectedEndpointIds
+    ? Array.from(selectedEndpointIds).filter((endpointId) => !allEndpointIds.has(endpointId))
+    : [];
+  if (missingEndpointIds.length > 0) {
+    throw new ProviderServiceTestRunInputError(`Unknown endpointIds for service ${input.detail.service.slug}: ${missingEndpointIds.join(", ")}`);
+  }
+
+  const risk = classifyServiceRisk(input.detail);
+  const manifestDrift = await maybeCheckExternalManifest(input.detail, input.runKind);
+  const run = await input.store.createProviderServiceTestRun({
+    serviceId: input.detail.service.id,
+    publishedVersionId: input.detail.latestPublishedVersionId,
+    slug: input.detail.service.slug,
+    runKind: input.runKind,
+    testedBy: input.testedBy,
+    riskLevel: risk.level,
+    riskNotes: risk.notes,
+    evidenceJson: {
+      execute: input.execute,
+      allowMutating: input.allowMutating,
+      maxSpend: input.maxSpend,
+      serviceType: input.detail.service.serviceType,
+      endpointCount: endpoints.length,
+      manifestDrift
+    }
+  });
+
+  const endpointResults = [];
+  for (const endpoint of endpoints) {
+    const plan = classifyEndpointForTest(endpoint, risk.level);
+    const paidBlock = classifyPaidReadSmokeRequest({
+      runKind: input.runKind,
+      maxSpend: input.maxSpend,
+      mutability: plan.mutability,
+      serviceRisk: risk.level
+    });
+    const probe = await maybeProbeEndpoint({
+      endpoint,
+      runKind: input.runKind,
+      execute: input.execute,
+      blocked: plan.status === "blocked" || Boolean(paidBlock),
+      mutability: plan.mutability
+    });
+    const paidProbe = await maybeExecutePaidReadSmoke({
+      endpoint,
+      runKind: input.runKind,
+      execute: input.execute,
+      blocked: plan.status === "blocked" || Boolean(paidBlock),
+      maxSpend: input.maxSpend,
+      mutability: plan.mutability,
+      upstreamPaymentService: input.upstreamPaymentService
+    });
+    endpointResults.push(await input.store.appendProviderEndpointTestResult({
+      testRunId: run.id,
+      serviceId: input.detail.service.id,
+      endpointId: endpoint.id,
+      endpointTitle: endpoint.title,
+      method: endpoint.method,
+      url: endpoint.endpointType === "external_registry" ? endpoint.publicUrl : `${endpoint.upstreamBaseUrl ?? ""}${endpoint.upstreamPath ?? ""}`,
+      testKind: input.runKind,
+      status: paidBlock?.status ?? paidProbe.status ?? probe.status ?? plan.status,
+      mutability: plan.mutability,
+      paymentRequired: paidProbe.paymentRequired ?? probe.paymentRequired,
+      expectedPriceAmount: paidProbe.expectedPriceAmount ?? null,
+      expectedPriceAsset: paidProbe.expectedPriceAsset ?? null,
+      dynamicPrice: input.detail.service.categories.some((category) => /ai|llm|model/i.test(category)),
+      paidAmount: paidProbe.paidAmount ?? null,
+      httpStatus: paidProbe.httpStatus ?? probe.httpStatus,
+      latencyMs: paidProbe.latencyMs ?? probe.latencyMs,
+      resultSummary: paidBlock?.summary ?? paidProbe.summary ?? probe.summary ?? plan.summary,
+      evidenceJson: {
+        ...plan.evidenceJson,
+        priceMetadata: inferEndpointPriceMetadata(endpoint),
+        manifestPriceMetadata: manifestDrift?.evidence.paymentSummary ?? null,
+        paidReadSmoke: paidBlock?.evidenceJson ?? null,
+        ...paidProbe.evidenceJson,
+        ...probe.evidenceJson
+      }
+    }));
+  }
+
+  const totalPaidAmount = sumDecimalAmounts(endpointResults.map((result) => result.paidAmount));
+  const endpointStatus = summarizeTestRunStatus(endpointResults);
+  const runStatus = manifestDrift?.status === "failed" && endpointStatus !== "failed" ? "degraded" : endpointStatus;
+  const completed = await input.store.completeProviderServiceTestRun(run.id, {
+    status: runStatus,
+    summary: manifestDrift?.summary ? `${summarizeTestRun(endpointResults)} ${manifestDrift.summary}` : summarizeTestRun(endpointResults),
+    riskLevel: risk.level,
+    riskNotes: risk.notes,
+    totalPaidAmount,
+    paymentAsset: totalPaidAmount === "0" ? null : "USDC_BASE",
+    evidenceJson: {
+      execute: input.execute,
+      endpointCount: endpointResults.length,
+      passed: endpointResults.filter((result) => result.status === "passed").length,
+      failed: endpointResults.filter((result) => result.status === "failed").length,
+      skipped: endpointResults.filter((result) => result.status === "skipped").length,
+      blocked: endpointResults.filter((result) => result.status === "blocked").length,
+      totalPaidAmount,
+      manifestDrift
+    }
+  });
+
+  return {
+    run: completed ?? run,
+    endpointResults
+  };
+}
+
+function classifyServiceRisk(detail: ProviderServiceDetailRecord): {
+  level: "low" | "medium" | "high" | "blocked";
+  notes: string;
+} {
+  const text = `${detail.service.slug} ${detail.service.name} ${detail.service.categories.join(" ")} ${detail.service.about}`.toLowerCase();
+  if (/(apollo|hunter|clado|stableenrich|stablesocial|stablephone|email|phone|scrap|browser|maps|travel|domain|storage|upload|suno|image|video|code execution|judge0)/i.test(text)) {
+    return {
+      level: "high",
+      notes: "High-risk category; no-spend metadata checks are allowed, but paid or mutating tests need operator/legal review."
+    };
+  }
+
+  if (/(finance|market|real estate|ip intelligence|weather|flight|search|ai|llm|model)/i.test(text)) {
+    return {
+      level: "medium",
+      notes: "Review provider terms, attribution, caching, and generated/output data policies before production automation."
+    };
+  }
+
+  return {
+    level: "low",
+    notes: "Low apparent risk from catalog metadata; keep normal provider terms review."
+  };
+}
+
+function classifyEndpointForTest(
+  endpoint: ProviderEndpointDraftRecord,
+  serviceRisk: "low" | "medium" | "high" | "blocked"
+) {
+  const method = endpoint.method.toUpperCase();
+  const mutability: "read_only" | "mutating" = method === "GET" ? "read_only" : "mutating";
+  if (serviceRisk === "blocked") {
+    return {
+      status: "blocked" as const,
+      mutability,
+      summary: "Service is blocked by risk classification.",
+      evidenceJson: { serviceRisk }
+    };
+  }
+
+  if (mutability === "mutating") {
+    return {
+      status: "skipped" as const,
+      mutability,
+      summary: "Skipped by default because the endpoint is not read-only.",
+      evidenceJson: { serviceRisk }
+    };
+  }
+
+  return {
+    status: "passed" as const,
+    mutability,
+    summary: "Endpoint metadata is present and eligible for no-spend probing.",
+    evidenceJson: { serviceRisk }
+  };
+}
+
+function inferEndpointPriceMetadata(endpoint: ProviderEndpointDraftRecord): Record<string, unknown> {
+  if (endpoint.endpointType === "marketplace_proxy") {
+    return {
+      known: true,
+      price: endpoint.price,
+      billingType: endpoint.billing.type
+    };
+  }
+
+  const notes = `${endpoint.authNotes ?? ""}\n${endpoint.usageNotes ?? ""}`;
+  const amountMatch = notes.match(/\b(?:amount|price|maxAmount)\s*(?:[:=]|\s)\s*([\d.]+)/i);
+  const assetMatch = notes.match(/\b(?:asset|currency|token)\s*(?:[:=]|\s)\s*([A-Za-z0-9:._-]+)/i);
+  return {
+    known: Boolean(amountMatch),
+    amount: amountMatch?.[1] ?? null,
+    asset: assetMatch?.[1] ?? null,
+    source: amountMatch ? "endpoint_notes" : "provider_docs"
+  };
+}
+
+async function maybeCheckExternalManifest(
+  detail: ProviderServiceDetailRecord,
+  runKind: ProviderServiceTestRunKind
+): Promise<{ status: "passed" | "failed" | "skipped"; summary: string; evidence: Record<string, unknown> } | null> {
+  if (runKind !== "metadata_manifest" && runKind !== "monitoring") {
+    return null;
+  }
+
+  if (!detail.service.slug.startsWith("mpp-")) {
+    return {
+      status: "skipped",
+      summary: "No machine-readable source manifest configured for this provider.",
+      evidence: { source: null }
+    };
+  }
+
+  const mppId = detail.service.slug.slice(4);
+  const started = Date.now();
+  try {
+    const response = await fetch("https://mpp.dev/api/services", {
+      signal: AbortSignal.timeout(8_000)
+    });
+    if (!response.ok) {
+      return {
+        status: "failed",
+        summary: `MPP manifest fetch returned HTTP ${response.status}.`,
+        evidence: { source: "mpp", httpStatus: response.status, latencyMs: Date.now() - started }
+      };
+    }
+
+    const body = await response.json() as { services?: Array<MppManifestService> };
+    const match = (body.services ?? []).find((service) => service.id === mppId);
+    if (!match) {
+      return {
+        status: "failed",
+        summary: `MPP manifest no longer contains ${mppId}.`,
+        evidence: { source: "mpp", mppId, latencyMs: Date.now() - started }
+      };
+    }
+
+    const paymentSummary = summarizeMppPayments(match.endpoints ?? []);
+    return {
+      status: "passed",
+      summary: `MPP manifest contains ${mppId} with ${match.endpoints?.length ?? 0} endpoint records and ${paymentSummary.paidEndpointCount} priced endpoints.`,
+      evidence: {
+        source: "mpp",
+        mppId,
+        endpointCount: match.endpoints?.length ?? 0,
+        paymentSummary,
+        latencyMs: Date.now() - started
+      }
+    };
+  } catch (error) {
+    return {
+      status: "failed",
+      summary: error instanceof Error ? `MPP manifest check failed: ${error.message}` : "MPP manifest check failed.",
+      evidence: { source: "mpp", mppId, errorKind: error instanceof Error ? error.name : "unknown" }
+    };
+  }
+}
+
+interface MppManifestPayment {
+  intent?: string;
+  method?: string;
+  currency?: string;
+  decimals?: number;
+  amount?: string | number;
+  unitType?: string;
+  dynamic?: boolean;
+}
+
+interface MppManifestEndpoint {
+  method?: string;
+  path?: string;
+  description?: string;
+  payment?: MppManifestPayment | null;
+}
+
+interface MppManifestService {
+  id?: string;
+  endpoints?: MppManifestEndpoint[];
+}
+
+function summarizeMppPayments(endpoints: MppManifestEndpoint[]): Record<string, unknown> {
+  const payments = endpoints
+    .map((endpoint) => ({ endpoint, payment: endpoint.payment }))
+    .filter((entry): entry is { endpoint: MppManifestEndpoint; payment: MppManifestPayment } => Boolean(entry.payment));
+  const examples = payments.slice(0, 5).map(({ endpoint, payment }) => ({
+    method: endpoint.method ?? null,
+    path: endpoint.path ?? null,
+    intent: payment.intent ?? null,
+    paymentMethod: payment.method ?? null,
+    currency: payment.currency ?? null,
+    rawAmount: payment.amount ?? null,
+    amount: normalizeManifestAmount(payment.amount, payment.decimals),
+    decimals: payment.decimals ?? null,
+    unitType: payment.unitType ?? null,
+    dynamic: Boolean(payment.dynamic)
+  }));
+
+  return {
+    priceKnown: payments.length > 0,
+    paidEndpointCount: payments.length,
+    fixedPriceCount: payments.filter((entry) => !entry.payment.dynamic).length,
+    dynamicPriceCount: payments.filter((entry) => entry.payment.dynamic).length,
+    currencies: Array.from(new Set(payments.map((entry) => entry.payment.currency).filter(Boolean))),
+    paymentMethods: Array.from(new Set(payments.map((entry) => entry.payment.method).filter(Boolean))),
+    examples
+  };
+}
+
+function normalizeManifestAmount(amount: string | number | undefined, decimals: number | undefined): string | null {
+  if (amount === undefined || amount === null) {
+    return null;
+  }
+
+  const raw = String(amount);
+  if (!/^\d+$/.test(raw) || decimals === undefined || decimals < 0) {
+    return raw;
+  }
+
+  return rawToDecimalString(raw, decimals);
+}
+
+function classifyPaidReadSmokeRequest(input: {
+  runKind: ProviderServiceTestRunKind;
+  maxSpend: string | null;
+  mutability: "read_only" | "unknown" | "mutating";
+  serviceRisk: "low" | "medium" | "high" | "blocked";
+}): { status: "blocked" | "skipped"; summary: string; evidenceJson: Record<string, unknown> } | null {
+  if (input.runKind !== "paid_read_smoke") {
+    return null;
+  }
+
+  if (input.mutability !== "read_only") {
+    return {
+      status: "blocked",
+      summary: "Paid smoke test blocked because endpoint is not read-only.",
+      evidenceJson: { reason: "mutating_endpoint" }
+    };
+  }
+
+  if (input.serviceRisk === "high" || input.serviceRisk === "blocked") {
+    return {
+      status: "blocked",
+      summary: "Paid smoke test blocked pending operator/legal review for this risk category.",
+      evidenceJson: { reason: "high_risk_category", serviceRisk: input.serviceRisk }
+    };
+  }
+
+  if (!input.maxSpend || Number(input.maxSpend) <= 0) {
+    return {
+      status: "blocked",
+      summary: "Paid smoke test blocked because no positive maxSpend budget was provided.",
+      evidenceJson: { reason: "missing_budget" }
+    };
+  }
+
+  return null;
+}
+
+async function maybeExecutePaidReadSmoke(input: {
+  endpoint: ProviderEndpointDraftRecord;
+  runKind: ProviderServiceTestRunKind;
+  execute: boolean;
+  blocked: boolean;
+  maxSpend: string | null;
+  mutability: "read_only" | "unknown" | "mutating";
+  upstreamPaymentService?: UpstreamPaymentService;
+}): Promise<{
+  status?: "passed" | "failed" | "skipped" | "blocked" | "degraded";
+  paymentRequired?: boolean | null;
+  expectedPriceAmount?: string | null;
+  expectedPriceAsset?: string | null;
+  paidAmount?: string | null;
+  httpStatus?: number | null;
+  latencyMs?: number | null;
+  summary?: string;
+  evidenceJson?: Record<string, unknown>;
+}> {
+  if (input.runKind !== "paid_read_smoke" || input.endpoint.endpointType !== "external_registry") {
+    return {};
+  }
+
+  if (input.blocked || input.mutability !== "read_only") {
+    return {};
+  }
+
+  if (!input.execute) {
+    return {
+      status: "skipped",
+      expectedPriceAmount: input.maxSpend,
+      expectedPriceAsset: "USDC_BASE",
+      summary: "Paid smoke test planned but not executed because --execute was not set.",
+      evidenceJson: {
+        paidReadSmoke: {
+          reason: "execution_disabled",
+          maxSpend: input.maxSpend
+        }
+      }
+    };
+  }
+
+  if (!input.upstreamPaymentService) {
+    return {
+      status: "skipped",
+      expectedPriceAmount: input.maxSpend,
+      expectedPriceAsset: "USDC_BASE",
+      summary: "Paid smoke test skipped because no upstream x402 payment executor is configured.",
+      evidenceJson: {
+        paidReadSmoke: {
+          reason: "payment_executor_missing",
+          maxSpend: input.maxSpend
+        }
+      }
+    };
+  }
+
+  if (!input.maxSpend || Number(input.maxSpend) <= 0) {
+    return {};
+  }
+
+  if (hasUrlTemplate(input.endpoint.publicUrl)) {
+    return {
+      status: "skipped",
+      expectedPriceAmount: input.maxSpend,
+      expectedPriceAsset: "USDC_BASE",
+      summary: "Paid smoke test skipped because endpoint URL contains unresolved template parameters.",
+      evidenceJson: { paidReadSmoke: { reason: "templated_url" } }
+    };
+  }
+
+  if (!isSafePublicHttpsUrl(input.endpoint.publicUrl)) {
+    return {
+      status: "blocked",
+      expectedPriceAmount: input.maxSpend,
+      expectedPriceAsset: "USDC_BASE",
+      summary: "Paid smoke test blocked because endpoint URL is not a safe public HTTPS URL.",
+      evidenceJson: { paidReadSmoke: { reason: "unsafe_url" } }
+    };
+  }
+
+  const started = Date.now();
+  try {
+    const paid = await input.upstreamPaymentService.payHttp({
+      url: input.endpoint.publicUrl,
+      method: "GET",
+      headers: {},
+      policy: {
+        network: "base",
+        asset: BASE_USDC_ASSET,
+        maxAmountRaw: decimalToRawString(input.maxSpend, 6)
+      }
+    });
+    const latencyMs = Date.now() - started;
+    return {
+      status: paid.statusCode >= 500 ? "degraded" : paid.statusCode >= 400 ? "failed" : "passed",
+      paymentRequired: true,
+      expectedPriceAmount: input.maxSpend,
+      expectedPriceAsset: "USDC_BASE",
+      paidAmount: paid.payment?.amount ?? null,
+      httpStatus: paid.statusCode,
+      latencyMs,
+      summary: `Paid smoke test returned HTTP ${paid.statusCode}.`,
+      evidenceJson: {
+        paidReadSmoke: {
+          reason: "executed",
+          maxSpend: input.maxSpend,
+          payment: paid.payment
+            ? {
+                network: paid.payment.network,
+                amount: paid.payment.amount,
+                recipient: paid.payment.recipient,
+                txHash: paid.payment.txHash
+              }
+            : null,
+          headers: allowedEvidenceHeaderRecord(paid.headers)
+        }
+      }
+    };
+  } catch (error) {
+    return {
+      status: "failed",
+      paymentRequired: true,
+      expectedPriceAmount: input.maxSpend,
+      expectedPriceAsset: "USDC_BASE",
+      latencyMs: Date.now() - started,
+      summary: error instanceof Error ? `Paid smoke test failed: ${error.message}` : "Paid smoke test failed.",
+      evidenceJson: {
+        paidReadSmoke: {
+          reason: "execution_failed",
+          errorKind: error instanceof Error ? error.name : "unknown"
+        }
+      }
+    };
+  }
+}
+
+async function maybeProbeEndpoint(input: {
+  endpoint: ProviderEndpointDraftRecord;
+  runKind: ProviderServiceTestRunKind;
+  execute: boolean;
+  blocked: boolean;
+  mutability: "read_only" | "unknown" | "mutating";
+}): Promise<{
+  status?: "passed" | "failed" | "skipped" | "blocked" | "degraded";
+  paymentRequired?: boolean | null;
+  httpStatus?: number | null;
+  latencyMs?: number | null;
+  summary?: string;
+  evidenceJson?: Record<string, unknown>;
+}> {
+  if (
+    !input.execute
+    || (input.runKind !== "no_spend_probe" && input.runKind !== "monitoring")
+    || input.endpoint.endpointType !== "external_registry"
+  ) {
+    return {};
+  }
+
+  if (input.blocked || input.mutability !== "read_only") {
+    return {};
+  }
+
+  if (hasUrlTemplate(input.endpoint.publicUrl)) {
+    return {
+      status: "skipped",
+      summary: "No-spend probe skipped because endpoint URL contains unresolved template parameters.",
+      evidenceJson: { safeUrl: true, templatedUrl: true }
+    };
+  }
+
+  if (!isSafePublicHttpsUrl(input.endpoint.publicUrl)) {
+    return {
+      status: "failed",
+      summary: "Endpoint URL is not a safe public HTTPS URL.",
+      evidenceJson: { safeUrl: false }
+    };
+  }
+
+  const started = Date.now();
+  try {
+    const response = await fetch(input.endpoint.publicUrl, {
+      method: "GET",
+      redirect: "manual",
+      signal: AbortSignal.timeout(8_000)
+    });
+    const latencyMs = Date.now() - started;
+    const paymentRequired = response.status === 402 || response.headers.has("www-authenticate");
+    const status = response.status >= 500
+      ? "degraded"
+      : response.status >= 400 && !paymentRequired
+      ? "failed"
+      : "passed";
+    return {
+      status,
+      paymentRequired,
+      httpStatus: response.status,
+      latencyMs,
+      summary: paymentRequired
+        ? "No-spend probe returned a payment/auth challenge."
+        : `No-spend probe returned HTTP ${response.status}.`,
+      evidenceJson: {
+        headers: allowedEvidenceHeaders(response.headers)
+      }
+    };
+  } catch (error) {
+    return {
+      status: "failed",
+      latencyMs: Date.now() - started,
+      summary: error instanceof Error ? error.message : "No-spend probe failed.",
+      evidenceJson: { errorKind: error instanceof Error ? error.name : "unknown" }
+    };
+  }
+}
+
+function allowedEvidenceHeaders(headers: Headers): Record<string, string> {
+  const allowed = ["content-type", "www-authenticate", "x-payment-required", "x-request-id"];
+  return Object.fromEntries(
+    allowed
+      .map((name) => [name, headers.get(name)] as const)
+      .filter((entry): entry is [string, string] => Boolean(entry[1]))
+  );
+}
+
+function allowedEvidenceHeaderRecord(headers: Record<string, string>): Record<string, string> {
+  const allowed = new Set(["content-type", "www-authenticate", "x-payment-required", "x-request-id"]);
+  return Object.fromEntries(Object.entries(headers).filter(([name]) => allowed.has(name.toLowerCase())));
+}
+
+function hasUrlTemplate(url: string): boolean {
+  return /[{<][A-Za-z0-9_.:-]+[}>]/.test(url);
+}
+
+function summarizeTestRunStatus(results: Array<{ status: ProviderServiceTestStatus }>): ProviderServiceTestStatus {
+  if (results.some((result) => result.status === "failed")) return "failed";
+  if (results.some((result) => result.status === "degraded")) return "degraded";
+  if (results.some((result) => result.status === "passed")) return "passed";
+  if (results.some((result) => result.status === "blocked")) return "blocked";
+  return "skipped";
+}
+
+function summarizeTestRun(results: Array<{ status: ProviderServiceTestStatus }>): string {
+  const counts = results.reduce<Record<string, number>>((acc, result) => {
+    acc[result.status] = (acc[result.status] ?? 0) + 1;
+    return acc;
+  }, {});
+  return `Endpoint results: passed=${counts.passed ?? 0}, failed=${counts.failed ?? 0}, degraded=${counts.degraded ?? 0}, skipped=${counts.skipped ?? 0}, blocked=${counts.blocked ?? 0}.`;
+}
+
+function sumDecimalAmounts(amounts: Array<string | null | undefined>): string {
+  const scale = 6n;
+  const multiplier = 10n ** scale;
+  const totalRaw = amounts.reduce((total, amount) => total + decimalAmountToScaledInteger(amount, multiplier), 0n);
+  const whole = totalRaw / multiplier;
+  const fraction = totalRaw % multiplier;
+  if (fraction === 0n) {
+    return whole.toString();
+  }
+
+  return `${whole}.${fraction.toString().padStart(Number(scale), "0").replace(/0+$/, "")}`;
+}
+
+function decimalAmountToScaledInteger(amount: string | null | undefined, multiplier: bigint): bigint {
+  if (!amount || !/^\d+(?:\.\d{1,6})?$/.test(amount)) {
+    return 0n;
+  }
+
+  const [whole, fraction = ""] = amount.split(".");
+  return BigInt(whole) * multiplier + BigInt(fraction.padEnd(6, "0"));
 }
 
 function handleProviderMutationError(res: ExpressResponse, error: unknown) {

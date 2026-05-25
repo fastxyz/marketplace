@@ -1641,6 +1641,76 @@ describe("shared marketplace helpers", () => {
     expect(route).toBeNull();
   });
 
+  it("records provider service test runs and endpoint results", async () => {
+    const store = new InMemoryMarketplaceStore();
+    const wallet = "fast1provider000000000000000000000000000000000000000000000000000000";
+
+    await store.upsertProviderAccount(wallet, {
+      displayName: "Signal Labs",
+      websiteUrl: "https://provider.example.com"
+    });
+
+    const created = await store.createProviderService(wallet, {
+      serviceType: "external_registry",
+      slug: "signal-labs-tested",
+      name: "Signal Labs Tested",
+      tagline: "Discovery-only endpoints with test state",
+      about: "Direct provider APIs listed in the marketplace catalog with a durable testing ledger.",
+      categories: ["Research"],
+      promptIntro: 'I want to use the "Signal Labs Tested" service.',
+      setupInstructions: ["Read the provider docs before calling the API directly."],
+      websiteUrl: "https://provider.example.com"
+    });
+
+    await store.createProviderEndpointDraft(created.service.id, wallet, {
+      endpointType: "external_registry",
+      title: "Status",
+      description: "Returns service status directly from the provider.",
+      method: "GET",
+      publicUrl: "https://provider.example.com/api/status",
+      docsUrl: "https://provider.example.com/docs/status",
+      authNotes: "Bearer token required.",
+      requestExample: {},
+      responseExample: { status: "ok" }
+    });
+
+    const run = await store.createProviderServiceTestRun({
+      serviceId: created.service.id,
+      publishedVersionId: null,
+      slug: created.service.slug,
+      runKind: "metadata_manifest",
+      testedBy: "unit-test"
+    });
+    const endpointResult = await store.appendProviderEndpointTestResult({
+      testRunId: run.id,
+      serviceId: created.service.id,
+      endpointTitle: "Status",
+      method: "GET",
+      url: "https://provider.example.com/api/status",
+      testKind: "metadata_manifest",
+      status: "passed",
+      mutability: "read_only",
+      paymentRequired: true,
+      httpStatus: 402,
+      resultSummary: "Payment challenge observed."
+    });
+    const completed = await store.completeProviderServiceTestRun(run.id, {
+      status: "passed",
+      summary: "Metadata and no-spend challenge passed."
+    });
+
+    expect(completed?.status).toBe("passed");
+    expect(endpointResult.paymentRequired).toBe(true);
+
+    const runs = await store.listProviderServiceTestRuns(created.service.id);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.endpointResults[0]?.httpStatus).toBe(402);
+
+    const summary = await store.getLatestProviderServiceTestSummary(created.service.id);
+    expect(summary?.latestByKind.metadata_manifest?.id).toBe(run.id);
+    expect(summary?.endpointResults).toHaveLength(1);
+  });
+
   it("seeds Shop Fast discovery and executable commerce providers", async () => {
     const store = new InMemoryMarketplaceStore();
 

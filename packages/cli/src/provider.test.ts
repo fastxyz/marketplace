@@ -9,7 +9,7 @@ import { InMemoryMarketplaceStore, type ProviderServiceDetailRecord } from "@mar
 
 import { createMarketplaceApi } from "../../../apps/api/src/app.js";
 import { loadWalletFromPrivateKey } from "./lib.js";
-import { createProviderSiteSession, submitProviderService, syncProviderSpec, type ProviderSyncSpec, verifyProviderService } from "./provider.js";
+import { createProviderSiteSession, runProviderServiceTest, submitProviderService, syncProviderSpec, type ProviderSyncSpec, verifyProviderService } from "./provider.js";
 
 const TREASURY_PRIVATE_KEY = "22".repeat(32);
 const AGENT_PRIVATE_KEY = "33".repeat(32);
@@ -454,6 +454,61 @@ describe("provider cli", () => {
       const detail = await store.getProviderServiceForOwner(syncResult.service.id, syncResult.wallet);
       expect(detail?.service.status).toBe("pending_review");
       expect(detail?.verification).toBeNull();
+    });
+  });
+
+  it("alerts on blocked bulk provider test runs and rejects invalid test modes", async () => {
+    const { apiUrl, store } = await startApiServer();
+    const spec = buildExternalRegistrySpec({
+      service: {
+        slug: "blocked-direct"
+      },
+      endpoints: [
+        {
+          endpointType: "external_registry",
+          title: "Markets",
+          description: "Direct market data endpoint.",
+          method: "GET",
+          publicUrl: "https://provider.example.com/api/markets",
+          docsUrl: "https://docs.provider.example.com/markets",
+          authNotes: "Bearer token required.",
+          requestExample: {},
+          responseExample: { ok: true },
+          usageNotes: "Call the provider directly."
+        }
+      ]
+    });
+
+    await withAgentEnv(apiUrl, async (tempDir) => {
+      const syncResult = await syncProviderSpec({
+        specPath: await writeSpec(tempDir, "external-provider-spec.json", spec)
+      });
+      await submitProviderService({ serviceRef: syncResult.service.slug, apiUrl });
+      await store.publishProviderService(syncResult.service.id, { reviewerIdentity: "unit-test" });
+
+      const result = await runProviderServiceTest({
+        allExternal: true,
+        mode: "paid-read",
+        apiUrl,
+        adminToken: "test-admin-token"
+      });
+      expect("alert" in result).toBe(true);
+      if (!("alert" in result)) {
+        throw new Error("Expected bulk test result.");
+      }
+      expect(result.alert.shouldAlert).toBe(true);
+      expect(result.alert.blocked).toBeGreaterThanOrEqual(1);
+      expect(result.alert.affectedServices).toContainEqual(expect.objectContaining({
+        slug: "blocked-direct",
+        status: "blocked"
+      }));
+
+      await expect(runProviderServiceTest({
+        serviceRef: syncResult.service.slug,
+        mode: "bogus",
+        apiUrl,
+        adminToken: "test-admin-token"
+      })).rejects.toThrow();
     });
   });
 
