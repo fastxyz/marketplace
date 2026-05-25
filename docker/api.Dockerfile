@@ -45,4 +45,4 @@ COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000 8080
 
-CMD ["npm", "run", "start:api"]
+CMD ["sh", "-c", "npm run ${FAST_PROCESS_SCRIPT:-start:api}"]

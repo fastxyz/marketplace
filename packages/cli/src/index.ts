@@ -18,6 +18,9 @@ import {
   type CliDependencies
 } from "./lib.js";
 import {
+  createProviderServiceTestPlan,
+  listProviderServiceTestResults,
+  runProviderServiceTest,
   submitProviderService,
   syncProviderSpec,
   verifyProviderService
@@ -267,6 +270,74 @@ export function createProgram(deps: CliDependencies = defaultCliDependencies()):
           configPath: options.config,
           network: options.network,
           rpcUrl: undefined
+        },
+        deps
+      );
+      deps.print(JSON.stringify(result, null, 2));
+    });
+
+  providerProgram
+    .command("test-plan")
+    .requiredOption("--service <slug-or-id>")
+    .option("--api-url <url>", "Marketplace API URL")
+    .option("--admin-token <token>", "Marketplace admin token")
+    .action(async (options) => {
+      const result = await createProviderServiceTestPlan(
+        {
+          serviceRef: options.service,
+          apiUrl: options.apiUrl,
+          adminToken: options.adminToken
+        },
+        deps
+      );
+      deps.print(JSON.stringify(result, null, 2));
+    });
+
+  providerProgram
+    .command("test")
+    .option("--service <slug-or-id>")
+    .option("--all-external", "Run against all published external registry services", false)
+    .option("--mode <mode>", "metadata, no-spend, monitoring, or paid-read", "metadata")
+    .option("--api-url <url>", "Marketplace API URL")
+    .option("--admin-token <token>", "Marketplace admin token")
+    .option("--execute", "Perform eligible live no-spend probes", false)
+    .option("--max-spend <amount>")
+    .option("--fail-on-alert", "Exit non-zero when a bulk monitoring run finds failed, degraded, or errored services", false)
+    .action(async (options) => {
+      const result = await runProviderServiceTest(
+        {
+          serviceRef: options.service,
+          allExternal: Boolean(options.allExternal),
+          mode: options.mode,
+          apiUrl: options.apiUrl,
+          adminToken: options.adminToken,
+          execute: Boolean(options.execute),
+          maxSpend: options.maxSpend ?? null
+        },
+        deps
+      );
+      deps.print(JSON.stringify(result, null, 2));
+      if (options.failOnAlert && result && typeof result === "object" && "alert" in result) {
+        const alert = result.alert as { shouldAlert?: boolean };
+        if (alert.shouldAlert) {
+          process.exitCode = 1;
+        }
+      }
+    });
+
+  providerProgram
+    .command("test-results")
+    .requiredOption("--service <slug-or-id>")
+    .option("--api-url <url>", "Marketplace API URL")
+    .option("--admin-token <token>", "Marketplace admin token")
+    .option("--limit <number>")
+    .action(async (options) => {
+      const result = await listProviderServiceTestResults(
+        {
+          serviceRef: options.service,
+          apiUrl: options.apiUrl,
+          adminToken: options.adminToken,
+          limit: options.limit ? Number(options.limit) : undefined
         },
         deps
       );

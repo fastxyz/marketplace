@@ -1,3 +1,4 @@
+import React from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -14,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   fetchAdminProviderService,
+  fetchAdminProviderServiceTestRuns,
+  fetchAdminProviderServiceTestSummary,
   fetchSubmittedAdminProviderService
 } from "@/lib/api";
 import { isAdminAuthenticated } from "@/lib/admin-auth";
@@ -52,10 +55,7 @@ export default async function AdminProviderServiceDetailPage({
 
   const { id } = await params;
   const query = await searchParams;
-  const [currentDetail, submittedDetail] = await Promise.all([
-    fetchAdminProviderService(id),
-    fetchSubmittedAdminProviderService(id)
-  ]);
+  const currentDetail = await fetchAdminProviderService(id);
 
   if (!currentDetail) {
     return (
@@ -78,6 +78,12 @@ export default async function AdminProviderServiceDetailPage({
       </main>
     );
   }
+
+  const [submittedDetail, testSummary, testRuns] = await Promise.all([
+    fetchSubmittedAdminProviderService(id),
+    fetchAdminProviderServiceTestSummary(id),
+    fetchAdminProviderServiceTestRuns(id)
+  ]);
 
   const reviewDetail = submittedDetail ?? currentDetail;
   const message = getSingleParam(query.message);
@@ -374,6 +380,70 @@ export default async function AdminProviderServiceDetailPage({
                       <div>Auth: {endpoint.authNotes ?? "Provider-defined"}</div>
                     </div>
                   )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card variant="frosted">
+            <CardHeader>
+              <CardTitle className="text-3xl">Testing ledger</CardTitle>
+              <CardDescription>Latest catalog, metadata, monitoring, and smoke-test state recorded for this service.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <div className="grid gap-3 text-sm md:grid-cols-4">
+                <div className="rounded-card border border-border bg-background/70 p-4 dark:bg-background/20">
+                  <div className="font-medium">Latest status</div>
+                  <div className="mt-2 text-muted-foreground">{testSummary?.latestRun?.status ?? "untested"}</div>
+                </div>
+                <div className="rounded-card border border-border bg-background/70 p-4 dark:bg-background/20">
+                  <div className="font-medium">Last checked</div>
+                  <div className="mt-2 text-muted-foreground">
+                    {testSummary?.latestRun?.completedAt ?? testSummary?.latestRun?.startedAt ?? "never"}
+                  </div>
+                </div>
+                <div className="rounded-card border border-border bg-background/70 p-4 dark:bg-background/20">
+                  <div className="font-medium">Metadata</div>
+                  <div className="mt-2 text-muted-foreground">{testSummary?.latestByKind.metadata_manifest?.status ?? "unknown"}</div>
+                </div>
+                <div className="rounded-card border border-border bg-background/70 p-4 dark:bg-background/20">
+                  <div className="font-medium">No-spend</div>
+                  <div className="mt-2 text-muted-foreground">
+                    {testSummary?.latestByKind.no_spend_probe?.status ?? testSummary?.latestByKind.monitoring?.status ?? "unknown"}
+                  </div>
+                </div>
+              </div>
+
+              {testRuns.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No test runs recorded yet.</p>
+              ) : null}
+              {testRuns.map((entry) => (
+                <div key={entry.run.id} className="rounded-card border border-border bg-background/70 p-5 dark:bg-background/20">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-lg font-medium tracking-headline">{entry.run.runKind}</div>
+                      <div className="mt-1 text-sm text-muted-foreground">{entry.run.summary ?? "No summary recorded."}</div>
+                    </div>
+                    <Badge variant={entry.run.status === "passed" ? "default" : "outline"}>{entry.run.status}</Badge>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-sm text-muted-foreground md:grid-cols-3">
+                    <div>Started: {entry.run.startedAt}</div>
+                    <div>Completed: {entry.run.completedAt ?? "in progress"}</div>
+                    <div>By: {entry.run.testedBy ?? "unknown"}</div>
+                  </div>
+                  {entry.endpointResults.length > 0 ? (
+                    <div className="mt-4 grid gap-2">
+                      {entry.endpointResults.map((result) => (
+                        <div key={result.id} className="rounded-card border border-border/70 px-3 py-2 text-sm text-muted-foreground">
+                          <span className="font-medium text-foreground">{result.status}</span>
+                          {" · "}
+                          {result.method} {result.endpointTitle ?? result.url}
+                          {result.httpStatus ? ` · HTTP ${result.httpStatus}` : ""}
+                          {result.resultSummary ? ` · ${result.resultSummary}` : ""}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </CardContent>

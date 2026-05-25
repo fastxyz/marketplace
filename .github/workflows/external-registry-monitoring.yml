@@ -1,0 +1,44 @@
+name: External Registry Monitoring
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Test mode: monitoring, metadata, or no-spend"
+        required: false
+        default: monitoring
+  schedule:
+    - cron: "17 9 * * 1"
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run external registry monitoring
+        env:
+          MARKETPLACE_ADMIN_TOKEN: ${{ secrets.MARKETPLACE_ADMIN_TOKEN }}
+          MARKETPLACE_API_BASE_URL: ${{ secrets.MARKETPLACE_API_BASE_URL }}
+        run: |
+          if [ -z "$MARKETPLACE_ADMIN_TOKEN" ] || [ -z "$MARKETPLACE_API_BASE_URL" ]; then
+            echo "MARKETPLACE_ADMIN_TOKEN and MARKETPLACE_API_BASE_URL are required; skipping monitoring."
+            exit 0
+          fi
+          npm run cli -- provider test \
+            --all-external \
+            --mode "${{ github.event.inputs.mode || 'monitoring' }}" \
+            --api-url "$MARKETPLACE_API_BASE_URL" \
+            --execute \
+            --fail-on-alert

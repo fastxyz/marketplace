@@ -204,6 +204,16 @@ export interface ServiceAnalytics {
   volume30d: ServiceAnalyticsPoint[];
 }
 
+export interface ServiceTestingSummary {
+  healthStatus: ProviderServiceTestStatus | "untested";
+  lastCheckedAt: string | null;
+  latestRunKind: ProviderServiceTestRunKind | null;
+  latestRunStatus: ProviderServiceTestStatus | null;
+  priceMetadataStatus: ProviderServiceTestStatus | "unknown";
+  readOnlySmokeStatus: ProviderServiceTestStatus | "unknown";
+  paidReadSmokeStatus: ProviderServiceTestStatus | "unknown";
+}
+
 export interface MarketplaceServiceSummary {
   serviceType: "marketplace_proxy";
   slug: string;
@@ -225,6 +235,7 @@ export interface MarketplaceServiceSummary {
     amount: string;
   }>;
   websiteUrl?: string | null;
+  testing?: ServiceTestingSummary;
 }
 
 export interface ExternalRegistryServiceSummary {
@@ -250,6 +261,7 @@ export interface ExternalRegistryServiceSummary {
   accessModelDescription: string;
   endpointCount: number;
   websiteUrl: string | null;
+  testing?: ServiceTestingSummary;
 }
 
 export type ServiceSummary = MarketplaceServiceSummary | ExternalRegistryServiceSummary;
@@ -294,6 +306,7 @@ export type ServiceCatalogEndpoint = MarketplaceServiceCatalogEndpoint | Externa
 export interface MarketplaceServiceDetail {
   serviceType: "marketplace_proxy";
   summary: MarketplaceServiceSummary;
+  testing?: ServiceTestingSummary;
   about: string;
   useThisServicePrompt: string;
   skillUrl: string;
@@ -303,6 +316,7 @@ export interface MarketplaceServiceDetail {
 export interface ExternalRegistryServiceDetail {
   serviceType: "external_registry";
   summary: ExternalRegistryServiceSummary;
+  testing?: ServiceTestingSummary;
   about: string;
   useThisServicePrompt: string;
   skillUrl: null;
@@ -650,6 +664,126 @@ export interface ProviderServiceDetailRecord {
   verification: ProviderVerificationRecord | null;
   latestReview: ProviderReviewRecord | null;
   latestPublishedVersionId: string | null;
+}
+
+export type ProviderServiceTestRunKind =
+  | "catalog_render"
+  | "metadata_manifest"
+  | "no_spend_probe"
+  | "paid_read_smoke"
+  | "legal_review"
+  | "monitoring";
+
+export type ProviderServiceTestStatus =
+  | "pending"
+  | "passed"
+  | "failed"
+  | "skipped"
+  | "blocked"
+  | "degraded";
+
+export type ProviderEndpointMutability = "read_only" | "unknown" | "mutating";
+
+export interface ProviderServiceTestRunRecord {
+  id: string;
+  serviceId: string;
+  publishedVersionId: string | null;
+  slug: string;
+  runKind: ProviderServiceTestRunKind;
+  status: ProviderServiceTestStatus;
+  startedAt: string;
+  completedAt: string | null;
+  testedBy: string | null;
+  summary: string | null;
+  riskLevel: "low" | "medium" | "high" | "blocked" | null;
+  riskNotes: string | null;
+  totalPaidAmount: string | null;
+  paymentAsset: string | null;
+  evidenceJson: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProviderEndpointTestResultRecord {
+  id: string;
+  testRunId: string;
+  serviceId: string;
+  endpointId: string | null;
+  endpointTitle: string | null;
+  method: string;
+  url: string;
+  testKind: ProviderServiceTestRunKind;
+  status: Exclude<ProviderServiceTestStatus, "pending">;
+  mutability: ProviderEndpointMutability;
+  paymentRequired: boolean | null;
+  expectedPriceAmount: string | null;
+  expectedPriceAsset: string | null;
+  dynamicPrice: boolean;
+  paidAmount: string | null;
+  httpStatus: number | null;
+  latencyMs: number | null;
+  resultSummary: string | null;
+  evidenceJson: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface CreateProviderServiceTestRunInput {
+  serviceId: string;
+  publishedVersionId?: string | null;
+  slug: string;
+  runKind: ProviderServiceTestRunKind;
+  status?: ProviderServiceTestStatus;
+  testedBy?: string | null;
+  summary?: string | null;
+  riskLevel?: ProviderServiceTestRunRecord["riskLevel"];
+  riskNotes?: string | null;
+  totalPaidAmount?: string | null;
+  paymentAsset?: string | null;
+  evidenceJson?: Record<string, unknown>;
+}
+
+export interface CompleteProviderServiceTestRunInput {
+  status: ProviderServiceTestStatus;
+  summary?: string | null;
+  riskLevel?: ProviderServiceTestRunRecord["riskLevel"];
+  riskNotes?: string | null;
+  totalPaidAmount?: string | null;
+  paymentAsset?: string | null;
+  evidenceJson?: Record<string, unknown>;
+}
+
+export interface CreateProviderEndpointTestResultInput {
+  testRunId: string;
+  serviceId: string;
+  endpointId?: string | null;
+  endpointTitle?: string | null;
+  method: string;
+  url: string;
+  testKind: ProviderServiceTestRunKind;
+  status: Exclude<ProviderServiceTestStatus, "pending">;
+  mutability: ProviderEndpointMutability;
+  paymentRequired?: boolean | null;
+  expectedPriceAmount?: string | null;
+  expectedPriceAsset?: string | null;
+  dynamicPrice?: boolean;
+  paidAmount?: string | null;
+  httpStatus?: number | null;
+  latencyMs?: number | null;
+  resultSummary?: string | null;
+  evidenceJson?: Record<string, unknown>;
+}
+
+export interface ProviderServiceTestRunWithResults {
+  run: ProviderServiceTestRunRecord;
+  endpointResults: ProviderEndpointTestResultRecord[];
+}
+
+export interface ProviderServiceTestSummary {
+  serviceId: string;
+  slug: string;
+  latestByKind: Partial<Record<ProviderServiceTestRunKind, ProviderServiceTestRunRecord>>;
+  latestRun: ProviderServiceTestRunRecord | null;
+  endpointResults: ProviderEndpointTestResultRecord[];
 }
 
 export interface UpsertProviderAccountInput {
@@ -1468,6 +1602,23 @@ export interface MarketplaceStore {
     serviceId: string,
     input?: { reviewNotes?: string | null; reviewerIdentity?: string | null }
   ): Promise<ProviderServiceDetailRecord | null>;
+  createProviderServiceTestRun(input: CreateProviderServiceTestRunInput): Promise<ProviderServiceTestRunRecord>;
+  completeProviderServiceTestRun(
+    id: string,
+    input: CompleteProviderServiceTestRunInput
+  ): Promise<ProviderServiceTestRunRecord | null>;
+  appendProviderEndpointTestResult(input: CreateProviderEndpointTestResultInput): Promise<ProviderEndpointTestResultRecord>;
+  listProviderServiceTestRuns(
+    serviceId: string,
+    filters?: { runKind?: ProviderServiceTestRunKind; status?: ProviderServiceTestStatus; limit?: number }
+  ): Promise<ProviderServiceTestRunWithResults[]>;
+  getLatestProviderServiceTestSummary(serviceId: string): Promise<ProviderServiceTestSummary | null>;
+  listAdminProviderServiceTestRuns(filters?: {
+    runKind?: ProviderServiceTestRunKind;
+    status?: ProviderServiceTestStatus;
+    serviceId?: string;
+    limit?: number;
+  }): Promise<ProviderServiceTestRunRecord[]>;
   getProviderSecret(secretId: string): Promise<ProviderSecretRecord | null>;
   createSuggestion(input: CreateSuggestionInput): Promise<SuggestionRecord>;
   listSuggestions(filter?: { status?: SuggestionStatus }): Promise<SuggestionRecord[]>;

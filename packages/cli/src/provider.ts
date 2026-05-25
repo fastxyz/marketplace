@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
-import { normalizeFastWalletAddress, type CreateProviderEndpointDraftInput, type CreateProviderServiceInput, type MarketplaceDeploymentNetwork, type ProviderEndpointDraftRecord, type ProviderServiceDetailRecord, type ProviderServiceRecord, type ProviderVerificationRecord, type UpdateProviderEndpointDraftInput, type UpdateProviderServiceInput, type UpsertProviderAccountInput } from "@marketplace/shared";
+import { normalizeFastWalletAddress, type CreateProviderEndpointDraftInput, type CreateProviderServiceInput, type MarketplaceDeploymentNetwork, type ProviderEndpointDraftRecord, type ProviderServiceDetailRecord, type ProviderServiceRecord, type ProviderServiceTestStatus, type ProviderVerificationRecord, type UpdateProviderEndpointDraftInput, type UpdateProviderServiceInput, type UpsertProviderAccountInput } from "@marketplace/shared";
 
 import { defaultCliDependencies, expandHome, loadWallet, loadWalletFromPrivateKey, type CliDependencies, type LoadedWallet } from "./lib.js";
 
@@ -34,6 +34,17 @@ interface ProviderRuntimeKeySummary {
 interface ProviderRuntimeKeyResponse {
   runtimeKey: ProviderRuntimeKeySummary | null;
   plaintextKey?: string;
+}
+
+interface ProviderServiceTestRunResponse {
+  run: {
+    status: ProviderServiceTestStatus;
+    slug: string;
+    summary: string | null;
+  };
+  endpointResults?: Array<{
+    status: ProviderServiceTestStatus;
+  }>;
 }
 
 interface ProviderVerificationChallengeResponse {
@@ -151,6 +162,7 @@ const providerSyncSpecSchema = z.object({
 });
 
 export type ProviderSyncSpec = z.infer<typeof providerSyncSpecSchema>;
+const providerTestModeSchema = z.enum(["metadata", "no-spend", "monitoring", "paid-read"]);
 
 class MarketplaceApiError extends Error {
   statusCode: number;
@@ -467,6 +479,146 @@ function providerHeaders(accessToken: string): Record<string, string> {
   };
 }
 
+export async function createProviderServiceTestPlan(input: {
+  serviceRef: string;
+  apiUrl?: string;
+  adminToken?: string;
+}, deps: CliDependencies = defaultCliDependencies()) {
+  loadProviderCommandEnv();
+  const apiUrl = resolveProviderApiUrl(input.apiUrl);
+  const token = resolveAdminToken(input.adminToken);
+  const detail = await resolveAdminProviderService(apiUrl, token, input.serviceRef, deps);
+  return requestJson(deps, `${apiUrl.replace(/\/$/, "")}/internal/provider-services/${detail.service.id}/test-plan`, {
+    headers: {
+      authorization: `Bearer ${token}`
+    }
+  });
+}
+
+export async function runProviderServiceTest(input: {
+  serviceRef?: string;
+  allExternal?: boolean;
+  mode?: "metadata" | "no-spend" | "monitoring" | "paid-read" | string;
+  apiUrl?: string;
+  adminToken?: string;
+  execute?: boolean;
+  maxSpend?: string | null;
+}, deps: CliDependencies = defaultCliDependencies()) {
+  loadProviderCommandEnv();
+  const apiUrl = resolveProviderApiUrl(input.apiUrl);
+  const token = resolveAdminToken(input.adminToken);
+  const mode = providerTestModeSchema.parse(input.mode ?? "metadata");
+  const runKind = mode === "no-spend"
+    ? "no_spend_probe"
+    : mode === "monitoring"
+    ? "monitoring"
+    : mode === "paid-read"
+    ? "paid_read_smoke"
+    : "metadata_manifest";
+  const services = input.allExternal
+    ? (await listAdminProviderServices(apiUrl, token, deps)).filter(
+        (detail) => detail.service.serviceType === "external_registry" && detail.service.status === "published"
+      )
+    : [await resolveAdminProviderService(apiUrl, token, requireServiceRef(input.serviceRef), deps)];
+
+  const runs: ProviderServiceTestRunResponse[] = [];
+  const errors: Array<{ serviceId: string; slug: string; message: string }> = [];
+  for (const detail of services) {
+    try {
+      runs.push(await requestJson<ProviderServiceTestRunResponse>(deps, `${apiUrl.replace(/\/$/, "")}/internal/provider-services/${detail.service.id}/test-runs`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          runKind,
+          execute: Boolean(input.execute),
+          maxSpend: input.maxSpend ?? null,
+          allowMutating: false,
+          testedBy: input.allExternal ? "fast-marketplace-cli-monitoring" : "fast-marketplace-cli"
+        })
+      }));
+    } catch (error) {
+      if (!input.allExternal) {
+        throw error;
+      }
+
+      errors.push({
+        serviceId: detail.service.id,
+        slug: detail.service.slug,
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  return input.allExternal
+    ? {
+        count: runs.length,
+        attempted: services.length,
+        errors,
+        alert: summarizeProviderTestAlert(runs, errors),
+        runs
+      }
+    : runs[0];
+}
+
+function summarizeProviderTestAlert(
+  runs: ProviderServiceTestRunResponse[],
+  errors: Array<{ serviceId: string; slug: string; message: string }>
+) {
+  const statusCounts = runs.reduce<Record<string, number>>((acc, result) => {
+    const status = result.run.status;
+    acc[status] = (acc[status] ?? 0) + 1;
+    return acc;
+  }, {});
+  const failed = statusCounts.failed ?? 0;
+  const degraded = statusCounts.degraded ?? 0;
+  const blocked = statusCounts.blocked ?? 0;
+  const errored = errors.length;
+  const shouldAlert = failed > 0 || degraded > 0 || blocked > 0 || errored > 0;
+
+  return {
+    shouldAlert,
+    statusCounts,
+    failed,
+    degraded,
+    blocked,
+    errored,
+    affectedServices: [
+      ...runs
+        .filter((result) => result.run.status === "failed" || result.run.status === "degraded" || result.run.status === "blocked")
+        .map((result) => ({
+          slug: result.run.slug,
+          status: result.run.status,
+          summary: result.run.summary
+        })),
+      ...errors.map((error) => ({
+        slug: error.slug,
+        status: "error" as const,
+        summary: error.message
+      }))
+    ]
+  };
+}
+
+export async function listProviderServiceTestResults(input: {
+  serviceRef: string;
+  apiUrl?: string;
+  adminToken?: string;
+  limit?: number;
+}, deps: CliDependencies = defaultCliDependencies()) {
+  loadProviderCommandEnv();
+  const apiUrl = resolveProviderApiUrl(input.apiUrl);
+  const token = resolveAdminToken(input.adminToken);
+  const detail = await resolveAdminProviderService(apiUrl, token, input.serviceRef, deps);
+  return requestJson(deps, `${apiUrl.replace(/\/$/, "")}/internal/provider-services/${detail.service.id}/test-runs?limit=${input.limit ?? 20}`, {
+    headers: {
+      authorization: `Bearer ${token}`
+    }
+  });
+}
+
 async function upsertProviderAccount(
   apiUrl: string,
   accessToken: string,
@@ -561,6 +713,56 @@ async function fetchProviderService(
   return requestJson<ProviderServiceDetailRecord>(deps, `${apiUrl.replace(/\/$/, "")}/provider/services/${serviceId}`, {
     headers: providerHeaders(accessToken)
   });
+}
+
+function resolveAdminToken(token?: string): string {
+  const candidate = token ?? process.env.MARKETPLACE_ADMIN_TOKEN;
+  if (!candidate) {
+    throw new Error("MARKETPLACE_ADMIN_TOKEN is required for provider test commands.");
+  }
+
+  return candidate;
+}
+
+async function resolveAdminProviderService(
+  apiUrl: string,
+  adminToken: string,
+  serviceRef: string,
+  deps: CliDependencies
+) {
+  const services = await listAdminProviderServices(apiUrl, adminToken, deps);
+  const match = services.find((candidate) => candidate.service.id === serviceRef || candidate.service.slug === serviceRef);
+  if (!match) {
+    throw new Error(`Provider service not found: ${serviceRef}`);
+  }
+
+  return match;
+}
+
+async function listAdminProviderServices(
+  apiUrl: string,
+  adminToken: string,
+  deps: CliDependencies
+) {
+  const body = await requestJson<{ services: ProviderServiceDetailRecord[] }>(
+    deps,
+    `${apiUrl.replace(/\/$/, "")}/internal/provider-services`,
+    {
+      headers: {
+        authorization: `Bearer ${adminToken}`
+      }
+    }
+  );
+
+  return body.services;
+}
+
+function requireServiceRef(serviceRef?: string): string {
+  if (!serviceRef) {
+    throw new Error("--service is required unless --all-external is set.");
+  }
+
+  return serviceRef;
 }
 
 async function fetchProviderRuntimeKey(

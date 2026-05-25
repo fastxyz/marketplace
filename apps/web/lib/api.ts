@@ -8,6 +8,8 @@ import type {
   ProviderEndpointDraftRecord,
   ProviderServiceDetailRecord,
   ProviderServiceStatus,
+  ProviderServiceTestSummary,
+  ProviderServiceTestRunWithResults,
   ServiceDetail,
   ServiceSummary,
   SettlementMode,
@@ -211,6 +213,23 @@ export async function fetchAdminProviderService(serviceId: string): Promise<Prov
 
 export async function fetchSubmittedAdminProviderService(serviceId: string): Promise<ProviderServiceDetailRecord | null> {
   return fetchAdminMarketplaceNullable<ProviderServiceDetailRecord>(`/internal/provider-services/${serviceId}/submitted`);
+}
+
+export async function fetchAdminProviderServiceTestSummary(serviceId: string): Promise<ProviderServiceTestSummary | null> {
+  return fetchAdminMarketplaceNullable<ProviderServiceTestSummary>(`/internal/provider-services/${serviceId}/test-summary`);
+}
+
+export async function fetchAdminProviderServiceTestRuns(serviceId: string): Promise<ProviderServiceTestRunWithResults[]> {
+  const data = await fetchMarketplace<{ runs: ProviderServiceTestRunWithResults[] }>({
+    path: `/internal/provider-services/${serviceId}/test-runs?limit=10`,
+    init: {
+      headers: {
+        Authorization: `Bearer ${getAdminToken()}`
+      }
+    }
+  });
+
+  return data.runs;
 }
 
 export async function requestAdminProviderServiceChanges(

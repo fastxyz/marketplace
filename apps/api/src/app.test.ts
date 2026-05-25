@@ -221,6 +221,188 @@ describe("marketplace api", () => {
     expect(detailResponse.body.endpoints[0]?.tokenSymbol).toBe("testUSDC");
   });
 
+  it("records external registry test runs through admin routes", async () => {
+    const store = new InMemoryMarketplaceStore();
+    const wallet = "fast1provider000000000000000000000000000000000000000000000000000000";
+    await store.upsertProviderAccount(wallet, {
+      displayName: "Signal Labs",
+      websiteUrl: "https://provider.example.com"
+    });
+    const created = await store.createProviderService(wallet, {
+      serviceType: "external_registry",
+      slug: "signal-labs-tested",
+      name: "Signal Labs Tested",
+      tagline: "Discovery-only endpoints with test state",
+      about: "Direct provider APIs listed in the marketplace catalog with a durable testing ledger.",
+      categories: ["Research"],
+      promptIntro: 'I want to use the "Signal Labs Tested" service.',
+      setupInstructions: ["Read the provider docs before calling the API directly."],
+      websiteUrl: "https://provider.example.com"
+    });
+    const endpoint = await store.createProviderEndpointDraft(created.service.id, wallet, {
+      endpointType: "external_registry",
+      title: "Status",
+      description: "Returns service status directly from the provider.",
+      method: "GET",
+      publicUrl: "https://provider.example.com/api/status",
+      docsUrl: "https://provider.example.com/docs/status",
+      authNotes: "Bearer token required.",
+      requestExample: {},
+      responseExample: { status: "ok" }
+    });
+    const { app } = await createTestApp({ store });
+
+    const unauthorized = await request(app)
+      .post(`/internal/provider-services/${created.service.id}/test-runs`)
+      .send({ runKind: "metadata_manifest" });
+    expect(unauthorized.status).toBe(401);
+
+    const createdRun = await request(app)
+      .post(`/internal/provider-services/${created.service.id}/test-runs`)
+      .set("Authorization", "Bearer test-admin-token")
+      .send({ runKind: "metadata_manifest", testedBy: "unit-test" });
+
+    expect(createdRun.status).toBe(201);
+    expect(createdRun.body.run.status).toBe("passed");
+    expect(createdRun.body.endpointResults[0]).toMatchObject({
+      method: "GET",
+      status: "passed",
+      mutability: "read_only"
+    });
+
+    const summary = await request(app)
+      .get(`/internal/provider-services/${created.service.id}/test-summary`)
+      .set("Authorization", "Bearer test-admin-token");
+    expect(summary.status).toBe(200);
+    expect(summary.body.latestByKind.metadata_manifest.id).toBe(createdRun.body.run.id);
+
+    const publishedBeforeSummary = await store.submitProviderService(created.service.id, wallet);
+    expect(publishedBeforeSummary?.service.status).toBe("pending_review");
+    await store.publishProviderService(created.service.id, { reviewerIdentity: "ops@test" });
+    const catalogDetail = await request(app).get("/catalog/services/signal-labs-tested");
+    expect(catalogDetail.status).toBe(200);
+    expect(catalogDetail.body.testing).toMatchObject({
+      healthStatus: "passed",
+      priceMetadataStatus: "passed",
+      paidReadSmokeStatus: "unknown"
+    });
+
+    const catalogSearch = await request(app).get("/catalog/search?q=signal");
+    expect(catalogSearch.status).toBe(200);
+    const searchService = catalogSearch.body.results.find(
+      (result: { kind: string; summary: { slug: string } }) =>
+        result.kind === "service" && result.summary.slug === "signal-labs-tested"
+    );
+    expect(searchService.summary.testing).toMatchObject({
+      healthStatus: "passed"
+    });
+
+    const list = await request(app)
+      .get("/internal/provider-service-test-runs")
+      .set("Authorization", "Bearer test-admin-token");
+    expect(list.status).toBe(200);
+    expect(list.body.runs.some((run: { id: string }) => run.id === createdRun.body.run.id)).toBe(true);
+
+    const paidSmoke = await request(app)
+      .post(`/internal/provider-services/${created.service.id}/test-runs`)
+      .set("Authorization", "Bearer test-admin-token")
+      .send({ runKind: "paid_read_smoke" });
+    expect(paidSmoke.status).toBe(201);
+    expect(paidSmoke.body.run.status).toBe("blocked");
+    expect(paidSmoke.body.endpointResults[0].resultSummary).toContain("maxSpend");
+
+    const unknownEndpoint = await request(app)
+      .post(`/internal/provider-services/${created.service.id}/test-runs`)
+      .set("Authorization", "Bearer test-admin-token")
+      .send({ runKind: "metadata_manifest", endpointIds: ["missing-endpoint"] });
+    expect(unknownEndpoint.status).toBe(400);
+    expect(unknownEndpoint.body.error).toContain("Unknown endpointIds");
+
+    const paidHttp = vi.fn();
+    const { app: budgetedPaymentApp } = await createTestApp({
+      store,
+      upstreamPaymentService: {
+        payHttp: paidHttp
+      }
+    });
+    const budgetedPaidRun = await request(budgetedPaymentApp)
+      .post(`/internal/provider-services/${created.service.id}/test-runs`)
+      .set("Authorization", "Bearer test-admin-token")
+      .send({ runKind: "paid_read_smoke", execute: true, maxSpend: "0.5" });
+    expect(budgetedPaidRun.status).toBe(201);
+    expect(budgetedPaidRun.body.run.status).toBe("blocked");
+    expect(budgetedPaidRun.body.run.totalPaidAmount).toBe("0");
+    expect(budgetedPaidRun.body.run.paymentAsset).toBeNull();
+    expect(budgetedPaidRun.body.endpointResults[0]).toMatchObject({
+      status: "blocked",
+      paidAmount: null,
+      httpStatus: null
+    });
+    expect(budgetedPaidRun.body.endpointResults[0].resultSummary).toContain("discovery-only");
+    expect(paidHttp).not.toHaveBeenCalled();
+
+    await store.updateProviderEndpointDraft(created.service.id, endpoint.id, wallet, {
+      endpointType: "external_registry",
+      publicUrl: "https://draft.example.com/api/status"
+    });
+    const publishedForMonitoring = await store.getPublishedServiceBySlug("signal-labs-tested");
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const testPlan = await request(app)
+      .get(`/internal/provider-services/${created.service.id}/test-plan`)
+      .set("Authorization", "Bearer test-admin-token");
+    expect(testPlan.status).toBe(200);
+    expect(testPlan.body.service.latestPublishedVersionId).toBe(publishedForMonitoring?.service.versionId);
+    expect(testPlan.body.endpoints[0]).toMatchObject({
+      url: "https://provider.example.com/api/status",
+      paidReadSmokeAllowed: false
+    });
+    const monitoring = await request(app)
+      .post(`/internal/provider-services/${created.service.id}/test-runs`)
+      .set("Authorization", "Bearer test-admin-token")
+      .send({ runKind: "monitoring", execute: true });
+    expect(monitoring.status).toBe(201);
+    expect(monitoring.body.run.publishedVersionId).toBe(publishedForMonitoring?.service.versionId);
+    expect(monitoring.body.run.status).toBe("skipped");
+    expect(monitoring.body.endpointResults[0].url).toBe("https://provider.example.com/api/status");
+    expect(monitoring.body.endpointResults[0].resultSummary).toContain("discovery-only");
+    expect(fetchMock).not.toHaveBeenCalledWith("https://provider.example.com/api/status", expect.anything());
+    const noSpendProbe = await request(app)
+      .post(`/internal/provider-services/${created.service.id}/test-runs`)
+      .set("Authorization", "Bearer test-admin-token")
+      .send({ runKind: "no_spend_probe", execute: true });
+    expect(noSpendProbe.status).toBe(201);
+    expect(noSpendProbe.body.run.status).toBe("skipped");
+    expect(noSpendProbe.body.endpointResults[0]).toMatchObject({
+      httpStatus: null,
+      status: "skipped"
+    });
+    fetchMock.mockRestore();
+
+    await store.updateProviderEndpointDraft(created.service.id, endpoint.id, wallet, {
+      endpointType: "external_registry",
+      publicUrl: "https://provider.example.com/api/wallets/{address}"
+    });
+    await store.submitProviderService(created.service.id, wallet);
+    await store.publishProviderService(created.service.id, { reviewerIdentity: "ops@test" });
+    const templateFetchMock = vi.spyOn(globalThis, "fetch");
+    const templatedProbe = await request(app)
+      .post(`/internal/provider-services/${created.service.id}/test-runs`)
+      .set("Authorization", "Bearer test-admin-token")
+      .send({ runKind: "monitoring", execute: true });
+    expect(templatedProbe.status).toBe(201);
+    expect(templatedProbe.body.run.status).toBe("skipped");
+    expect(templatedProbe.body.endpointResults[0]).toMatchObject({
+      status: "skipped",
+      httpStatus: null
+    });
+    expect(templatedProbe.body.endpointResults[0].resultSummary).toContain("discovery-only");
+    expect(templateFetchMock).not.toHaveBeenCalledWith(
+      "https://provider.example.com/api/wallets/{address}",
+      expect.anything()
+    );
+    templateFetchMock.mockRestore();
+  });
+
   it("returns mixed catalog search results with stable machine-readable filters", async () => {
     const { app } = await createTestApp({
       deploymentNetwork: "testnet"

@@ -1641,6 +1641,174 @@ describe("shared marketplace helpers", () => {
     expect(route).toBeNull();
   });
 
+  it("records provider service test runs and endpoint results", async () => {
+    const store = new InMemoryMarketplaceStore();
+    const wallet = "fast1provider000000000000000000000000000000000000000000000000000000";
+
+    await store.upsertProviderAccount(wallet, {
+      displayName: "Signal Labs",
+      websiteUrl: "https://provider.example.com"
+    });
+
+    const created = await store.createProviderService(wallet, {
+      serviceType: "external_registry",
+      slug: "signal-labs-tested",
+      name: "Signal Labs Tested",
+      tagline: "Discovery-only endpoints with test state",
+      about: "Direct provider APIs listed in the marketplace catalog with a durable testing ledger.",
+      categories: ["Research"],
+      promptIntro: 'I want to use the "Signal Labs Tested" service.',
+      setupInstructions: ["Read the provider docs before calling the API directly."],
+      websiteUrl: "https://provider.example.com"
+    });
+
+    await store.createProviderEndpointDraft(created.service.id, wallet, {
+      endpointType: "external_registry",
+      title: "Status",
+      description: "Returns service status directly from the provider.",
+      method: "GET",
+      publicUrl: "https://provider.example.com/api/status",
+      docsUrl: "https://provider.example.com/docs/status",
+      authNotes: "Bearer token required.",
+      requestExample: {},
+      responseExample: { status: "ok" }
+    });
+
+    const run = await store.createProviderServiceTestRun({
+      serviceId: created.service.id,
+      publishedVersionId: null,
+      slug: created.service.slug,
+      runKind: "metadata_manifest",
+      testedBy: "unit-test"
+    });
+    const endpointResult = await store.appendProviderEndpointTestResult({
+      testRunId: run.id,
+      serviceId: created.service.id,
+      endpointTitle: "Status",
+      method: "GET",
+      url: "https://provider.example.com/api/status",
+      testKind: "metadata_manifest",
+      status: "passed",
+      mutability: "read_only",
+      paymentRequired: true,
+      httpStatus: 402,
+      resultSummary: "Payment challenge observed."
+    });
+    const completed = await store.completeProviderServiceTestRun(run.id, {
+      status: "passed",
+      summary: "Metadata and no-spend challenge passed."
+    });
+
+    expect(completed?.status).toBe("passed");
+    expect(endpointResult.paymentRequired).toBe(true);
+
+    const runs = await store.listProviderServiceTestRuns(created.service.id);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.endpointResults[0]?.httpStatus).toBe(402);
+
+    const summary = await store.getLatestProviderServiceTestSummary(created.service.id);
+    expect(summary?.latestByKind.metadata_manifest?.id).toBe(run.id);
+    expect(summary?.endpointResults).toHaveLength(1);
+  });
+
+  it("loads latest Postgres provider service test summaries by kind without a recency window", async () => {
+    const now = TEST_TIMESTAMP;
+    const old = "2026-03-20T00:00:00.000Z";
+    const store = new PostgresMarketplaceStore({
+      query: async (sql: string, params: unknown[] = []) => {
+        if (sql.includes("SELECT id, slug FROM provider_services WHERE id = $1")) {
+          expect(params).toEqual(["service_test_summary"]);
+          return {
+            rowCount: 1,
+            rows: [{ id: "service_test_summary", slug: "signal-labs-tested" }]
+          };
+        }
+
+        if (sql.includes("ORDER BY started_at DESC") && sql.includes("LIMIT 1")) {
+          return {
+            rowCount: 1,
+            rows: [{
+              id: "run_monitoring_latest",
+              service_id: "service_test_summary",
+              published_version_id: null,
+              slug: "signal-labs-tested",
+              run_kind: "monitoring",
+              status: "passed",
+              started_at: now,
+              completed_at: now,
+              tested_by: "unit-test",
+              summary: "Latest monitoring run.",
+              risk_level: "low",
+              risk_notes: null,
+              total_paid_amount: "0",
+              payment_asset: null,
+              evidence_json: {},
+              created_at: now,
+              updated_at: now
+            }]
+          };
+        }
+
+        if (sql.includes("SELECT DISTINCT ON (run_kind)")) {
+          return {
+            rowCount: 2,
+            rows: [
+              {
+                id: "run_metadata_old",
+                service_id: "service_test_summary",
+                published_version_id: null,
+                slug: "signal-labs-tested",
+                run_kind: "metadata_manifest",
+                status: "passed",
+                started_at: old,
+                completed_at: old,
+                tested_by: "unit-test",
+                summary: "Older metadata run.",
+                risk_level: "low",
+                risk_notes: null,
+                total_paid_amount: "0",
+                payment_asset: null,
+                evidence_json: {},
+                created_at: old,
+                updated_at: old
+              },
+              {
+                id: "run_monitoring_latest",
+                service_id: "service_test_summary",
+                published_version_id: null,
+                slug: "signal-labs-tested",
+                run_kind: "monitoring",
+                status: "passed",
+                started_at: now,
+                completed_at: now,
+                tested_by: "unit-test",
+                summary: "Latest monitoring run.",
+                risk_level: "low",
+                risk_notes: null,
+                total_paid_amount: "0",
+                payment_asset: null,
+                evidence_json: {},
+                created_at: now,
+                updated_at: now
+              }
+            ]
+          };
+        }
+
+        if (sql.includes("SELECT * FROM provider_endpoint_test_results")) {
+          return { rowCount: 0, rows: [] };
+        }
+
+        throw new Error(`Unexpected SQL: ${sql}`);
+      }
+    } as unknown as ConstructorParameters<typeof PostgresMarketplaceStore>[0]);
+
+    const summary = await store.getLatestProviderServiceTestSummary("service_test_summary");
+    expect(summary?.latestRun?.id).toBe("run_monitoring_latest");
+    expect(summary?.latestByKind.metadata_manifest?.id).toBe("run_metadata_old");
+    expect(summary?.latestByKind.monitoring?.id).toBe("run_monitoring_latest");
+  });
+
   it("seeds Shop Fast discovery and executable commerce providers", async () => {
     const store = new InMemoryMarketplaceStore();
 
