@@ -181,6 +181,137 @@ describe("archive-is sdk", () => {
     });
   });
 
+  it("annotates archive snapshots that resolve to archive.md error pages when validation is enabled", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(readFixture("timemap-link-format.txt"), {
+        status: 200,
+        headers: {
+          "content-type": "application/link-format"
+        }
+      }))
+      .mockResolvedValueOnce(new Response("<html><article>Archived article content</article></html>", {
+        status: 200
+      }))
+      .mockResolvedValueOnce(new Response("<html><pre>Error: Error -32602: Invalid InterceptionId.</pre></html>", {
+        status: 200
+      }))
+      .mockResolvedValueOnce(new Response("<html><pre>Error: Task timed-out after 15 seconds of inactivity</pre></html>", {
+        status: 429
+      }));
+
+    await expect(listSnapshots({
+      url: "https://example.com/articles/launch",
+      limit: 3
+    }, {
+      fetch: fetchImpl,
+      validateSnapshots: true
+    })).resolves.toMatchObject({
+      count: 3,
+      snapshots: [
+        {
+          archiveUrl: "http://archive.md/20240720170010/https://example.com/articles/launch",
+          validation: {
+            status: "usable"
+          }
+        },
+        {
+          archiveUrl: "http://archive.md/20240615153045/https://example.com/articles/launch",
+          validation: {
+            status: "broken",
+            reason: "archive_invalid_interception_id"
+          }
+        },
+        {
+          archiveUrl: "http://archive.md/20240501120000/https://example.com/articles/launch",
+          validation: {
+            status: "broken",
+            reason: "archive_task_timeout",
+            statusCode: 429
+          }
+        }
+      ]
+    });
+  });
+
+  it("marks snapshots unchecked when validation cannot read the archive page", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(readFixture("timemap-link-format.txt"), {
+        status: 200,
+        headers: {
+          "content-type": "application/link-format"
+        }
+      }))
+      .mockResolvedValueOnce(new Response("Forbidden", {
+        status: 403
+      }));
+
+    await expect(listSnapshots({
+      url: "https://example.com/articles/launch",
+      limit: 1
+    }, {
+      fetch: fetchImpl,
+      validateSnapshots: true
+    })).resolves.toMatchObject({
+      count: 1,
+      snapshots: [
+        {
+          archiveUrl: "http://archive.md/20240720170010/https://example.com/articles/launch",
+          validation: {
+            status: "unchecked",
+            reason: "validation_http_error",
+            statusCode: 403
+          }
+        }
+      ]
+    });
+  });
+
+  it("preserves Archive.md redirect cookies while validating a snapshot page", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(readFixture("timemap-link-format.txt"), {
+        status: 200,
+        headers: {
+          "content-type": "application/link-format"
+        }
+      }))
+      .mockResolvedValueOnce(new Response("", {
+        status: 302,
+        headers: {
+          location: "https://archive.md/20240720170010/https://example.com/articles/launch",
+          "set-cookie": "qki=abc123; Max-Age=3600; Domain=.archive.md; Path=/"
+        }
+      }))
+      .mockResolvedValueOnce(new Response("<html><article>Archived article content</article></html>", {
+        status: 200
+      }));
+
+    await expect(listSnapshots({
+      url: "https://example.com/articles/launch",
+      limit: 1
+    }, {
+      fetch: fetchImpl,
+      validateSnapshots: true
+    })).resolves.toMatchObject({
+      count: 1,
+      snapshots: [
+        {
+          archiveUrl: "http://archive.md/20240720170010/https://example.com/articles/launch",
+          validation: {
+            status: "usable"
+          }
+        }
+      ]
+    });
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      "https://archive.md/20240720170010/https://example.com/articles/launch",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          cookie: "qki=abc123"
+        })
+      })
+    );
+  });
+
   it("rejects invalid inputs with typed errors", async () => {
     await expect(listSnapshots({
       url: "ftp://example.com/file"

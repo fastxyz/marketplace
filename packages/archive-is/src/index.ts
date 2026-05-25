@@ -8,6 +8,15 @@ export interface ArchiveSnapshot {
   capturedAt: string;
   archiveId: string | null;
   sourceHost: string;
+  validation?: ArchiveSnapshotValidation;
+}
+
+export type ArchiveSnapshotValidationStatus = "usable" | "broken" | "unchecked";
+
+export interface ArchiveSnapshotValidation {
+  status: ArchiveSnapshotValidationStatus;
+  reason?: string;
+  statusCode?: number;
 }
 
 export interface ListSnapshotsInput {
@@ -30,6 +39,7 @@ export interface ArchiveClientOptions {
   fetch?: typeof fetch;
   timeoutMs?: number;
   userAgent?: string;
+  validateSnapshots?: boolean;
 }
 
 export type ArchiveIsErrorCode =
@@ -84,16 +94,23 @@ export async function listSnapshots(
     timeoutMs,
     userAgent: options.userAgent ?? DEFAULT_USER_AGENT
   });
-  const snapshots = applySnapshotFilters({
+  const filteredSnapshots = applySnapshotFilters({
     snapshots: parseSnapshots({
       body,
       originalUrl: normalized.originalUrl,
       sourceHost
     }),
     from: normalized.from,
-    to: normalized.to,
-    limit: normalized.limit
+    to: normalized.to
   });
+  const snapshots = options.validateSnapshots
+    ? await validateSnapshotPages({
+      fetchImpl,
+      snapshots: filteredSnapshots.slice(0, normalized.limit),
+      timeoutMs,
+      userAgent: options.userAgent ?? DEFAULT_USER_AGENT
+    })
+    : filteredSnapshots.slice(0, normalized.limit);
 
   if (snapshots.length === 0) {
     throw new ArchiveIsError("No archived captures found for the requested URL.", {
@@ -298,7 +315,6 @@ function applySnapshotFilters(input: {
   snapshots: ArchiveSnapshot[];
   from: Date | null;
   to: Date | null;
-  limit: number;
 }): ArchiveSnapshot[] {
   return input.snapshots
     .filter((snapshot) => {
@@ -306,6 +322,164 @@ function applySnapshotFilters(input: {
       return (input.from === null || capturedAt >= input.from.getTime())
         && (input.to === null || capturedAt <= input.to.getTime());
     })
-    .sort((left, right) => Date.parse(right.capturedAt) - Date.parse(left.capturedAt))
-    .slice(0, input.limit);
+    .sort((left, right) => Date.parse(right.capturedAt) - Date.parse(left.capturedAt));
+}
+
+async function validateSnapshotPages(input: {
+  fetchImpl: typeof fetch;
+  snapshots: ArchiveSnapshot[];
+  timeoutMs: number;
+  userAgent: string;
+}): Promise<ArchiveSnapshot[]> {
+  const snapshots: ArchiveSnapshot[] = [];
+  for (const snapshot of input.snapshots) {
+    snapshots.push({
+      ...snapshot,
+      validation: await validateArchiveSnapshot({
+        fetchImpl: input.fetchImpl,
+        snapshot,
+        timeoutMs: input.timeoutMs,
+        userAgent: input.userAgent
+      })
+    });
+  }
+
+  return snapshots;
+}
+
+async function validateArchiveSnapshot(input: {
+  fetchImpl: typeof fetch;
+  snapshot: ArchiveSnapshot;
+  timeoutMs: number;
+  userAgent: string;
+}): Promise<ArchiveSnapshotValidation> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), input.timeoutMs);
+
+  try {
+    const response = await fetchArchivePage({
+      fetchImpl: input.fetchImpl,
+      url: input.snapshot.archiveUrl,
+      signal: controller.signal,
+      userAgent: input.userAgent
+    });
+
+    if (!response.ok) {
+      const errorPage = getArchiveErrorPageReason(response.body);
+      if (errorPage) {
+        return {
+          status: "broken",
+          reason: errorPage,
+          statusCode: response.status
+        };
+      }
+
+      return {
+        status: "unchecked",
+        reason: "validation_http_error",
+        statusCode: response.status
+      };
+    }
+
+    const errorPage = getArchiveErrorPageReason(response.body);
+    if (errorPage) {
+      return {
+        status: "broken",
+        reason: errorPage
+      };
+    }
+
+    return { status: "usable" };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return {
+        status: "unchecked",
+        reason: "validation_timeout"
+      };
+    }
+
+    return {
+      status: "unchecked",
+      reason: "validation_fetch_failed"
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchArchivePage(input: {
+  fetchImpl: typeof fetch;
+  url: string;
+  signal: AbortSignal;
+  userAgent: string;
+}): Promise<{
+  ok: boolean;
+  status: number;
+  body: string;
+}> {
+  const response = await input.fetchImpl(input.url, {
+    method: "GET",
+    redirect: "manual",
+    headers: {
+      accept: "text/html, text/plain;q=0.9, */*;q=0.1",
+      "user-agent": input.userAgent
+    },
+    signal: input.signal
+  });
+
+  if (!isRedirectStatus(response.status)) {
+    return {
+      ok: response.ok,
+      status: response.status,
+      body: await response.text()
+    };
+  }
+
+  const location = response.headers.get("location");
+  if (!location) {
+    return {
+      ok: response.ok,
+      status: response.status,
+      body: await response.text()
+    };
+  }
+
+  const cookie = response.headers.get("set-cookie")?.split(";")[0];
+  const redirectedUrl = new URL(location, input.url).toString();
+  const redirectedResponse = await input.fetchImpl(redirectedUrl, {
+    method: "GET",
+    headers: {
+      accept: "text/html, text/plain;q=0.9, */*;q=0.1",
+      ...(cookie ? { cookie } : {}),
+      "user-agent": input.userAgent
+    },
+    signal: input.signal
+  });
+
+  return {
+    ok: redirectedResponse.ok,
+    status: redirectedResponse.status,
+    body: await redirectedResponse.text()
+  };
+}
+
+function isRedirectStatus(status: number): boolean {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+}
+
+function getArchiveErrorPageReason(body: string): string | null {
+  const normalized = body.toLowerCase();
+  if (normalized.includes("task timed-out after 15 seconds of inactivity")) {
+    return "archive_task_timeout";
+  }
+
+  if (normalized.includes("invalid interceptionid")) {
+    return "archive_invalid_interception_id";
+  }
+
+  if (normalized.includes("<pre") && normalized.includes("error:")) {
+    return "archive_error_page";
+  }
+
+  return null;
 }

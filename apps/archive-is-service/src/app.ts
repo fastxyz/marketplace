@@ -19,7 +19,10 @@ export function createArchiveIsServiceApp(options: ArchiveIsServiceOptions = {})
   const app = express();
   const archiveHost = options.archiveHost ?? "archive.today";
   const timeoutMs = options.timeoutMs ?? 10_000;
-  const listSnapshotsImpl = options.listSnapshots ?? ((input) => listSnapshots(input, { timeoutMs }));
+  const listSnapshotsImpl = options.listSnapshots ?? ((input) => listSnapshots(input, {
+    timeoutMs,
+    validateSnapshots: true
+  }));
 
   app.use(express.json({ limit: "64kb" }));
 
