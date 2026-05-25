@@ -1,0 +1,6 @@
+<https://example.com/articles/launch>; rel="original",
+<https://archive.today/timemap/https://example.com/articles/launch>; rel="self"; type="application/link-format",
+<https://archive.today/timegate/https://example.com/articles/launch>; rel="timegate",
+<https://archive.today/20240501120000/https://example.com/articles/launch>; rel="first memento"; datetime="Wed, 01 May 2024 12:00:00 GMT",
+<https://archive.today/20240615153045/https://example.com/articles/launch>; rel="memento"; datetime="Sat, 15 Jun 2024 15:30:45 GMT",
+<https://archive.today/20240720170010/https://example.com/articles/launch>; rel="last memento"; datetime="Sat, 20 Jul 2024 17:00:10 GMT"

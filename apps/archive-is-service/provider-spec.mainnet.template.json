@@ -1,0 +1,169 @@
+{
+  "profile": {
+    "displayName": "Fast Marketplace Providers",
+    "bio": "Marketplace-operated provider account for Fast-hosted data services.",
+    "websiteUrl": "https://marketplace.fast.xyz",
+    "contactEmail": "marketplace@fast.xyz"
+  },
+  "service": {
+    "serviceType": "marketplace_proxy",
+    "slug": "archive-is-mainnet",
+    "apiNamespace": "archive-is",
+    "name": "Archive.is Lookup",
+    "tagline": "Find existing Archive.today snapshots for submitted URLs through a Fast-native proxy.",
+    "about": "Archive.is Lookup exposes a read-only marketplace-hosted endpoint for finding known Archive.today-compatible archived captures. Buyers submit a URL and receive normalized archive links and capture timestamps.",
+    "categories": [
+      "Research",
+      "Web Archives",
+      "Citations"
+    ],
+    "promptIntro": "I want to use the Archive.is Lookup service on Fast Marketplace.",
+    "setupInstructions": [
+      "Fund a Fast wallet on mainnet.",
+      "Use the x402-paid list-snapshots route from the marketplace.",
+      "Submit a public http or https URL and inspect the returned archived captures."
+    ],
+    "websiteUrl": "https://archive-is-provider.example.com",
+    "payoutWallet": "fast1replace_with_provider_wallet"
+  },
+  "endpoints": [
+    {
+      "endpointType": "marketplace_proxy",
+      "operation": "list-snapshots",
+      "title": "List Snapshots",
+      "description": "Return known Archive.today-compatible archived snapshots for a submitted URL.",
+      "billingType": "fixed_x402",
+      "price": "$0.0001",
+      "method": "POST",
+      "mode": "sync",
+      "requestSchemaJson": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 20
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "archiveHost": {
+            "type": "string",
+            "enum": [
+              "archive.today",
+              "archive.is",
+              "archive.ph"
+            ],
+            "default": "archive.today"
+          }
+        },
+        "additionalProperties": false
+      },
+      "responseSchemaJson": {
+        "type": "object",
+        "required": [
+          "originalUrl",
+          "normalizedUrl",
+          "sourceHost",
+          "count",
+          "snapshots"
+        ],
+        "properties": {
+          "originalUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "normalizedUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "sourceHost": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "snapshots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "originalUrl",
+                "archiveUrl",
+                "capturedAt",
+                "archiveId",
+                "sourceHost"
+              ],
+              "properties": {
+                "originalUrl": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "archiveUrl": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "capturedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "archiveId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sourceHost": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "requestExample": {
+        "url": "https://example.com/articles/launch",
+        "limit": 20
+      },
+      "responseExample": {
+        "originalUrl": "https://example.com/articles/launch",
+        "normalizedUrl": "https://example.com/articles/launch",
+        "sourceHost": "archive.today",
+        "count": 1,
+        "snapshots": [
+          {
+            "originalUrl": "https://example.com/articles/launch",
+            "archiveUrl": "https://archive.today/20240501120000/https://example.com/articles/launch",
+            "capturedAt": "2024-05-01T12:00:00.000Z",
+            "archiveId": "20240501120000",
+            "sourceHost": "archive.today"
+          }
+        ]
+      },
+      "usageNotes": "Use this for citation checks, historical page discovery, and link-rot research. Snapshot creation is not part of this route.",
+      "upstreamBaseUrl": "https://archive-is-provider.example.com",
+      "upstreamPath": "/snapshots",
+      "upstreamAuthMode": "none"
+    }
+  ]
+}

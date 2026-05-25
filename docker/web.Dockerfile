@@ -6,9 +6,11 @@ COPY package.json package-lock.json tsconfig.json tsup.config.ts ./
 COPY patches ./patches
 COPY SKILL.md ./
 COPY apps/api/package.json apps/api/package.json
+COPY apps/archive-is-service/package.json apps/archive-is-service/package.json
 COPY apps/facilitator/package.json apps/facilitator/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY apps/worker/package.json apps/worker/package.json
+COPY packages/archive-is/package.json packages/archive-is/package.json
 COPY packages/cli/package.json packages/cli/package.json
 COPY packages/mcp/package.json packages/mcp/package.json
 COPY packages/shared/package.json packages/shared/package.json

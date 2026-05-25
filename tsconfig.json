@@ -19,6 +19,7 @@
   },
   "include": [
     "apps/api/**/*.ts",
+    "apps/archive-is-service/**/*.ts",
     "apps/facilitator/**/*.ts",
     "apps/worker/**/*.ts",
     "packages/**/*.ts"
