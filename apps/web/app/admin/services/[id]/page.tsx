@@ -1,3 +1,4 @@
+import React from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -54,12 +55,7 @@ export default async function AdminProviderServiceDetailPage({
 
   const { id } = await params;
   const query = await searchParams;
-  const [currentDetail, submittedDetail, testSummary, testRuns] = await Promise.all([
-    fetchAdminProviderService(id),
-    fetchSubmittedAdminProviderService(id),
-    fetchAdminProviderServiceTestSummary(id),
-    fetchAdminProviderServiceTestRuns(id)
-  ]);
+  const currentDetail = await fetchAdminProviderService(id);
 
   if (!currentDetail) {
     return (
@@ -82,6 +78,12 @@ export default async function AdminProviderServiceDetailPage({
       </main>
     );
   }
+
+  const [submittedDetail, testSummary, testRuns] = await Promise.all([
+    fetchSubmittedAdminProviderService(id),
+    fetchAdminProviderServiceTestSummary(id),
+    fetchAdminProviderServiceTestRuns(id)
+  ]);
 
   const reviewDetail = submittedDetail ?? currentDetail;
   const message = getSingleParam(query.message);

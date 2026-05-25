@@ -1711,6 +1711,104 @@ describe("shared marketplace helpers", () => {
     expect(summary?.endpointResults).toHaveLength(1);
   });
 
+  it("loads latest Postgres provider service test summaries by kind without a recency window", async () => {
+    const now = TEST_TIMESTAMP;
+    const old = "2026-03-20T00:00:00.000Z";
+    const store = new PostgresMarketplaceStore({
+      query: async (sql: string, params: unknown[] = []) => {
+        if (sql.includes("SELECT id, slug FROM provider_services WHERE id = $1")) {
+          expect(params).toEqual(["service_test_summary"]);
+          return {
+            rowCount: 1,
+            rows: [{ id: "service_test_summary", slug: "signal-labs-tested" }]
+          };
+        }
+
+        if (sql.includes("ORDER BY started_at DESC") && sql.includes("LIMIT 1")) {
+          return {
+            rowCount: 1,
+            rows: [{
+              id: "run_monitoring_latest",
+              service_id: "service_test_summary",
+              published_version_id: null,
+              slug: "signal-labs-tested",
+              run_kind: "monitoring",
+              status: "passed",
+              started_at: now,
+              completed_at: now,
+              tested_by: "unit-test",
+              summary: "Latest monitoring run.",
+              risk_level: "low",
+              risk_notes: null,
+              total_paid_amount: "0",
+              payment_asset: null,
+              evidence_json: {},
+              created_at: now,
+              updated_at: now
+            }]
+          };
+        }
+
+        if (sql.includes("SELECT DISTINCT ON (run_kind)")) {
+          return {
+            rowCount: 2,
+            rows: [
+              {
+                id: "run_metadata_old",
+                service_id: "service_test_summary",
+                published_version_id: null,
+                slug: "signal-labs-tested",
+                run_kind: "metadata_manifest",
+                status: "passed",
+                started_at: old,
+                completed_at: old,
+                tested_by: "unit-test",
+                summary: "Older metadata run.",
+                risk_level: "low",
+                risk_notes: null,
+                total_paid_amount: "0",
+                payment_asset: null,
+                evidence_json: {},
+                created_at: old,
+                updated_at: old
+              },
+              {
+                id: "run_monitoring_latest",
+                service_id: "service_test_summary",
+                published_version_id: null,
+                slug: "signal-labs-tested",
+                run_kind: "monitoring",
+                status: "passed",
+                started_at: now,
+                completed_at: now,
+                tested_by: "unit-test",
+                summary: "Latest monitoring run.",
+                risk_level: "low",
+                risk_notes: null,
+                total_paid_amount: "0",
+                payment_asset: null,
+                evidence_json: {},
+                created_at: now,
+                updated_at: now
+              }
+            ]
+          };
+        }
+
+        if (sql.includes("SELECT * FROM provider_endpoint_test_results")) {
+          return { rowCount: 0, rows: [] };
+        }
+
+        throw new Error(`Unexpected SQL: ${sql}`);
+      }
+    } as unknown as ConstructorParameters<typeof PostgresMarketplaceStore>[0]);
+
+    const summary = await store.getLatestProviderServiceTestSummary("service_test_summary");
+    expect(summary?.latestRun?.id).toBe("run_monitoring_latest");
+    expect(summary?.latestByKind.metadata_manifest?.id).toBe("run_metadata_old");
+    expect(summary?.latestByKind.monitoring?.id).toBe("run_monitoring_latest");
+  });
+
   it("seeds Shop Fast discovery and executable commerce providers", async () => {
     const store = new InMemoryMarketplaceStore();
 

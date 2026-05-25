@@ -488,7 +488,11 @@ export async function createProviderServiceTestPlan(input: {
   const apiUrl = resolveProviderApiUrl(input.apiUrl);
   const token = resolveAdminToken(input.adminToken);
   const detail = await resolveAdminProviderService(apiUrl, token, input.serviceRef, deps);
-  return buildProviderServiceTestPlan(detail);
+  return requestJson(deps, `${apiUrl.replace(/\/$/, "")}/internal/provider-services/${detail.service.id}/test-plan`, {
+    headers: {
+      authorization: `Bearer ${token}`
+    }
+  });
 }
 
 export async function runProviderServiceTest(input: {
@@ -759,32 +763,6 @@ function requireServiceRef(serviceRef?: string): string {
   }
 
   return serviceRef;
-}
-
-function buildProviderServiceTestPlan(detail: ProviderServiceDetailRecord) {
-  return {
-    service: {
-      id: detail.service.id,
-      slug: detail.service.slug,
-      name: detail.service.name,
-      serviceType: detail.service.serviceType,
-      latestPublishedVersionId: detail.latestPublishedVersionId
-    },
-    endpoints: detail.endpoints.map((endpoint) => {
-      const mutability = endpoint.method === "GET" ? "read_only" : "mutating";
-      return {
-        id: endpoint.id,
-        title: endpoint.title,
-        method: endpoint.method,
-        url: endpoint.endpointType === "external_registry" ? endpoint.publicUrl : `${endpoint.upstreamBaseUrl ?? ""}${endpoint.upstreamPath ?? ""}`,
-        endpointType: endpoint.endpointType,
-        mutability,
-        eligibleForNoSpendProbe: endpoint.endpointType === "external_registry" && mutability === "read_only",
-        paidReadSmokeAllowed: endpoint.endpointType === "external_registry" && mutability === "read_only",
-        skipReason: mutability === "mutating" ? "Mutating endpoint; requires explicit operator approval." : null
-      };
-    })
-  };
 }
 
 async function fetchProviderRuntimeKey(

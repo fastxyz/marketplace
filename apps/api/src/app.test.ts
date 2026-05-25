@@ -318,130 +318,63 @@ describe("marketplace api", () => {
     expect(unknownEndpoint.status).toBe(400);
     expect(unknownEndpoint.body.error).toContain("Unknown endpointIds");
 
-    const budgeted = await store.createProviderService(wallet, {
-      serviceType: "external_registry",
-      slug: "budgeted-direct",
-      name: "Budgeted Direct",
-      tagline: "Two paid read endpoints",
-      about: "Direct provider APIs used to verify run-level paid smoke budgets.",
-      categories: ["Research"],
-      promptIntro: 'I want to use the "Budgeted Direct" service.',
-      setupInstructions: ["Use read-only smoke tests only."],
-      websiteUrl: "https://provider.example.com"
-    });
-    await store.createProviderEndpointDraft(budgeted.service.id, wallet, {
-      endpointType: "external_registry",
-      title: "First paid read",
-      description: "First read-only endpoint.",
-      method: "GET",
-      publicUrl: "https://provider.example.com/api/first",
-      docsUrl: "https://provider.example.com/docs/first",
-      authNotes: "Bearer token required.",
-      requestExample: {},
-      responseExample: { ok: true }
-    });
-    await store.createProviderEndpointDraft(budgeted.service.id, wallet, {
-      endpointType: "external_registry",
-      title: "Second paid read",
-      description: "Second read-only endpoint.",
-      method: "GET",
-      publicUrl: "https://provider.example.com/api/second",
-      docsUrl: "https://provider.example.com/docs/second",
-      authNotes: "Bearer token required.",
-      requestExample: {},
-      responseExample: { ok: true }
-    });
-    const seenPaidMaxAmounts: string[] = [];
+    const paidHttp = vi.fn();
     const { app: budgetedPaymentApp } = await createTestApp({
       store,
       upstreamPaymentService: {
-        async payHttp(input) {
-          seenPaidMaxAmounts.push(input.policy.maxAmountRaw);
-          return {
-            statusCode: 200,
-            headers: { "content-type": "application/json" },
-            body: { ok: true },
-            payment: {
-              network: "base",
-              amount: "0.25",
-              recipient: "0x0000000000000000000000000000000000000001",
-              txHash: `0xtest${seenPaidMaxAmounts.length}`
-            }
-          };
-        }
+        payHttp: paidHttp
       }
     });
     const budgetedPaidRun = await request(budgetedPaymentApp)
-      .post(`/internal/provider-services/${budgeted.service.id}/test-runs`)
-      .set("Authorization", "Bearer test-admin-token")
-      .send({ runKind: "paid_read_smoke", execute: true, maxSpend: "0.5" });
-    expect(budgetedPaidRun.status).toBe(201);
-    expect(seenPaidMaxAmounts).toEqual(["500000", "250000"]);
-    expect(budgetedPaidRun.body.run.totalPaidAmount).toBe("0.5");
-
-    const { app: appWithPayment } = await createTestApp({
-      store,
-      upstreamPaymentService: {
-        async payHttp(input) {
-          expect(input.policy.maxAmountRaw).toBe("500000");
-          return {
-            statusCode: 200,
-            headers: { "content-type": "application/json", "set-cookie": "secret=hidden" },
-            body: { ok: true },
-            payment: {
-              network: "base",
-              amount: "0.25",
-              recipient: "0x0000000000000000000000000000000000000001",
-              txHash: "0xtest"
-            }
-          };
-        }
-      }
-    });
-    const paidExecuted = await request(appWithPayment)
       .post(`/internal/provider-services/${created.service.id}/test-runs`)
       .set("Authorization", "Bearer test-admin-token")
       .send({ runKind: "paid_read_smoke", execute: true, maxSpend: "0.5" });
-    expect(paidExecuted.status).toBe(201);
-    expect(paidExecuted.body.run.totalPaidAmount).toBe("0.25");
-    expect(paidExecuted.body.run.paymentAsset).toBe("USDC_BASE");
-    expect(paidExecuted.body.endpointResults[0].paidAmount).toBe("0.25");
-    expect(paidExecuted.body.endpointResults[0].evidenceJson.paidReadSmoke.headers).toEqual({
-      "content-type": "application/json"
+    expect(budgetedPaidRun.status).toBe(201);
+    expect(budgetedPaidRun.body.run.status).toBe("blocked");
+    expect(budgetedPaidRun.body.run.totalPaidAmount).toBe("0");
+    expect(budgetedPaidRun.body.run.paymentAsset).toBeNull();
+    expect(budgetedPaidRun.body.endpointResults[0]).toMatchObject({
+      status: "blocked",
+      paidAmount: null,
+      httpStatus: null
     });
+    expect(budgetedPaidRun.body.endpointResults[0].resultSummary).toContain("discovery-only");
+    expect(paidHttp).not.toHaveBeenCalled();
 
     await store.updateProviderEndpointDraft(created.service.id, endpoint.id, wallet, {
       endpointType: "external_registry",
       publicUrl: "https://draft.example.com/api/status"
     });
     const publishedForMonitoring = await store.getPublishedServiceBySlug("signal-labs-tested");
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ status: "ok" }), {
-        status: 200,
-        headers: { "content-type": "application/json" }
-      })
-    );
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const testPlan = await request(app)
+      .get(`/internal/provider-services/${created.service.id}/test-plan`)
+      .set("Authorization", "Bearer test-admin-token");
+    expect(testPlan.status).toBe(200);
+    expect(testPlan.body.service.latestPublishedVersionId).toBe(publishedForMonitoring?.service.versionId);
+    expect(testPlan.body.endpoints[0]).toMatchObject({
+      url: "https://provider.example.com/api/status",
+      paidReadSmokeAllowed: false
+    });
     const monitoring = await request(app)
       .post(`/internal/provider-services/${created.service.id}/test-runs`)
       .set("Authorization", "Bearer test-admin-token")
       .send({ runKind: "monitoring", execute: true });
     expect(monitoring.status).toBe(201);
     expect(monitoring.body.run.publishedVersionId).toBe(publishedForMonitoring?.service.versionId);
+    expect(monitoring.body.run.status).toBe("skipped");
     expect(monitoring.body.endpointResults[0].url).toBe("https://provider.example.com/api/status");
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://provider.example.com/api/status",
-      expect.objectContaining({ method: "GET" })
-    );
-    fetchMock.mockResolvedValue(new Response("Not found", { status: 404 }));
-    const failedProbe = await request(app)
+    expect(monitoring.body.endpointResults[0].resultSummary).toContain("discovery-only");
+    expect(fetchMock).not.toHaveBeenCalledWith("https://provider.example.com/api/status", expect.anything());
+    const noSpendProbe = await request(app)
       .post(`/internal/provider-services/${created.service.id}/test-runs`)
       .set("Authorization", "Bearer test-admin-token")
       .send({ runKind: "no_spend_probe", execute: true });
-    expect(failedProbe.status).toBe(201);
-    expect(failedProbe.body.run.status).toBe("failed");
-    expect(failedProbe.body.endpointResults[0]).toMatchObject({
-      httpStatus: 404,
-      status: "failed"
+    expect(noSpendProbe.status).toBe(201);
+    expect(noSpendProbe.body.run.status).toBe("skipped");
+    expect(noSpendProbe.body.endpointResults[0]).toMatchObject({
+      httpStatus: null,
+      status: "skipped"
     });
     fetchMock.mockRestore();
 
@@ -462,7 +395,7 @@ describe("marketplace api", () => {
       status: "skipped",
       httpStatus: null
     });
-    expect(templatedProbe.body.endpointResults[0].resultSummary).toContain("template parameters");
+    expect(templatedProbe.body.endpointResults[0].resultSummary).toContain("discovery-only");
     expect(templateFetchMock).not.toHaveBeenCalledWith(
       "https://provider.example.com/api/wallets/{address}",
       expect.anything()

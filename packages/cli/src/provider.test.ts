@@ -9,7 +9,18 @@ import { InMemoryMarketplaceStore, type ProviderServiceDetailRecord } from "@mar
 
 import { createMarketplaceApi } from "../../../apps/api/src/app.js";
 import { loadWalletFromPrivateKey } from "./lib.js";
-import { createProviderSiteSession, runProviderServiceTest, submitProviderService, syncProviderSpec, type ProviderSyncSpec, verifyProviderService } from "./provider.js";
+import { createProviderServiceTestPlan, createProviderSiteSession, runProviderServiceTest, submitProviderService, syncProviderSpec, type ProviderSyncSpec, verifyProviderService } from "./provider.js";
+
+interface ProviderServiceTestPlanResponse {
+  service: {
+    latestPublishedVersionId: string | null;
+  };
+  endpoints: Array<{
+    url: string;
+    paidReadSmokeAllowed: boolean;
+    eligibleForNoSpendProbe: boolean;
+  }>;
+}
 
 const TREASURY_PRIVATE_KEY = "22".repeat(32);
 const AGENT_PRIVATE_KEY = "33".repeat(32);
@@ -509,6 +520,63 @@ describe("provider cli", () => {
         apiUrl,
         adminToken: "test-admin-token"
       })).rejects.toThrow();
+    });
+  });
+
+  it("builds test plans from the latest published service snapshot", async () => {
+    const { apiUrl, store } = await startApiServer();
+    const spec = buildExternalRegistrySpec({
+      service: {
+        slug: "published-plan-direct"
+      },
+      endpoints: [
+        {
+          endpointType: "external_registry",
+          title: "Status",
+          description: "Direct status endpoint.",
+          method: "GET",
+          publicUrl: "https://provider.example.com/api/status",
+          docsUrl: "https://docs.provider.example.com/status",
+          authNotes: "Bearer token required.",
+          requestExample: {},
+          responseExample: { ok: true },
+          usageNotes: "Call the provider directly."
+        }
+      ]
+    });
+
+    await withAgentEnv(apiUrl, async (tempDir) => {
+      const syncResult = await syncProviderSpec({
+        specPath: await writeSpec(tempDir, "external-provider-spec.json", spec)
+      });
+      await submitProviderService({ serviceRef: syncResult.service.slug, apiUrl });
+      const published = await store.publishProviderService(syncResult.service.id, { reviewerIdentity: "unit-test" });
+      expect(published?.latestPublishedVersionId).toBeTruthy();
+
+      const draftDetail = await store.getProviderServiceForOwner(syncResult.service.id, syncResult.wallet);
+      const endpoint = draftDetail?.endpoints[0];
+      if (!endpoint) {
+        throw new Error("Expected an external endpoint draft.");
+      }
+
+      await store.updateProviderEndpointDraft(syncResult.service.id, endpoint.id, syncResult.wallet, {
+        endpointType: "external_registry",
+        publicUrl: "https://draft.provider.example.com/api/status"
+      });
+
+      const plan = await createProviderServiceTestPlan({
+        serviceRef: syncResult.service.slug,
+        apiUrl,
+        adminToken: "test-admin-token"
+      }) as ProviderServiceTestPlanResponse;
+
+      expect(plan.service.latestPublishedVersionId).toBe(published?.latestPublishedVersionId);
+      expect(plan.endpoints).toHaveLength(1);
+      expect(plan.endpoints[0]).toEqual(expect.objectContaining({
+        url: "https://provider.example.com/api/status",
+        paidReadSmokeAllowed: false,
+        eligibleForNoSpendProbe: false
+      }));
     });
   });
 

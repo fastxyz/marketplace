@@ -9437,21 +9437,30 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       return null;
     }
 
-    const runs = (await this.pool.query(
+    const latestRunResult = await this.pool.query(
       `
       SELECT * FROM provider_service_test_runs
       WHERE service_id = $1
       ORDER BY started_at DESC
-      LIMIT 100
+      LIMIT 1
+      `,
+      [serviceId]
+    );
+    const latestByKindRuns = (await this.pool.query(
+      `
+      SELECT DISTINCT ON (run_kind) *
+      FROM provider_service_test_runs
+      WHERE service_id = $1
+      ORDER BY run_kind, started_at DESC
       `,
       [serviceId]
     )).rows.map(mapProviderServiceTestRunRow);
     const latestByKind: ProviderServiceTestSummary["latestByKind"] = {};
-    for (const run of runs) {
+    for (const run of latestByKindRuns) {
       latestByKind[run.runKind] ??= run;
     }
 
-    const latestRun = runs[0] ?? null;
+    const latestRun = latestRunResult.rowCount ? mapProviderServiceTestRunRow(latestRunResult.rows[0]) : null;
     const endpointResults = latestRun
       ? (await this.pool.query(
           `

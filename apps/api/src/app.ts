@@ -10,7 +10,6 @@ import {
   MARKETPLACE_CALLBACK_AUTH_HEADER,
   MARKETPLACE_CALLBACK_URL_HEADER,
   MARKETPLACE_JOB_TOKEN_HEADER,
-  BASE_USDC_ASSET,
   buildLlmsTxt,
   buildMarketplaceCatalog,
   buildBaseUsdcUpstreamPaymentPolicy,
@@ -2006,6 +2005,19 @@ export function createMarketplaceApi(options: MarketplaceApiOptions): Express {
     }
 
     return res.json(summary);
+  });
+
+  app.get("/internal/provider-services/:id/test-plan", async (req, res) => {
+    if (!requireAdminToken(req, res, options.adminToken)) {
+      return;
+    }
+
+    const currentDetail = await options.store.getAdminProviderService(req.params.id);
+    if (!currentDetail) {
+      return res.status(404).json({ error: "Provider service not found." });
+    }
+
+    return res.json(buildProviderServiceTestPlan(await loadProviderServiceDetailForTest(options.store, currentDetail)));
   });
 
   app.post("/internal/provider-services/:id/test-runs", async (req, res) => {
@@ -4368,7 +4380,10 @@ function compactTestingSummary(summary: Awaited<ReturnType<MarketplaceStore["get
   }
 
   const metadata = summary.latestByKind.metadata_manifest;
-  const noSpend = summary.latestByKind.no_spend_probe ?? summary.latestByKind.monitoring;
+  const noSpend = latestRunByStartedAt([
+    summary.latestByKind.no_spend_probe,
+    summary.latestByKind.monitoring
+  ]);
   const paid = summary.latestByKind.paid_read_smoke;
   return {
     healthStatus: summary.latestRun.status,
@@ -4379,6 +4394,12 @@ function compactTestingSummary(summary: Awaited<ReturnType<MarketplaceStore["get
     readOnlySmokeStatus: noSpend?.status ?? "unknown",
     paidReadSmokeStatus: paid?.status ?? "unknown"
   };
+}
+
+function latestRunByStartedAt<T extends { startedAt: string }>(runs: Array<T | undefined>): T | undefined {
+  return runs
+    .filter((run): run is T => Boolean(run))
+    .sort((left, right) => right.startedAt.localeCompare(left.startedAt))[0];
 }
 
 class ProviderServiceTestRunInputError extends Error {}
@@ -4493,6 +4514,36 @@ function mapPublishedEndpointVersionToDraft(endpoint: PublishedServiceEndpointVe
     payout: endpoint.payout,
     createdAt: endpoint.createdAt,
     updatedAt: endpoint.updatedAt
+  };
+}
+
+function buildProviderServiceTestPlan(detail: ProviderServiceDetailRecord) {
+  return {
+    service: {
+      id: detail.service.id,
+      slug: detail.service.slug,
+      name: detail.service.name,
+      serviceType: detail.service.serviceType,
+      latestPublishedVersionId: detail.latestPublishedVersionId
+    },
+    endpoints: detail.endpoints.map((endpoint) => {
+      const mutability = endpoint.method.toUpperCase() === "GET" ? "read_only" : "mutating";
+      return {
+        id: endpoint.id,
+        title: endpoint.title,
+        method: endpoint.method,
+        url: endpoint.endpointType === "external_registry" ? endpoint.publicUrl : `${endpoint.upstreamBaseUrl ?? ""}${endpoint.upstreamPath ?? ""}`,
+        endpointType: endpoint.endpointType,
+        mutability,
+        eligibleForNoSpendProbe: false,
+        paidReadSmokeAllowed: false,
+        skipReason: endpoint.endpointType !== "external_registry"
+          ? "Marketplace proxy endpoints are tested through marketplace route coverage."
+          : mutability === "mutating"
+          ? "Mutating endpoint; requires explicit operator approval."
+          : "External registry endpoints are discovery-only; marketplace-side live execution is disabled."
+      };
+    })
   };
 }
 
@@ -4682,8 +4733,13 @@ function classifyEndpointForTest(
   return {
     status: "passed" as const,
     mutability,
-    summary: "Endpoint metadata is present and eligible for no-spend probing.",
-    evidenceJson: { serviceRisk }
+    summary: endpoint.endpointType === "external_registry"
+      ? "Endpoint metadata is present; live marketplace execution is disabled for discovery-only listings."
+      : "Endpoint metadata is present.",
+    evidenceJson: {
+      serviceRisk,
+      liveExecutionDisabled: endpoint.endpointType === "external_registry" ? true : undefined
+    }
   };
 }
 
@@ -4895,114 +4951,18 @@ async function maybeExecutePaidReadSmoke(input: {
     return {};
   }
 
-  if (!input.execute) {
-    return {
-      status: "skipped",
-      expectedPriceAmount: input.maxSpend,
-      expectedPriceAsset: "USDC_BASE",
-      summary: "Paid smoke test planned but not executed because --execute was not set.",
-      evidenceJson: {
-        paidReadSmoke: {
-          reason: "execution_disabled",
-          maxSpend: input.maxSpend
-        }
+  return {
+    status: "blocked",
+    expectedPriceAmount: input.maxSpend,
+    expectedPriceAsset: "USDC_BASE",
+    summary: "Paid smoke test blocked because external registry listings are discovery-only and are not executed by the marketplace.",
+    evidenceJson: {
+      paidReadSmoke: {
+        reason: "external_registry_execution_disabled",
+        maxSpend: input.maxSpend
       }
-    };
-  }
-
-  if (!input.upstreamPaymentService) {
-    return {
-      status: "skipped",
-      expectedPriceAmount: input.maxSpend,
-      expectedPriceAsset: "USDC_BASE",
-      summary: "Paid smoke test skipped because no upstream x402 payment executor is configured.",
-      evidenceJson: {
-        paidReadSmoke: {
-          reason: "payment_executor_missing",
-          maxSpend: input.maxSpend
-        }
-      }
-    };
-  }
-
-  if (!input.maxSpend || Number(input.maxSpend) <= 0) {
-    return {};
-  }
-
-  if (hasUrlTemplate(input.endpoint.publicUrl)) {
-    return {
-      status: "skipped",
-      expectedPriceAmount: input.maxSpend,
-      expectedPriceAsset: "USDC_BASE",
-      summary: "Paid smoke test skipped because endpoint URL contains unresolved template parameters.",
-      evidenceJson: { paidReadSmoke: { reason: "templated_url" } }
-    };
-  }
-
-  if (!isSafePublicHttpsUrl(input.endpoint.publicUrl)) {
-    return {
-      status: "blocked",
-      expectedPriceAmount: input.maxSpend,
-      expectedPriceAsset: "USDC_BASE",
-      summary: "Paid smoke test blocked because endpoint URL is not a safe public HTTPS URL.",
-      evidenceJson: { paidReadSmoke: { reason: "unsafe_url" } }
-    };
-  }
-
-  const started = Date.now();
-  try {
-    const paid = await input.upstreamPaymentService.payHttp({
-      url: input.endpoint.publicUrl,
-      method: "GET",
-      headers: {},
-      policy: {
-        network: "base",
-        asset: BASE_USDC_ASSET,
-        maxAmountRaw: decimalToRawString(input.maxSpend, 6)
-      }
-    });
-    const latencyMs = Date.now() - started;
-    return {
-      status: paid.statusCode >= 500 ? "degraded" : paid.statusCode >= 400 ? "failed" : "passed",
-      paymentRequired: true,
-      expectedPriceAmount: input.maxSpend,
-      expectedPriceAsset: "USDC_BASE",
-      paidAmount: paid.payment?.amount ?? null,
-      httpStatus: paid.statusCode,
-      latencyMs,
-      summary: `Paid smoke test returned HTTP ${paid.statusCode}.`,
-      evidenceJson: {
-        paidReadSmoke: {
-          reason: "executed",
-          maxSpend: input.maxSpend,
-          payment: paid.payment
-            ? {
-                network: paid.payment.network,
-                amount: paid.payment.amount,
-                recipient: paid.payment.recipient,
-                txHash: paid.payment.txHash
-              }
-            : null,
-          headers: allowedEvidenceHeaderRecord(paid.headers)
-        }
-      }
-    };
-  } catch (error) {
-    return {
-      status: "failed",
-      paymentRequired: true,
-      expectedPriceAmount: input.maxSpend,
-      expectedPriceAsset: "USDC_BASE",
-      latencyMs: Date.now() - started,
-      summary: error instanceof Error ? `Paid smoke test failed: ${error.message}` : "Paid smoke test failed.",
-      evidenceJson: {
-        paidReadSmoke: {
-          reason: "execution_failed",
-          errorKind: error instanceof Error ? error.name : "unknown"
-        }
-      }
-    };
-  }
+    }
+  };
 }
 
 async function maybeProbeEndpoint(input: {
@@ -5031,81 +4991,18 @@ async function maybeProbeEndpoint(input: {
     return {};
   }
 
-  if (hasUrlTemplate(input.endpoint.publicUrl)) {
-    return {
-      status: "skipped",
-      summary: "No-spend probe skipped because endpoint URL contains unresolved template parameters.",
-      evidenceJson: { safeUrl: true, templatedUrl: true }
-    };
-  }
-
-  if (!isSafePublicHttpsUrl(input.endpoint.publicUrl)) {
-    return {
-      status: "failed",
-      summary: "Endpoint URL is not a safe public HTTPS URL.",
-      evidenceJson: { safeUrl: false }
-    };
-  }
-
-  const started = Date.now();
-  try {
-    const response = await fetch(input.endpoint.publicUrl, {
-      method: "GET",
-      redirect: "manual",
-      signal: AbortSignal.timeout(8_000)
-    });
-    const latencyMs = Date.now() - started;
-    const paymentRequired = response.status === 402 || response.headers.has("www-authenticate");
-    const status = response.status >= 500
-      ? "degraded"
-      : response.status >= 400 && !paymentRequired
-      ? "failed"
-      : "passed";
-    return {
-      status,
-      paymentRequired,
-      httpStatus: response.status,
-      latencyMs,
-      summary: paymentRequired
-        ? "No-spend probe returned a payment/auth challenge."
-        : `No-spend probe returned HTTP ${response.status}.`,
-      evidenceJson: {
-        headers: allowedEvidenceHeaders(response.headers)
-      }
-    };
-  } catch (error) {
-    return {
-      status: "failed",
-      latencyMs: Date.now() - started,
-      summary: error instanceof Error ? error.message : "No-spend probe failed.",
-      evidenceJson: { errorKind: error instanceof Error ? error.name : "unknown" }
-    };
-  }
-}
-
-function allowedEvidenceHeaders(headers: Headers): Record<string, string> {
-  const allowed = ["content-type", "www-authenticate", "x-payment-required", "x-request-id"];
-  return Object.fromEntries(
-    allowed
-      .map((name) => [name, headers.get(name)] as const)
-      .filter((entry): entry is [string, string] => Boolean(entry[1]))
-  );
-}
-
-function allowedEvidenceHeaderRecord(headers: Record<string, string>): Record<string, string> {
-  const allowed = new Set(["content-type", "www-authenticate", "x-payment-required", "x-request-id"]);
-  return Object.fromEntries(Object.entries(headers).filter(([name]) => allowed.has(name.toLowerCase())));
-}
-
-function hasUrlTemplate(url: string): boolean {
-  return /[{<][A-Za-z0-9_.:-]+[}>]/.test(url);
+  return {
+    status: "skipped",
+    summary: "Live probe skipped because external registry listings are discovery-only and are not fetched by the marketplace.",
+    evidenceJson: { reason: "external_registry_execution_disabled" }
+  };
 }
 
 function summarizeTestRunStatus(results: Array<{ status: ProviderServiceTestStatus }>): ProviderServiceTestStatus {
   if (results.some((result) => result.status === "failed")) return "failed";
   if (results.some((result) => result.status === "degraded")) return "degraded";
-  if (results.some((result) => result.status === "passed")) return "passed";
   if (results.some((result) => result.status === "blocked")) return "blocked";
+  if (results.some((result) => result.status === "passed")) return "passed";
   return "skipped";
 }
 
