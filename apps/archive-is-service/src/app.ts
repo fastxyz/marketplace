@@ -60,6 +60,19 @@ export function createArchiveIsServiceApp(options: ArchiveIsServiceOptions = {})
   return app;
 }
 
+export function normalizeArchiveIsTimeoutMs(value: string | undefined): number {
+  if (value === undefined || value.trim() === "") {
+    return 10_000;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error("ARCHIVE_IS_TIMEOUT_MS must be a positive integer.");
+  }
+
+  return parsed;
+}
+
 function parseRequestInput(body: unknown, archiveHost: ListSnapshotsInput["archiveHost"]): ListSnapshotsInput {
   if (!isRecord(body)) {
     throw new ArchiveIsError("Request body must be a JSON object.", {

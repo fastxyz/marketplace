@@ -248,7 +248,13 @@ async function fetchTimeMap(input: {
       });
     }
 
-    return response.text();
+    const body = await response.text();
+    const linkHeader = response.headers.get("link");
+    if (body.trim().length === 0 && linkHeader) {
+      return linkHeader;
+    }
+
+    return body;
   } catch (error) {
     if (error instanceof ArchiveIsError) {
       throw error;

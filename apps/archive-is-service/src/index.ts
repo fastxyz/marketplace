@@ -1,7 +1,7 @@
-import { createArchiveIsServiceApp } from "./app.js";
+import { createArchiveIsServiceApp, normalizeArchiveIsTimeoutMs } from "./app.js";
 
 const port = Number(process.env.ARCHIVE_IS_SERVICE_PORT ?? process.env.PORT ?? 4060);
-const timeoutMs = Number(process.env.ARCHIVE_IS_TIMEOUT_MS ?? 10_000);
+const timeoutMs = normalizeArchiveIsTimeoutMs(process.env.ARCHIVE_IS_TIMEOUT_MS);
 
 const app = createArchiveIsServiceApp({
   archiveHost: parseArchiveHost(process.env.ARCHIVE_IS_BASE_HOST),

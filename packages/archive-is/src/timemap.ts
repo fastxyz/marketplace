@@ -17,7 +17,15 @@ export function parseTimeMap(input: {
   originalUrl: string;
   sourceHost: string;
 }): ArchiveSnapshot[] {
-  return parseLinkFormat(input.body)
+  const entries = parseLinkFormat(input.body);
+  if (input.body.trim().length > 0 && entries.length === 0) {
+    throw new Error("TimeMap response is not link-format.");
+  }
+  if (entries.length > 0 && entries.every((entry) => !entry.params.rel)) {
+    throw new Error("TimeMap response has no link relations.");
+  }
+
+  return entries
     .filter((entry) => isMementoRel(entry.params.rel))
     .map((entry) => buildSnapshotFromEntry(entry, input.originalUrl, input.sourceHost))
     .filter((snapshot): snapshot is ArchiveSnapshot => snapshot !== null);

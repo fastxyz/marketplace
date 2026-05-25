@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ArchiveIsError, type ListSnapshotsResult } from "@marketplace/archive-is";
 
-import { createArchiveIsServiceApp } from "./app.js";
+import { createArchiveIsServiceApp, normalizeArchiveIsTimeoutMs } from "./app.js";
 
 function buildResult(): ListSnapshotsResult {
   return {
@@ -170,5 +170,15 @@ describe("archive-is service", () => {
 
     expect(response.status).toBe(200);
     expect(response.text).toBe("verify-me");
+  });
+
+  it("normalizes timeout environment values before service startup", () => {
+    expect(normalizeArchiveIsTimeoutMs(undefined)).toBe(10_000);
+    expect(normalizeArchiveIsTimeoutMs("")).toBe(10_000);
+    expect(normalizeArchiveIsTimeoutMs("7500")).toBe(7500);
+
+    expect(() => normalizeArchiveIsTimeoutMs("0")).toThrow("ARCHIVE_IS_TIMEOUT_MS must be a positive integer.");
+    expect(() => normalizeArchiveIsTimeoutMs("abc")).toThrow("ARCHIVE_IS_TIMEOUT_MS must be a positive integer.");
+    expect(() => normalizeArchiveIsTimeoutMs("1.5")).toThrow("ARCHIVE_IS_TIMEOUT_MS must be a positive integer.");
   });
 });

@@ -46,21 +46,21 @@ describe("archive-is sdk", () => {
     expect(snapshots).toEqual([
       {
         originalUrl: "https://example.com/articles/launch",
-        archiveUrl: "https://archive.today/20240501120000/https://example.com/articles/launch",
+        archiveUrl: "http://archive.md/20240501120000/https://example.com/articles/launch",
         capturedAt: "2024-05-01T12:00:00.000Z",
         archiveId: "20240501120000",
         sourceHost: "archive.today"
       },
       {
         originalUrl: "https://example.com/articles/launch",
-        archiveUrl: "https://archive.today/20240615153045/https://example.com/articles/launch",
+        archiveUrl: "http://archive.md/20240615153045/https://example.com/articles/launch",
         capturedAt: "2024-06-15T15:30:45.000Z",
         archiveId: "20240615153045",
         sourceHost: "archive.today"
       },
       {
         originalUrl: "https://example.com/articles/launch",
-        archiveUrl: "https://archive.today/20240720170010/https://example.com/articles/launch",
+        archiveUrl: "http://archive.md/20240720170010/https://example.com/articles/launch",
         capturedAt: "2024-07-20T17:00:10.000Z",
         archiveId: "20240720170010",
         sourceHost: "archive.today"
@@ -68,7 +68,7 @@ describe("archive-is sdk", () => {
     ]);
   });
 
-  it("fetches, sorts, filters, and limits snapshots", async () => {
+  it("fetches, sorts, and limits snapshots", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(readFixture("timemap-link-format.txt"), {
         status: 200,
@@ -80,7 +80,6 @@ describe("archive-is sdk", () => {
 
     const result = await listSnapshots({
       url: "https://example.com/articles/launch",
-      from: "2024-06-01T00:00:00.000Z",
       limit: 1
     }, {
       fetch: fetchMock,
@@ -95,7 +94,7 @@ describe("archive-is sdk", () => {
       snapshots: [
         {
           originalUrl: "https://example.com/articles/launch",
-          archiveUrl: "https://archive.today/20240720170010/https://example.com/articles/launch",
+          archiveUrl: "http://archive.md/20240720170010/https://example.com/articles/launch",
           capturedAt: "2024-07-20T17:00:10.000Z",
           archiveId: "20240720170010",
           sourceHost: "archive.today"
@@ -111,6 +110,75 @@ describe("archive-is sdk", () => {
         })
       })
     );
+  });
+
+  it("filters snapshots by lower and upper date boundaries", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () =>
+      new Response(readFixture("timemap-link-format.txt"), {
+        status: 200,
+        headers: {
+          "content-type": "application/link-format"
+        }
+      })
+    );
+
+    await expect(listSnapshots({
+      url: "https://example.com/articles/launch",
+      from: "2024-07-01T00:00:00.000Z",
+      limit: 10
+    }, {
+      fetch: fetchImpl
+    })).resolves.toMatchObject({
+      count: 1,
+      snapshots: [
+        {
+          capturedAt: "2024-07-20T17:00:10.000Z"
+        }
+      ]
+    });
+
+    await expect(listSnapshots({
+      url: "https://example.com/articles/launch",
+      to: "2024-06-30T23:59:59.999Z",
+      limit: 10
+    }, {
+      fetch: fetchImpl
+    })).resolves.toMatchObject({
+      count: 2,
+      snapshots: [
+        {
+          capturedAt: "2024-06-15T15:30:45.000Z"
+        },
+        {
+          capturedAt: "2024-05-01T12:00:00.000Z"
+        }
+      ]
+    });
+  });
+
+  it("parses TimeMap entries from the Link header when the body is empty", async () => {
+    await expect(listSnapshots({
+      url: "https://example.com/articles/launch",
+      limit: 1
+    }, {
+      fetch: vi.fn<typeof fetch>().mockResolvedValue(
+        new Response("", {
+          status: 200,
+          headers: {
+            link:
+              '<https://example.com/articles/launch>; rel="original", <http://archive.md/20240501120000/https://example.com/articles/launch>; rel="memento"; datetime="Wed, 01 May 2024 12:00:00 GMT"'
+          }
+        })
+      )
+    })).resolves.toMatchObject({
+      count: 1,
+      snapshots: [
+        {
+          archiveUrl: "http://archive.md/20240501120000/https://example.com/articles/launch",
+          capturedAt: "2024-05-01T12:00:00.000Z"
+        }
+      ]
+    });
   });
 
   it("rejects invalid inputs with typed errors", async () => {
@@ -148,6 +216,17 @@ describe("archive-is sdk", () => {
     })).rejects.toMatchObject({
       code: "no_captures",
       statusCode: 404
+    });
+  });
+
+  it("throws parse_failure for non-link-format 200 responses", async () => {
+    await expect(listSnapshots({
+      url: "https://example.com"
+    }, {
+      fetch: vi.fn<typeof fetch>().mockResolvedValue(new Response("<html><title>Blocked</title></html>", { status: 200 }))
+    })).rejects.toMatchObject({
+      code: "parse_failure",
+      statusCode: 502
     });
   });
 });

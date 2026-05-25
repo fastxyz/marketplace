@@ -10,7 +10,7 @@
     "typecheck:workspace": "tsc --noEmit",
     "typecheck:web": "tsc --noEmit -p apps/web/tsconfig.json",
     "typecheck": "npm run typecheck:workspace && npm run typecheck:web",
-    "build:runtime": "tsup --config tsup.config.ts",
+    "build:runtime": "npm run build --workspace @marketplace/archive-is && tsup --config tsup.config.ts",
     "build:web": "npm run build --workspace @marketplace/web",
     "build": "npm run typecheck && npm run build:runtime && npm run build:web",
     "test": "vitest run",
