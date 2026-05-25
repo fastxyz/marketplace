@@ -34,6 +34,9 @@ jobs:
           - service: api
             dockerfile: docker/api.Dockerfile
             image: ghcr.io/fastxyz/marketplace-api
+          - service: archive-is-service
+            dockerfile: docker/archive-is-service.Dockerfile
+            image: ghcr.io/fastxyz/marketplace-archive-is-service
           - service: web
             dockerfile: docker/web.Dockerfile
             image: ghcr.io/fastxyz/marketplace-web

@@ -318,6 +318,67 @@ describe("marketplace api", () => {
     expect(unknownEndpoint.status).toBe(400);
     expect(unknownEndpoint.body.error).toContain("Unknown endpointIds");
 
+    const budgeted = await store.createProviderService(wallet, {
+      serviceType: "external_registry",
+      slug: "budgeted-direct",
+      name: "Budgeted Direct",
+      tagline: "Two paid read endpoints",
+      about: "Direct provider APIs used to verify run-level paid smoke budgets.",
+      categories: ["Research"],
+      promptIntro: 'I want to use the "Budgeted Direct" service.',
+      setupInstructions: ["Use read-only smoke tests only."],
+      websiteUrl: "https://provider.example.com"
+    });
+    await store.createProviderEndpointDraft(budgeted.service.id, wallet, {
+      endpointType: "external_registry",
+      title: "First paid read",
+      description: "First read-only endpoint.",
+      method: "GET",
+      publicUrl: "https://provider.example.com/api/first",
+      docsUrl: "https://provider.example.com/docs/first",
+      authNotes: "Bearer token required.",
+      requestExample: {},
+      responseExample: { ok: true }
+    });
+    await store.createProviderEndpointDraft(budgeted.service.id, wallet, {
+      endpointType: "external_registry",
+      title: "Second paid read",
+      description: "Second read-only endpoint.",
+      method: "GET",
+      publicUrl: "https://provider.example.com/api/second",
+      docsUrl: "https://provider.example.com/docs/second",
+      authNotes: "Bearer token required.",
+      requestExample: {},
+      responseExample: { ok: true }
+    });
+    const seenPaidMaxAmounts: string[] = [];
+    const { app: budgetedPaymentApp } = await createTestApp({
+      store,
+      upstreamPaymentService: {
+        async payHttp(input) {
+          seenPaidMaxAmounts.push(input.policy.maxAmountRaw);
+          return {
+            statusCode: 200,
+            headers: { "content-type": "application/json" },
+            body: { ok: true },
+            payment: {
+              network: "base",
+              amount: "0.25",
+              recipient: "0x0000000000000000000000000000000000000001",
+              txHash: `0xtest${seenPaidMaxAmounts.length}`
+            }
+          };
+        }
+      }
+    });
+    const budgetedPaidRun = await request(budgetedPaymentApp)
+      .post(`/internal/provider-services/${budgeted.service.id}/test-runs`)
+      .set("Authorization", "Bearer test-admin-token")
+      .send({ runKind: "paid_read_smoke", execute: true, maxSpend: "0.5" });
+    expect(budgetedPaidRun.status).toBe(201);
+    expect(seenPaidMaxAmounts).toEqual(["500000", "250000"]);
+    expect(budgetedPaidRun.body.run.totalPaidAmount).toBe("0.5");
+
     const { app: appWithPayment } = await createTestApp({
       store,
       upstreamPaymentService: {

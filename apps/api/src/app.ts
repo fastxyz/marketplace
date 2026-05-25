@@ -4537,12 +4537,18 @@ async function createAndExecuteProviderServiceTestRun(input: {
     }
   });
 
+  let remainingPaidSmokeBudgetRaw = input.runKind === "paid_read_smoke" && input.maxSpend
+    ? BigInt(decimalToRawString(input.maxSpend, 6))
+    : null;
   const endpointResults = [];
   for (const endpoint of endpoints) {
+    const paidSmokeMaxSpend = remainingPaidSmokeBudgetRaw === null
+      ? input.maxSpend
+      : rawToDecimalString(remainingPaidSmokeBudgetRaw.toString(), 6);
     const plan = classifyEndpointForTest(endpoint, risk.level);
     const paidBlock = classifyPaidReadSmokeRequest({
       runKind: input.runKind,
-      maxSpend: input.maxSpend,
+      maxSpend: paidSmokeMaxSpend,
       mutability: plan.mutability,
       serviceRisk: risk.level
     });
@@ -4558,11 +4564,11 @@ async function createAndExecuteProviderServiceTestRun(input: {
       runKind: input.runKind,
       execute: input.execute,
       blocked: plan.status === "blocked" || Boolean(paidBlock),
-      maxSpend: input.maxSpend,
+      maxSpend: paidSmokeMaxSpend,
       mutability: plan.mutability,
       upstreamPaymentService: input.upstreamPaymentService
     });
-    endpointResults.push(await input.store.appendProviderEndpointTestResult({
+    const endpointResult = await input.store.appendProviderEndpointTestResult({
       testRunId: run.id,
       serviceId: input.detail.service.id,
       endpointId: endpoint.id,
@@ -4588,7 +4594,12 @@ async function createAndExecuteProviderServiceTestRun(input: {
         ...paidProbe.evidenceJson,
         ...probe.evidenceJson
       }
-    }));
+    });
+    endpointResults.push(endpointResult);
+    if (remainingPaidSmokeBudgetRaw !== null && endpointResult.paidAmount) {
+      const paidRaw = BigInt(decimalToRawString(endpointResult.paidAmount, 6));
+      remainingPaidSmokeBudgetRaw = remainingPaidSmokeBudgetRaw > paidRaw ? remainingPaidSmokeBudgetRaw - paidRaw : 0n;
+    }
   }
 
   const totalPaidAmount = sumDecimalAmounts(endpointResults.map((result) => result.paidAmount));

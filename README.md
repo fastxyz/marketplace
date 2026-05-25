@@ -8,8 +8,10 @@ Fast-native data marketplace using [`@fastxyz/sdk`](https://www.npmjs.com/packag
 - `apps/web`: Next.js frontend for the marketplace catalog, provider dashboard, and admin review surfaces
 - `apps/worker`: background processing for async jobs, treasury refunds, stale-payment recovery, and provider payout settlement
 - `apps/facilitator`: x402 facilitator service used for payment verification
+- `apps/archive-is-service`: optional standalone Archive.today-compatible lookup provider wrapper. See [`apps/archive-is-service/README.md`](./apps/archive-is-service/README.md)
 - `apps/tavily-service`: optional standalone Tavily-backed provider example that can be onboarded through the website like any other provider service. See [`apps/tavily-service/README.md`](./apps/tavily-service/README.md)
 - `packages/shared`: source of truth for shared contracts, route registry, catalog/docs generation, auth, billing, payout logic, and store behavior
+- `packages/archive-is`: typed Archive.today-compatible SDK for listing archived snapshots from Memento TimeMap responses
 - `packages/cli`: buyer and provider CLI for discovery-first marketplace search/show/use flows, wallet setup, provider draft sync/verification/submission, and job retrieval
 - `packages/mcp`: local stdio MCP server for agent clients that reuses the marketplace CLI wallet and payment flow
 
@@ -177,7 +179,20 @@ npm run dev:tavily-service
 
 This service is not wired into `apps/api`. To use it, create a `marketplace_proxy` provider service in the web UI, import `http://localhost:4030/openapi.json` or your deployed host's `/openapi.json`, review the imported Tavily endpoint drafts, and serve the marketplace website-verification token from `/.well-known/fast-marketplace-verification.txt` by setting `MARKETPLACE_VERIFICATION_TOKEN` on that service. Provider website verification still expects an HTTPS host.
 
-8. Use the CLI:
+8. Optional: run the standalone Archive.is lookup provider example:
+
+See [`apps/archive-is-service/README.md`](./apps/archive-is-service/README.md) for the full setup and onboarding flow.
+
+```bash
+export ARCHIVE_IS_BASE_HOST=archive.today
+export ARCHIVE_IS_TIMEOUT_MS=10000
+export ARCHIVE_IS_SERVICE_PORT=4060
+npm run dev:archive-is-service
+```
+
+This service is not wired into `apps/api`. To use it, create a `marketplace_proxy` provider service in the web UI, import `http://localhost:4060/openapi.json` or your deployed host's `/openapi.json`, review the imported `list-snapshots` endpoint draft, and serve the marketplace website-verification token from `/.well-known/fast-marketplace-verification.txt` by setting `MARKETPLACE_VERIFICATION_TOKEN` on that service. Provider website verification still expects an HTTPS host.
+
+9. Use the CLI:
 
 ```bash
 npm run cli -- wallet init
@@ -266,16 +281,17 @@ npm run cli -- provider verify --service <slug-or-id>
 
 For curated x402 imports, keep local `ProviderSyncSpec` seed files under a gitignored path and use the normal `provider sync` plus `provider submit` flow with a Fast-operated provider account.
 
-9. Build runtime artifacts:
+10. Build runtime artifacts:
 
 ```bash
 npm run build
 ```
 
-10. Start production-style processes:
+11. Start production-style processes:
 
 ```bash
 npm run start:api
+npm run start:archive-is-service
 npm run start:facilitator
 npm run start:tavily-service
 npm run start:worker
@@ -287,6 +303,7 @@ npm run start:web
 Use the repo-root Docker context with one Dockerfile per service:
 
 - API: `docker/api.Dockerfile`
+- Archive.is service: `docker/archive-is-service.Dockerfile`
 - Facilitator: `docker/facilitator.Dockerfile`
 - Web: `docker/web.Dockerfile`
 - Worker: `docker/worker.Dockerfile`
@@ -380,10 +397,12 @@ Webhook async providers require an HTTPS `MARKETPLACE_BASE_URL` so the marketpla
 - `npm run test`: run unit and integration tests
 - `npm run test:web:smoke`: run the browser smoke suite against the built frontend
 - `npm run dev:api`: run the API with `tsx`
+- `npm run dev:archive-is-service`: run the Archive.is lookup provider with `tsx`
 - `npm run dev:facilitator`: run the facilitator with `tsx`
 - `npm run dev:worker`: run the worker with `tsx`
 - `npm run dev:web`: run the Next.js frontend
 - `npm run start:api`: run the built API bundle
+- `npm run start:archive-is-service`: run the built Archive.is lookup provider bundle
 - `npm run start:facilitator`: run the built facilitator bundle
 - `npm run start:worker`: run the built worker bundle
 - `npm run start:web`: run the Next.js frontend

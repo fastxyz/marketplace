@@ -8,7 +8,7 @@ on:
         required: false
         default: monitoring
   schedule:
-    - cron: "17 * * * *"
+    - cron: "17 9 * * 1"
 
 jobs:
   monitor:
