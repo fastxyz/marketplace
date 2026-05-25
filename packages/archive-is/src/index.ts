@@ -360,21 +360,21 @@ async function validateArchiveSnapshot(input: {
       userAgent: input.userAgent
     });
 
+    const blockPage = getArchiveBlockPageReason(response.body);
+    if (blockPage) {
+      return {
+        status: "unchecked",
+        reason: blockPage,
+        statusCode: response.status
+      };
+    }
+
+    const errorPage = getArchiveErrorPageReason(response.body);
     if (!response.ok) {
-      const errorPage = getArchiveErrorPageReason(response.body);
       if (errorPage) {
         return {
           status: "broken",
           reason: errorPage,
-          statusCode: response.status
-        };
-      }
-
-      const blockPage = getArchiveBlockPageReason(response.body);
-      if (blockPage) {
-        return {
-          status: "unchecked",
-          reason: blockPage,
           statusCode: response.status
         };
       }
@@ -386,7 +386,6 @@ async function validateArchiveSnapshot(input: {
       };
     }
 
-    const errorPage = getArchiveErrorPageReason(response.body);
     if (errorPage) {
       return {
         status: "broken",
@@ -494,6 +493,14 @@ async function mapWithConcurrency<T, R>(
 
 function getArchiveErrorPageReason(body: string): string | null {
   const normalized = body.toLowerCase();
+  const archiveWrapperErrorPage = normalized.includes("id=\"solid\"")
+    && normalized.includes("id=\"content\"")
+    && normalized.includes("<pre")
+    && normalized.includes("error:");
+  if (!archiveWrapperErrorPage) {
+    return null;
+  }
+
   if (normalized.includes("task timed-out after 15 seconds of inactivity")) {
     return "archive_task_timeout";
   }
@@ -502,11 +509,7 @@ function getArchiveErrorPageReason(body: string): string | null {
     return "archive_invalid_interception_id";
   }
 
-  if (normalized.includes("<pre") && normalized.includes("error:")) {
-    return "archive_error_page";
-  }
-
-  return null;
+  return "archive_error_page";
 }
 
 function getArchiveBlockPageReason(body: string): string | null {
