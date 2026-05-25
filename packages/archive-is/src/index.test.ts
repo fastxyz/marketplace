@@ -18,6 +18,29 @@ function readFixture(name: string): string {
   return readFileSync(join(fixtureDir, name), "utf8");
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+
+  return { promise, reject, resolve };
+}
+
+async function waitForFetchCallCount(fetchImpl: ReturnType<typeof vi.fn<typeof fetch>>, count: number): Promise<void> {
+  for (let attempts = 0; attempts < 20; attempts += 1) {
+    if (fetchImpl.mock.calls.length === count) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  expect(fetchImpl).toHaveBeenCalledTimes(count);
+}
+
 describe("archive-is sdk", () => {
   it("constructs Archive.today TimeMap URLs while preserving query and fragment boundaries", () => {
     expect(buildTimeMapUrl({
@@ -260,6 +283,105 @@ describe("archive-is sdk", () => {
             status: "unchecked",
             reason: "validation_http_error",
             statusCode: 403
+          }
+        }
+      ]
+    });
+  });
+
+  it("marks archive security checks unchecked instead of generic HTTP errors", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(readFixture("timemap-link-format.txt"), {
+        status: 200,
+        headers: {
+          "content-type": "application/link-format"
+        }
+      }))
+      .mockResolvedValueOnce(new Response("<html><h1>One more step</h1><div>Please complete the security check to access</div><div id=\"g-recaptcha\"></div></html>", {
+        status: 429
+      }));
+
+    await expect(listSnapshots({
+      url: "https://example.com/articles/launch",
+      limit: 1
+    }, {
+      fetch: fetchImpl,
+      validateSnapshots: true
+    })).resolves.toMatchObject({
+      count: 1,
+      snapshots: [
+        {
+          archiveUrl: "http://archive.md/20240720170010/https://example.com/articles/launch",
+          validation: {
+            status: "unchecked",
+            reason: "archive_security_check",
+            statusCode: 429
+          }
+        }
+      ]
+    });
+  });
+
+  it("validates snapshot pages concurrently while preserving response order", async () => {
+    const validations = [
+      deferred<Response>(),
+      deferred<Response>(),
+      deferred<Response>()
+    ];
+    const validationQueue = [...validations];
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(readFixture("timemap-link-format.txt"), {
+        status: 200,
+        headers: {
+          "content-type": "application/link-format"
+        }
+      }))
+      .mockImplementation(() => {
+        const validation = validationQueue.shift();
+        if (!validation) {
+          throw new Error("unexpected fetch");
+        }
+
+        return validation.promise;
+      });
+
+    const resultPromise = listSnapshots({
+      url: "https://example.com/articles/launch",
+      limit: 3
+    }, {
+      fetch: fetchImpl,
+      validateSnapshots: true
+    });
+    await waitForFetchCallCount(fetchImpl, 4);
+
+    validations[1]?.resolve(new Response("<html><pre>Error: Error -32602: Invalid InterceptionId.</pre></html>", {
+      status: 200
+    }));
+    validations[2]?.resolve(new Response("<html><pre>Error: Task timed-out after 15 seconds of inactivity</pre></html>", {
+      status: 200
+    }));
+    validations[0]?.resolve(new Response("<html><article>Archived article content</article></html>", {
+      status: 200
+    }));
+
+    await expect(resultPromise).resolves.toMatchObject({
+      snapshots: [
+        {
+          archiveUrl: "http://archive.md/20240720170010/https://example.com/articles/launch",
+          validation: { status: "usable" }
+        },
+        {
+          archiveUrl: "http://archive.md/20240615153045/https://example.com/articles/launch",
+          validation: {
+            status: "broken",
+            reason: "archive_invalid_interception_id"
+          }
+        },
+        {
+          archiveUrl: "http://archive.md/20240501120000/https://example.com/articles/launch",
+          validation: {
+            status: "broken",
+            reason: "archive_task_timeout"
           }
         }
       ]

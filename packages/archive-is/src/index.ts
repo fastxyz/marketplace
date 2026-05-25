@@ -73,6 +73,7 @@ const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_USER_AGENT = "fast-agent-marketplace-archive-is/0.1";
+const SNAPSHOT_VALIDATION_CONCURRENCY = 5;
 
 export { buildTimeMapUrl, parseLinkFormat, parseTimeMap } from "./timemap.js";
 
@@ -331,9 +332,7 @@ async function validateSnapshotPages(input: {
   timeoutMs: number;
   userAgent: string;
 }): Promise<ArchiveSnapshot[]> {
-  const snapshots: ArchiveSnapshot[] = [];
-  for (const snapshot of input.snapshots) {
-    snapshots.push({
+  return mapWithConcurrency(input.snapshots, SNAPSHOT_VALIDATION_CONCURRENCY, async (snapshot) => ({
       ...snapshot,
       validation: await validateArchiveSnapshot({
         fetchImpl: input.fetchImpl,
@@ -341,10 +340,7 @@ async function validateSnapshotPages(input: {
         timeoutMs: input.timeoutMs,
         userAgent: input.userAgent
       })
-    });
-  }
-
-  return snapshots;
+    }));
 }
 
 async function validateArchiveSnapshot(input: {
@@ -370,6 +366,15 @@ async function validateArchiveSnapshot(input: {
         return {
           status: "broken",
           reason: errorPage,
+          statusCode: response.status
+        };
+      }
+
+      const blockPage = getArchiveBlockPageReason(response.body);
+      if (blockPage) {
+        return {
+          status: "unchecked",
+          reason: blockPage,
           statusCode: response.status
         };
       }
@@ -467,6 +472,26 @@ function isRedirectStatus(status: number): boolean {
   return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
 }
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex]);
+    }
+  }));
+
+  return results;
+}
+
 function getArchiveErrorPageReason(body: string): string | null {
   const normalized = body.toLowerCase();
   if (normalized.includes("task timed-out after 15 seconds of inactivity")) {
@@ -479,6 +504,16 @@ function getArchiveErrorPageReason(body: string): string | null {
 
   if (normalized.includes("<pre") && normalized.includes("error:")) {
     return "archive_error_page";
+  }
+
+  return null;
+}
+
+function getArchiveBlockPageReason(body: string): string | null {
+  const normalized = body.toLowerCase();
+  if (normalized.includes("g-recaptcha")
+    && normalized.includes("please complete the security check")) {
+    return "archive_security_check";
   }
 
   return null;

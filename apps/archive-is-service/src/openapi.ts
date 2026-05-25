@@ -179,7 +179,7 @@ export function buildSnapshotsResponseSchema(): Record<string, unknown> {
         type: "array",
         items: {
           type: "object",
-          required: ["originalUrl", "archiveUrl", "capturedAt", "archiveId", "sourceHost"],
+          required: ["originalUrl", "archiveUrl", "capturedAt", "archiveId", "sourceHost", "validation"],
           properties: {
             originalUrl: { type: "string", format: "uri" },
             archiveUrl: { type: "string", format: "uri" },
